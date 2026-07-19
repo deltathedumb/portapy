@@ -1,0 +1,216 @@
+name: Native runtime ABI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  INTERNAL_EXPORTS: >-
+    portapy_internal_library_initialize
+    portapy_internal_runtime_status
+    portapy_internal_runtime_create
+    portapy_internal_runtime_destroy
+    portapy_internal_value_status
+    portapy_internal_value_create_i64
+    portapy_internal_value_retain
+    portapy_internal_value_release
+    portapy_internal_value_kind
+    portapy_internal_value_i64
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install toolchain and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python state core and C ABI shim
+        shell: bash
+        run: |
+          mkdir -p dist
+          set +e
+          set -o pipefail
+          python -m asmpython build src/portapy/native_api.py \
+            --target linux --type library --backend legacy \
+            --no-pyinbin-fallback --keep-assembly \
+            -o dist/libportapy.so \
+            2>&1 | tee dist/linux-build.log
+          compiler_status=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f dist/libportapy.asm ]; then
+            exit "$compiler_status"
+          fi
+
+          python tools/nasm_module_init.py dist/libportapy.asm \
+            --target linux --public-symbol portapy_internal_library_initialize
+          export_args=()
+          for symbol in $INTERNAL_EXPORTS; do
+            export_args+=(--export "$symbol")
+          done
+          python tools/nasm_exports.py dist/libportapy.asm "${export_args[@]}"
+          python tools/elf_pic.py dist/libportapy.asm
+          nasm -f elf64 -w-label-redef-late \
+            dist/libportapy.asm -o dist/portapy-python.o
+
+          cc -std=c11 -Wall -Wextra -Werror -fPIC \
+            -DPORTAPY_BUILD_DLL -Iinclude \
+            -c src/portapy/native_shim.c -o dist/portapy-shim.o
+
+          cat > dist/portapy.map <<'MAP'
+          {
+            global:
+              portapy_abi_version;
+              portapy_version_string;
+              portapy_runtime_create;
+              portapy_runtime_destroy;
+              portapy_value_retain;
+              portapy_value_release;
+              portapy_value_get_kind;
+              portapy_value_from_i64;
+              portapy_value_as_i64;
+            local: *;
+          };
+          MAP
+          cc -shared dist/portapy-python.o dist/portapy-shim.o \
+            -Wl,--version-script=dist/portapy.map \
+            -o dist/libportapy.so
+      - name: Inspect and execute from C
+        run: |
+          file dist/libportapy.so
+          readelf -dW dist/libportapy.so | tee dist/linux-dynamic.txt
+          if grep -q TEXTREL dist/linux-dynamic.txt; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          nm -D --defined-only dist/libportapy.so | tee dist/linux-exports.txt
+          awk '{print $3}' dist/linux-exports.txt | grep '^portapy_' | sort > dist/linux-portapy-symbols.txt
+          cat > dist/expected-symbols.txt <<'SYMBOLS'
+          portapy_abi_version
+          portapy_runtime_create
+          portapy_runtime_destroy
+          portapy_value_as_i64
+          portapy_value_from_i64
+          portapy_value_get_kind
+          portapy_value_release
+          portapy_value_retain
+          portapy_version_string
+          SYMBOLS
+          diff -u dist/expected-symbols.txt dist/linux-portapy-symbols.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/runtime_abi_host.c -ldl -o dist/runtime_abi_host
+          ./dist/runtime_abi_host ./dist/libportapy.so | tee dist/linux-host-output.txt
+          grep -qx 'abi=1 value=-42 kind=2' dist/linux-host-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-runtime-abi
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python state core and C ABI shim
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python -m asmpython build src/portapy/native_api.py `
+            --target windows --type library --backend legacy `
+            --no-pyinbin-fallback --keep-assembly `
+            -o dist/portapy.dll `
+            *>&1 | Tee-Object -FilePath dist/windows-build.log
+          $compilerExit = $LASTEXITCODE
+          if (-not (Test-Path dist/portapy.asm)) {
+            exit $compilerExit
+          }
+
+          python tools/nasm_module_init.py dist/portapy.asm `
+            --target windows --public-symbol portapy_internal_library_initialize
+          $exportArgs = @()
+          foreach ($symbol in $env:INTERNAL_EXPORTS.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
+            $exportArgs += '--export'
+            $exportArgs += $symbol
+          }
+          python tools/nasm_exports.py dist/portapy.asm @exportArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          nasm -f win64 -w-label-redef-late `
+            dist/portapy.asm -o dist/portapy-python.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          gcc -std=c11 -Wall -Wextra -Werror `
+            -DPORTAPY_BUILD_DLL -Iinclude `
+            -c src/portapy/native_shim.c -o dist/portapy-shim.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          @'
+          LIBRARY portapy
+          EXPORTS
+              portapy_abi_version
+              portapy_version_string
+              portapy_runtime_create
+              portapy_runtime_destroy
+              portapy_value_retain
+              portapy_value_release
+              portapy_value_get_kind
+              portapy_value_from_i64
+              portapy_value_as_i64
+          '@ | Set-Content -Encoding ascii dist/portapy.def
+          gcc -shared dist/portapy-python.obj dist/portapy-shim.obj `
+            dist/portapy.def -o dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Inspect and execute from C
+        shell: powershell
+        run: |
+          objdump -p dist/portapy.dll | Out-File -Encoding utf8 dist/windows-exports.txt
+          $required = @(
+            'portapy_abi_version',
+            'portapy_version_string',
+            'portapy_runtime_create',
+            'portapy_runtime_destroy',
+            'portapy_value_retain',
+            'portapy_value_release',
+            'portapy_value_get_kind',
+            'portapy_value_from_i64',
+            'portapy_value_as_i64'
+          )
+          foreach ($symbol in $required) {
+            if (-not (Select-String -Path dist/windows-exports.txt -Pattern "\b$symbol\b" -Quiet)) {
+              throw "missing $symbol"
+            }
+          }
+          if (Select-String -Path dist/windows-exports.txt -Pattern 'portapy_internal_' -Quiet) {
+            throw 'internal Python symbols must not be exported'
+          }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/runtime_abi_host.c -o dist/runtime_abi_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/runtime_abi_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/windows-host-output.txt
+          if ($output -ne 'abi=1 value=-42 kind=2') {
+            throw "unexpected host output: $output"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-runtime-abi
+          path: dist

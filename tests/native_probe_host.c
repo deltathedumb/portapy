@@ -36,14 +36,19 @@ int main(int argc, char **argv) {
         fprintf(stderr, "failed to load %s\n", argv[1]);
         return 3;
     }
+    probe_fn initialize = load_symbol(library, "portapy_library_initialize");
     probe_fn abi = load_symbol(library, "portapy_abi_version");
     probe_fn opcode = load_symbol(library, "portapy_opcode_probe");
-    if (abi == NULL || opcode == NULL) {
+    if (initialize == NULL || abi == NULL || opcode == NULL) {
         fprintf(stderr, "required probe exports are missing\n");
         return 4;
+    }
+    if (initialize() != 0) {
+        fprintf(stderr, "module initialization failed\n");
+        return 5;
     }
     int64_t abi_value = abi();
     int64_t opcode_value = opcode();
     printf("abi=%lld opcode=%lld\n", (long long)abi_value, (long long)opcode_value);
-    return abi_value == 1 && opcode_value == 10 ? 0 : 5;
+    return abi_value == 1 && opcode_value == 10 ? 0 : 6;
 }

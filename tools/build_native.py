@@ -23,6 +23,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from tools.elf_pic import make_elf_pic
+from tools.nasm_eval_abi import append_eval_abi
 from tools.nasm_exports import declare_exports
 from tools.nasm_float_abi import append_float_abi
 from tools.nasm_handle_abi import append_handle_abi
@@ -133,6 +134,7 @@ def _transform_assembly(assembly: Path, *, target: str) -> None:
     source = append_handle_abi(source, target=target)
     source = append_scalar_abi(source, target=target)
     source = append_float_abi(source, target=target)
+    source = append_eval_abi(source, target=target)
     source = declare_exports(source, list(PUBLIC_EXPORTS))
     if target == "linux":
         source = make_elf_pic(source)

@@ -13,13 +13,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e '.[bootstrap,test]'
+      - run: python -m pip install -e '.[test]'
       - name: Run hosted tests
         shell: bash
         run: |
           mkdir -p dist
           set -o pipefail
-          PYTHONPATH="$PWD" pytest -q 2>&1 | tee dist/pytest.log
+          PYTHONPATH="$PWD" python -m pytest -q 2>&1 | tee dist/pytest.log
       - run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
       - uses: actions/upload-artifact@v4
         if: always()

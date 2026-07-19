@@ -52,6 +52,18 @@ portapy_eval_utf8:
     mov [rsp + 16], rdx
     mov [rsp + 24], r9
 
+    xor rcx, rcx
+.eval_nul_scan:
+    cmp rcx, [rsp + 16]
+    jge .eval_nul_scan_done
+    mov rax, [rsp + 8]
+    cmp byte [rax + rcx], 0
+    je .eval_embedded_nul
+    inc rcx
+    jmp .eval_nul_scan
+.eval_nul_scan_done:
+
+    mov rdx, [rsp + 16]
     lea rdi, [rdx + 1]
     call malloc
     test rax, rax
@@ -83,6 +95,11 @@ portapy_eval_utf8:
 .eval_done:
     add rsp, 48
     pop rbx
+    ret
+.eval_embedded_nul:
+    add rsp, 48
+    pop rbx
+    mov eax, 2
     ret
 .eval_alloc_failed:
     add rsp, 48
@@ -120,7 +137,18 @@ portapy_eval_utf8:
     mov [rsp + 48], r8
     mov [rsp + 56], r10
 
-    mov rcx, r8
+    xor r10, r10
+.eval_nul_scan:
+    cmp r10, [rsp + 48]
+    jge .eval_nul_scan_done
+    mov r11, [rsp + 40]
+    cmp byte [r11 + r10], 0
+    je .eval_embedded_nul
+    inc r10
+    jmp .eval_nul_scan
+.eval_nul_scan_done:
+
+    mov rcx, [rsp + 48]
     inc rcx
     call malloc
     test rax, rax
@@ -152,6 +180,11 @@ portapy_eval_utf8:
 .eval_done:
     add rsp, 80
     pop rbx
+    ret
+.eval_embedded_nul:
+    add rsp, 80
+    pop rbx
+    mov eax, 2
     ret
 .eval_alloc_failed:
     add rsp, 80

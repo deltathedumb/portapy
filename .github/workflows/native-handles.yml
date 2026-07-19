@@ -17,9 +17,11 @@ env:
     portapy_value_from_none
     portapy_value_from_bool
     portapy_value_from_i64
+    portapy_value_from_f64
     portapy_value_get_kind
     portapy_value_as_bool
     portapy_value_as_i64
+    portapy_value_as_f64
     portapy_value_retain
     portapy_value_release
 
@@ -89,7 +91,7 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy_handles.so | tee dist/host-output.txt
-          grep -qx 'opaque-scalars: ok' dist/host-output.txt
+          grep -qx 'opaque-numerics: ok' dist/host-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -156,7 +158,7 @@ jobs:
             tests/native_handle_host.c -o dist/native_handle_host.exe
           $output = & dist/native_handle_host.exe dist/portapy_handles.dll
           $output | Out-File -Encoding utf8 dist/host-output.txt
-          if ($output -ne 'opaque-scalars: ok') { throw "unexpected host output: $output" }
+          if ($output -ne 'opaque-numerics: ok') { throw "unexpected host output: $output" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

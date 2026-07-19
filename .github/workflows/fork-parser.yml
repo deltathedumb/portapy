@@ -1,0 +1,111 @@
+name: Fork standalone Python parser
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fork:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Copy and sanitize parser sources
+        shell: bash
+        run: |
+          rm -rf .upstream
+          git clone --depth 1 --branch beta https://github.com/deltathedumb/asmpython.git .upstream
+          mkdir -p src/portapy/parser
+          cp .upstream/asmpython/_compiler/lexer.py src/portapy/parser/lexer.py
+          cp .upstream/asmpython/_compiler/parser.py src/portapy/parser/parser.py
+          cp .upstream/asmpython/_compiler/ast_nodes.py src/portapy/parser/ast_nodes.py
+          cp .upstream/asmpython/_compiler/errors.py src/portapy/parser/errors.py
+          upstream_sha=$(git -C .upstream rev-parse HEAD)
+          rm -rf .upstream
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/portapy/parser/parser.py')
+          source = path.read_text(encoding='utf-8')
+          source = source.replace('from . import extensions\n', '')
+          marker = 'AUG_OPS = {\n'
+          context = '''class _StandardSyntaxOnly:\n    """No-op context that keeps withdrawn compiler extensions unavailable."""\n\n    def is_active(self, name: str) -> bool:\n        return False\n\n    def handler_for(self, keyword: str):\n        return None\n\n\n'''
+          if context not in source:
+              source = source.replace(marker, context + marker, 1)
+          old = '''        self.ext_ctx = extensions.ExtensionContext()\n        for _ext_name in active_extensions or ():\n            self.ext_ctx.activate(_ext_name)\n'''
+          new = '''        if active_extensions:\n            raise ValueError("PortaPy supports standard Python syntax only; compiler extensions are withdrawn")\n        self.ext_ctx = _StandardSyntaxOnly()\n'''
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif new not in source:
+              raise SystemExit('parser extension initialization changed upstream')
+          if 'extensions.' in source:
+              raise SystemExit('unremoved parser extension module reference')
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          cat > src/portapy/parser/__init__.py <<'PY'
+          """PortaPy-owned indentation-aware lexer and recursive-descent parser."""
+          from .ast_nodes import Module
+          from .lexer import Lexer, Token
+          from .parser import Parser
+
+
+          def parse_source(source: str) -> Module:
+              return Parser(Lexer(source).tokenize()).parse()
+
+
+          __all__ = ["Lexer", "Module", "Parser", "Token", "parse_source"]
+          PY
+
+          cat > PARSER_UPSTREAM.json <<JSON
+          {
+            "repository": "deltathedumb/asmpython",
+            "branch": "beta",
+            "commit": "$upstream_sha",
+            "source": "asmpython/_compiler/{lexer,parser,ast_nodes,errors}.py",
+            "extensions": "removed; standard Python syntax only"
+          }
+          JSON
+      - name: Verify parser independence and standard syntax
+        shell: bash
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          from pathlib import Path
+          from portapy.parser import parse_source
+
+          module = parse_source('value = 40 + 2\n\ndef add(a, b):\n    return a + b\n')
+          assert module.body
+          parser_source = Path('src/portapy/parser/parser.py').read_text(encoding='utf-8')
+          assert 'from . import extensions' not in parser_source
+          assert 'extensions.' not in parser_source
+          try:
+              parse_source('final class Hidden:\n    pass\n')
+          except Exception as error:
+              assert 'withdrawn' in str(error) or 'not supported' in str(error)
+          else:
+              raise AssertionError('withdrawn extension syntax unexpectedly parsed')
+          PY
+          python -m py_compile src/portapy/parser/*.py
+      - name: Commit forked parser
+        shell: bash
+        run: |
+          if git diff --quiet -- src/portapy/parser PARSER_UPSTREAM.json; then
+            echo 'Parser fork is already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/portapy/parser PARSER_UPSTREAM.json
+          git commit -m 'Fork Python-authored parser without extensions'
+          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}

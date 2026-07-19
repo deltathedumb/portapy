@@ -100,7 +100,7 @@ jobs:
       - name: Commit forked parser
         shell: bash
         run: |
-          if git diff --quiet -- src/portapy/parser PARSER_UPSTREAM.json; then
+          if [ -z "$(git status --porcelain -- src/portapy/parser PARSER_UPSTREAM.json)" ]; then
             echo 'Parser fork is already current.'
             exit 0
           fi

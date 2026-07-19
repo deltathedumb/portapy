@@ -98,6 +98,28 @@ def test_containers_indexing_mutation_and_augmented_assignment() -> None:
     assert namespace["answer"] == 52
 
 
+def test_for_range_break_continue_and_loop_else_execute() -> None:
+    namespace = run_source(
+        "total = 0\n"
+        "for item in [1, 2, 3, 4]:\n"
+        "    if item == 2:\n"
+        "        continue\n"
+        "    if item == 4:\n"
+        "        break\n"
+        "    total += item\n"
+        "else:\n"
+        "    total = 999\n"
+        "range_total = 0\n"
+        "for number in range(1, 7):\n"
+        "    range_total += number\n"
+        "else:\n"
+        "    completed = True\n"
+    )
+    assert namespace["total"] == 4
+    assert namespace["range_total"] == 21
+    assert namespace["completed"] is True
+
+
 def test_unsupported_statement_fails_precisely() -> None:
     with pytest.raises(PortableFrontendError, match="slicing"):
         compile_portable_source("value = [1, 2, 3][1:]\n")

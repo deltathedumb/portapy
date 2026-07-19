@@ -61,6 +61,9 @@ class _PortableLowerer:
     constants: list[object] = field(default_factory=list)
     names: list[str] = field(default_factory=list)
     instructions: list[Instruction] = field(default_factory=list)
+    loop_starts: list[int] = field(default_factory=list)
+    loop_breaks: list[list[int]] = field(default_factory=list)
+    loop_has_iterator: list[bool] = field(default_factory=list)
 
     def constant(self, value: object) -> int:
         self.constants.append(value)
@@ -196,6 +199,17 @@ class _PortableLowerer:
             return
         self.unsupported(node)
 
+    def begin_loop(self, start: int, has_iterator: bool) -> None:
+        self.loop_starts.append(start)
+        self.loop_breaks.append([])
+        self.loop_has_iterator.append(has_iterator)
+
+    def finish_loop(self, after_else: int) -> None:
+        for jump in self.loop_breaks.pop():
+            self.patch(jump, after_else)
+        self.loop_starts.pop()
+        self.loop_has_iterator.pop()
+
     def statement(self, node: A.Stmt) -> None:
         if isinstance(node, A.Assign):
             self.expression(node.value)
@@ -240,6 +254,7 @@ class _PortableLowerer:
             return
         if isinstance(node, A.While):
             start = len(self.instructions)
+            self.begin_loop(start, False)
             self.expression(node.test)
             exit_jump = self.emit(Op.JUMP_IF_FALSE)
             for statement in node.body:
@@ -248,6 +263,42 @@ class _PortableLowerer:
             self.patch(exit_jump, len(self.instructions))
             for statement in node.orelse:
                 self.statement(statement)
+            self.finish_loop(len(self.instructions))
+            return
+        if isinstance(node, A.For):
+            if node.targets:
+                self.unsupported(node, "tuple-unpack for target")
+            if node.iter is not None:
+                self.expression(node.iter)
+            else:
+                self.emit(Op.LOAD_NAME, self.name_index("range"))
+                for argument in node.range_args:
+                    self.expression(argument)
+                self.emit(Op.CALL, len(node.range_args))
+            self.emit(Op.GET_ITER)
+            start = len(self.instructions)
+            exit_jump = self.emit(Op.FOR_ITER)
+            self.emit(Op.STORE_NAME, self.name_index(node.var))
+            self.begin_loop(start, True)
+            for statement in node.body:
+                self.statement(statement)
+            self.emit(Op.JUMP, start)
+            self.patch(exit_jump, len(self.instructions))
+            for statement in node.orelse:
+                self.statement(statement)
+            self.finish_loop(len(self.instructions))
+            return
+        if isinstance(node, A.Break):
+            if not self.loop_starts:
+                self.unsupported(node, "break outside loop")
+            if self.loop_has_iterator[-1]:
+                self.emit(Op.POP_TOP)
+            self.loop_breaks[-1].append(self.emit(Op.JUMP))
+            return
+        if isinstance(node, A.Continue):
+            if not self.loop_starts:
+                self.unsupported(node, "continue outside loop")
+            self.emit(Op.JUMP, self.loop_starts[-1])
             return
         if isinstance(node, A.Pass):
             return

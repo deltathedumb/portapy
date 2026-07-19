@@ -152,7 +152,12 @@ class CodeObject:
             if nested and len(items) > 1 and not isinstance(items[1], CodeObject):
                 first = items[0]
                 rest = [item for item in items[1:] if not isinstance(item, CodeObject)]
-                items = [first, nested[0], *rest, *nested[1:]]
+                rebuilt = [first, nested[0]]
+                for item in rest:
+                    rebuilt.append(item)
+                for item in nested[1:]:
+                    rebuilt.append(item)
+                items = rebuilt
             return tuple(items)
         if name == "co_names":
             return tuple(self.names)

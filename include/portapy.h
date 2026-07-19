@@ -91,6 +91,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_i64(
     int64_t value,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_f64(
+    portapy_runtime runtime,
+    double value,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_kind(
     portapy_runtime runtime,
     portapy_value value,
@@ -105,6 +110,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_i64(
     portapy_runtime runtime,
     portapy_value value,
     int64_t *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_f64(
+    portapy_runtime runtime,
+    portapy_value value,
+    double *out_value
 );
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_retain(
     portapy_runtime runtime,

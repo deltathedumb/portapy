@@ -54,7 +54,7 @@ def make_module_initializer(
         raise ValueError("generated main has no terminal exit call")
     exit_index = exit_indices[-1]
 
-    lines[main_global_index] = "; executable global main removed for shared library"
+    lines[main_global_index] = "; executable entry export removed for shared library"
     lines[main_index] = "_portapy_module_init:"
     indent = lines[exit_index][: len(lines[exit_index]) - len(lines[exit_index].lstrip())]
     lines[exit_index:exit_index + 1] = [

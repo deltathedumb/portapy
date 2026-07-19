@@ -79,15 +79,18 @@ def test_if_else_and_while_execute() -> None:
 
 def test_containers_indexing_mutation_and_augmented_assignment() -> None:
     namespace = run_source(
+        "increment = 12\n"
+        "increment += 30\n"
         "items = [10, 20, 30]\n"
         "items[1] = 22\n"
-        "items[2] += 12\n"
+        "items[2] = increment\n"
         "pair = (items[0], items[2])\n"
         "mapping = {'answer': items[2]}\n"
         "mapping['answer'] = mapping['answer'] + items[0]\n"
         "unique = {items[0], items[1], items[2]}\n"
         "answer = mapping['answer']\n"
     )
+    assert namespace["increment"] == 42
     assert namespace["items"] == [10, 22, 42]
     assert namespace["pair"] == (10, 42)
     assert namespace["mapping"] == {"answer": 52}

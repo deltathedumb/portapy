@@ -1,8 +1,8 @@
-"""Python-authored reference model for the future PortaPy shared-library ABI.
+"""Python-authored reference model for the PortaPy shared-library ABI.
 
-The standalone core is being forked from pyinbin. During bootstrap this module
-uses the upstream Python-written VM directly; no C interpreter semantics are
-introduced.
+Interpreter semantics live in ``portapy.core``, a source fork of pyinbin's
+Python-written bytecode/frontend/VM/import core. No native-language interpreter
+implementation is introduced here.
 """
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 import traceback
 
-from asmpython.pyinbin.frontend import compile_source
-from asmpython.pyinbin.loader import default_builtins
-from asmpython.pyinbin.vm import VirtualMachine
+from .core.frontend import compile_source
+from .core.vm import VirtualMachine
 
 
 class Status(IntEnum):
@@ -54,7 +53,7 @@ class _Slot:
 class Runtime:
     def __init__(self) -> None:
         self._vm = VirtualMachine()
-        self._globals: dict[str, object] = default_builtins()
+        self._globals: dict[str, object] = {}
         self._globals.update({"__name__": "__main__", "__package__": "", "__doc__": None})
         self._values: dict[int, _Slot] = {}
         self._next = 1
@@ -63,12 +62,22 @@ class Runtime:
         self._closed = False
 
     def _capture(self, status: Status, error: BaseException) -> Status:
-        self._last_error = ErrorInfo(status, type(error).__name__, str(error), "".join(traceback.format_exception(error)))
+        self._last_error = ErrorInfo(
+            status,
+            type(error).__name__,
+            str(error),
+            "".join(traceback.format_exception(error)),
+        )
         return status
 
     def _ready(self) -> Status | None:
         if self._closed:
-            self._last_error = ErrorInfo(Status.CLOSED, "RuntimeClosed", "PortaPy runtime has been destroyed", "")
+            self._last_error = ErrorInfo(
+                Status.CLOSED,
+                "RuntimeClosed",
+                "PortaPy runtime has been destroyed",
+                "",
+            )
             return Status.CLOSED
         self._last_error = None
         return None
@@ -95,7 +104,8 @@ class Runtime:
         self._last_error = None
 
     def exec_utf8(self, source: str, filename: str = "<portapy>") -> Status:
-        if (blocked := self._ready()) is not None:
+        blocked = self._ready()
+        if blocked is not None:
             return blocked
         try:
             code = compile_source(source, filename)
@@ -107,8 +117,13 @@ class Runtime:
             return self._capture(Status.RUNTIME_ERROR, error)
         return Status.OK
 
-    def eval_utf8(self, expression: str, filename: str = "<portapy-eval>") -> tuple[Status, int]:
-        if (blocked := self._ready()) is not None:
+    def eval_utf8(
+        self,
+        expression: str,
+        filename: str = "<portapy-eval>",
+    ) -> tuple[Status, int]:
+        blocked = self._ready()
+        if blocked is not None:
             return blocked, 0
         self._eval_counter += 1
         name = f"__portapy_result_{self._eval_counter}"
@@ -118,14 +133,20 @@ class Runtime:
         return Status.OK, self._store(self._globals.pop(name))
 
     def get_global(self, name: str) -> tuple[Status, int]:
-        if (blocked := self._ready()) is not None:
+        blocked = self._ready()
+        if blocked is not None:
             return blocked, 0
         if name not in self._globals:
             return self._capture(Status.NOT_FOUND, KeyError(name)), 0
         return Status.OK, self._store(self._globals[name])
 
-    def call(self, callable_handle: int, args: list[int] | None = None) -> tuple[Status, int]:
-        if (blocked := self._ready()) is not None:
+    def call(
+        self,
+        callable_handle: int,
+        args: list[int] | None = None,
+    ) -> tuple[Status, int]:
+        blocked = self._ready()
+        if blocked is not None:
             return blocked, 0
         target = self._values.get(callable_handle)
         if target is None:
@@ -158,19 +179,45 @@ class Runtime:
             del self._values[handle]
         return Status.OK
 
-    def box_none(self) -> tuple[Status, int]: return Status.OK, self._store(None)
-    def box_bool(self, value: bool) -> tuple[Status, int]: return Status.OK, self._store(value)
-    def box_int(self, value: int) -> tuple[Status, int]: return Status.OK, self._store(value)
-    def box_float(self, value: float) -> tuple[Status, int]: return Status.OK, self._store(value)
-    def box_utf8(self, value: str) -> tuple[Status, int]: return Status.OK, self._store(value)
-    def box_bytes(self, value: bytes) -> tuple[Status, int]: return Status.OK, self._store(value)
+    def box_none(self) -> tuple[Status, int]:
+        return Status.OK, self._store(None)
+
+    def box_bool(self, value: bool) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_int(self, value: int) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_float(self, value: float) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_utf8(self, value: str) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_bytes(self, value: bytes) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
 
     def value_kind(self, handle: int) -> tuple[Status, ValueKind]:
         slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), ValueKind.OBJECT
         value = slot.value
-        kind = ValueKind.NONE if value is None else ValueKind.BOOL if type(value) is bool else ValueKind.INT if type(value) is int else ValueKind.FLOAT if type(value) is float else ValueKind.STRING if type(value) is str else ValueKind.BYTES if type(value) is bytes else ValueKind.CALLABLE if callable(value) else ValueKind.OBJECT
+        if value is None:
+            kind = ValueKind.NONE
+        elif type(value) is bool:
+            kind = ValueKind.BOOL
+        elif type(value) is int:
+            kind = ValueKind.INT
+        elif type(value) is float:
+            kind = ValueKind.FLOAT
+        elif type(value) is str:
+            kind = ValueKind.STRING
+        elif type(value) is bytes:
+            kind = ValueKind.BYTES
+        elif callable(value):
+            kind = ValueKind.CALLABLE
+        else:
+            kind = ValueKind.OBJECT
         return Status.OK, kind
 
     def as_int(self, handle: int) -> tuple[Status, int]:

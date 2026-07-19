@@ -7,6 +7,7 @@ PUBLIC_EXPORTS = (
     "portapy_abi_version",
     "portapy_runtime_create",
     "portapy_runtime_destroy",
+    "portapy_eval_utf8",
     "portapy_value_from_none",
     "portapy_value_from_bool",
     "portapy_value_from_i64",

@@ -155,6 +155,37 @@ class _PortableLowerer:
             self.expression(node.orelse)
             self.patch(end, len(self.instructions))
             return
+        if isinstance(node, A.ListLit):
+            for element in node.elems:
+                self.expression(element)
+            self.emit(Op.BUILD_LIST, len(node.elems))
+            return
+        if isinstance(node, A.TupleLit):
+            for element in node.elems:
+                self.expression(element)
+            self.emit(Op.BUILD_TUPLE, len(node.elems))
+            return
+        if isinstance(node, A.SetLit):
+            for element in node.elems:
+                self.expression(element)
+            self.emit(Op.BUILD_SET, len(node.elems))
+            return
+        if isinstance(node, A.DictLit):
+            if any(key is None for key in node.keys):
+                self.unsupported(node, "dictionary unpacking")
+            for key, value in zip(node.keys, node.values):
+                assert key is not None
+                self.expression(key)
+                self.expression(value)
+            self.emit(Op.BUILD_DICT, len(node.keys))
+            return
+        if isinstance(node, A.Subscript):
+            if isinstance(node.index, A.Slice):
+                self.unsupported(node, "slicing")
+            self.expression(node.obj)
+            self.expression(node.index)
+            self.emit(Op.GET_ITEM)
+            return
         if isinstance(node, A.Call):
             if node.kwargs or node.dstar is not None:
                 self.unsupported(node, "keyword or ** call arguments")
@@ -169,6 +200,23 @@ class _PortableLowerer:
         if isinstance(node, A.Assign):
             self.expression(node.value)
             self.emit(Op.STORE_NAME, self.name_index(node.target))
+            return
+        if isinstance(node, A.AugAssign):
+            opcode = _BINARY_OPS.get(node.op)
+            if opcode is None:
+                self.unsupported(node, f"augmented operator {node.op!r}")
+            self.emit(Op.LOAD_NAME, self.name_index(node.target))
+            self.expression(node.value)
+            self.emit(opcode)
+            self.emit(Op.STORE_NAME, self.name_index(node.target))
+            return
+        if isinstance(node, A.IndexAssign):
+            if isinstance(node.target.index, A.Slice):
+                self.unsupported(node, "slice assignment")
+            self.expression(node.target.obj)
+            self.expression(node.target.index)
+            self.expression(node.value)
+            self.emit(Op.SET_ITEM)
             return
         if isinstance(node, A.ExprStmt):
             self.expression(node.expr)

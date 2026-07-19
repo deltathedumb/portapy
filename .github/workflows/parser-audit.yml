@@ -1,0 +1,40 @@
+name: Audit standalone parser fork
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Python-authored parser sources
+        shell: bash
+        run: |
+          git clone --depth 1 --branch beta https://github.com/deltathedumb/asmpython.git .upstream
+          mkdir -p audit
+          cp .upstream/asmpython/_compiler/lexer.py audit/lexer.py
+          cp .upstream/asmpython/_compiler/parser.py audit/parser.py
+          cp .upstream/asmpython/_compiler/ast_nodes.py audit/ast_nodes.py
+          cp .upstream/asmpython/_compiler/errors.py audit/errors.py
+          git -C .upstream rev-parse HEAD > audit/UPSTREAM_SHA
+          {
+            echo '== imports =='
+            grep -n '^from \|^import ' audit/{lexer,parser,ast_nodes,errors}.py || true
+            echo
+            echo '== extension references =='
+            grep -n 'extensions\|ext_ctx\|active_extensions' audit/parser.py || true
+            echo
+            echo '== external relative imports =='
+            grep -nE '^from \.|^from \.\.' audit/{lexer,parser,ast_nodes,errors}.py || true
+          } > audit/report.txt
+          rm -rf .upstream
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parser-audit
+          path: audit

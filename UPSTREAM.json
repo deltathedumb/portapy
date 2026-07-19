@@ -1,0 +1,6 @@
+{
+  "repository": "deltathedumb/asmpython",
+  "branch": "beta",
+  "commit": "bd7e49dc9994595c014887cf91a824b344f0b2a9",
+  "source_files": ["bytecode.py", "frontend.py", "vm.py"]
+}

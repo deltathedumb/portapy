@@ -11,7 +11,6 @@ from enum import IntEnum
 import traceback
 
 from .core.frontend import compile_source
-from .core.loader import default_builtins
 from .core.vm import VirtualMachine
 
 
@@ -54,7 +53,7 @@ class _Slot:
 class Runtime:
     def __init__(self) -> None:
         self._vm = VirtualMachine()
-        self._globals: dict[str, object] = default_builtins()
+        self._globals: dict[str, object] = {}
         self._globals.update({"__name__": "__main__", "__package__": "", "__doc__": None})
         self._values: dict[int, _Slot] = {}
         self._next = 1

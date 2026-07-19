@@ -29,6 +29,7 @@ from tools.nasm_float_abi import append_float_abi
 from tools.nasm_handle_abi import append_handle_abi
 from tools.nasm_module_init import make_module_initializer
 from tools.nasm_scalar_abi import append_scalar_abi
+from tools.nasm_state_abi import append_state_abi
 from tools.native_surface import PUBLIC_EXPORTS, linux_version_script, windows_definition
 
 
@@ -135,6 +136,7 @@ def _transform_assembly(assembly: Path, *, target: str) -> None:
     source = append_scalar_abi(source, target=target)
     source = append_float_abi(source, target=target)
     source = append_eval_abi(source, target=target)
+    source = append_state_abi(source, target=target)
     source = declare_exports(source, list(PUBLIC_EXPORTS))
     if target == "linux":
         source = make_elf_pic(source)

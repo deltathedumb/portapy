@@ -35,20 +35,25 @@ jobs:
           compiler_status=${PIPESTATUS[0]}
           set -e
 
-          # The legacy compiler currently emits complete NASM and then fails in
-          # its subprocess runner by treating the full command as one path.
-          # Keep the compiler diagnostic, but assemble/link its emitted source
-          # directly so this probe tests generated code rather than that driver
-          # regression.
           if [ ! -f dist/libportapy_probe.asm ]; then
             exit "$compiler_status"
           fi
+
+          # The legacy backend's generated program is authoritative. This narrow
+          # build/ABI pass changes only ELF external relocations: calls/jumps use
+          # PLT, external data uses GOT, and unsupported references fail closed.
+          python tools/elf_pic.py dist/libportapy_probe.asm
           nasm -f elf64 -w-label-redef-late \
             dist/libportapy_probe.asm -o dist/libportapy_probe.o
           gcc -shared dist/libportapy_probe.o -o dist/libportapy_probe.so
       - name: Inspect and execute through an external C host
         run: |
           file dist/libportapy_probe.so
+          readelf -dW dist/libportapy_probe.so | tee dist/linux-dynamic.txt
+          if readelf -dW dist/libportapy_probe.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
           nm -D --defined-only dist/libportapy_probe.so | tee dist/linux-exports.txt
           grep -q 'portapy_abi_version' dist/linux-exports.txt
           grep -q 'portapy_opcode_probe' dist/linux-exports.txt

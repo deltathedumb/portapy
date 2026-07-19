@@ -1,21 +1,32 @@
 # PortaPy
 
-PortaPy is a fully Python-built embeddable Python interpreter derived from the reusable core of asmpython's `pyinbin` interpreter.
+PortaPy is a separately versioned, embeddable interpreter project derived from the reusable Python-written core of asmpython's `pyinbin` interpreter.
 
-Its parser, bytecode compiler, virtual machine, object model, imports, exceptions, builtins, and Python-level standard library are written in Python source and compiled by asmpython into native shared libraries:
+The interpreter implementation is required to remain Python source compiled by asmpython. The public C ABI and generated assembly passes are only host/build boundaries; they do not implement parsing, evaluation, objects, imports, or exception semantics.
+
+Native artifact names:
 
 - `portapy.dll` on Windows
 - `libportapy.so` on Linux
-- `libportapy.dylib` on macOS when the target is available
+- `libportapy.dylib` on macOS when that asmpython target becomes available
 
-The public C ABI is only a thin host boundary around that generated interpreter. PortaPy is not a CPython embedding wrapper and does not implement interpreter semantics in C, C++, Rust, or assembly.
+## 3.14 Developer Preview 1
 
-## Version 3.14 status
+`3.14-dev.1` is the first genuine native-library preview. Its runtime state and value ownership are Python-authored and compiled by asmpython. Linux and Windows artifacts are loaded and exercised from independent C processes before publication.
 
-The standalone repository and provisional ABI are being established first. A `3.14` binary release must not be published until the libraries are genuine asmpython-produced artifacts and pass the external C host conformance suite without CPython present at runtime.
+Implemented native ABI surface:
+
+- isolated runtime handles
+- `None`, normalized `bool`, signed 64-bit integer, and bit-exact binary64 value handles
+- checked value-kind/conversion operations
+- retain/release and runtime-owned teardown
+- exact public export allowlists
+- Linux position-independent linking with no text relocations
+
+This preview is **not** the final standalone Python 3.14 interpreter release. The vendored bootstrap frontend still uses host Python's `ast` module to parse source. Final source execution remains gated until PortaPy's own Python-written lexer/parser, native VM execution entry points, structured errors, callbacks, imports, strings, and bytes are complete.
 
 ## Relationship to pyinbin
 
-`pyinbin` remains tailored to asmpython's native/static import pipeline and packaged-source fallback. PortaPy forks the reusable Python interpreter core and exposes it as a separately versioned embeddable product.
+`pyinbin` remains tailored to asmpython's native/static import pipeline and packaged-source fallback. PortaPy forks the reusable interpreter core and exposes it as a separately versioned embeddable product.
 
-See `docs/DESIGN.md` and `include/portapy.h`.
+See `docs/DESIGN.md`, `RELEASE_STATUS.json`, and `include/portapy.h`.

@@ -16,7 +16,9 @@ _REQUIRED_IMPLS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_none_impl",
     "_portapy_value_from_bool_impl",
+    "_portapy_value_from_f64_impl",
     "_portapy_value_as_bool_impl",
+    "_portapy_value_as_f64_impl",
 )
 
 
@@ -79,6 +81,29 @@ portapy_value_from_bool:
     mov eax, 1
     ret
 
+portapy_value_from_f64:
+    test rsi, rsi
+    jz .value_from_f64_invalid
+    mov qword [rsi], 0
+    push rbx
+    sub rsp, 16
+    mov [rsp], rsi
+    call _portapy_value_from_f64_impl
+    mov [rsp + 8], rax
+    call _portapy_last_status_impl
+    test eax, eax
+    jnz .value_from_f64_done
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
+.value_from_f64_done:
+    add rsp, 16
+    pop rbx
+    ret
+.value_from_f64_invalid:
+    mov eax, 1
+    ret
+
 portapy_value_as_bool:
     test rdx, rdx
     jz .value_as_bool_invalid
@@ -98,6 +123,29 @@ portapy_value_as_bool:
     pop rbx
     ret
 .value_as_bool_invalid:
+    mov eax, 1
+    ret
+
+portapy_value_as_f64:
+    test rdx, rdx
+    jz .value_as_f64_invalid
+    push rbx
+    sub rsp, 16
+    mov [rsp], rdx
+    call _portapy_value_as_f64_impl
+    movq rax, xmm0
+    mov [rsp + 8], rax
+    call _portapy_last_status_impl
+    test eax, eax
+    jnz .value_as_f64_done
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
+.value_as_f64_done:
+    add rsp, 16
+    pop rbx
+    ret
+.value_as_f64_invalid:
     mov eax, 1
     ret
 """
@@ -153,6 +201,29 @@ portapy_value_from_bool:
     mov eax, 1
     ret
 
+portapy_value_from_f64:
+    test r8, r8
+    jz .value_from_f64_invalid
+    mov qword [r8], 0
+    push rbx
+    sub rsp, 48
+    mov [rsp + 32], r8
+    call _portapy_value_from_f64_impl
+    mov [rsp + 40], rax
+    call _portapy_last_status_impl
+    test eax, eax
+    jnz .value_from_f64_done
+    mov r8, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov [r8], r9
+.value_from_f64_done:
+    add rsp, 48
+    pop rbx
+    ret
+.value_from_f64_invalid:
+    mov eax, 1
+    ret
+
 portapy_value_as_bool:
     test r8, r8
     jz .value_as_bool_invalid
@@ -172,6 +243,29 @@ portapy_value_as_bool:
     pop rbx
     ret
 .value_as_bool_invalid:
+    mov eax, 1
+    ret
+
+portapy_value_as_f64:
+    test r8, r8
+    jz .value_as_f64_invalid
+    push rbx
+    sub rsp, 48
+    mov [rsp + 32], r8
+    call _portapy_value_as_f64_impl
+    movq rax, xmm0
+    mov [rsp + 40], rax
+    call _portapy_last_status_impl
+    test eax, eax
+    jnz .value_as_f64_done
+    mov r8, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov [r8], r9
+.value_as_f64_done:
+    add rsp, 48
+    pop rbx
+    ret
+.value_as_f64_invalid:
     mov eax, 1
     ret
 """

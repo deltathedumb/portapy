@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 import traceback
 
-from .core.frontend import compile_source
+from .core.portable_frontend import compile_portable_source as compile_source
 from .core.vm import VirtualMachine
 
 

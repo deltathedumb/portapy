@@ -77,6 +77,15 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_runtime_destroy(
     portapy_runtime runtime
 );
 
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_none(
+    portapy_runtime runtime,
+    portapy_value *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_bool(
+    portapy_runtime runtime,
+    int value,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_i64(
     portapy_runtime runtime,
     int64_t value,
@@ -86,6 +95,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_kind(
     portapy_runtime runtime,
     portapy_value value,
     portapy_value_kind *out_kind
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_bool(
+    portapy_runtime runtime,
+    portapy_value value,
+    int *out_value
 );
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_i64(
     portapy_runtime runtime,

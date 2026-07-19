@@ -54,6 +54,18 @@ def _value_is_valid(runtime: int, value: int) -> bool:
     )
 
 
+def _append_value(runtime: int, kind: int, payload: int) -> int:
+    if not _runtime_is_valid(runtime):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
+    _value_runtime.append(runtime)
+    _value_kind.append(kind)
+    _value_i64.append(payload)
+    _value_refs.append(1)
+    _set_status(PORTAPY_OK)
+    return len(_value_refs) - 1
+
+
 def portapy_abi_version() -> int:
     return 1
 
@@ -80,16 +92,19 @@ def _portapy_runtime_destroy_impl(runtime: int) -> int:
     return _set_status(PORTAPY_OK)
 
 
+def _portapy_value_from_none_impl(runtime: int) -> int:
+    return _append_value(runtime, PORTAPY_VALUE_NONE, 0)
+
+
+def _portapy_value_from_bool_impl(runtime: int, value: int) -> int:
+    normalized = 0
+    if value != 0:
+        normalized = 1
+    return _append_value(runtime, PORTAPY_VALUE_BOOL, normalized)
+
+
 def _portapy_value_from_i64_impl(runtime: int, value: int) -> int:
-    if not _runtime_is_valid(runtime):
-        _set_status(PORTAPY_INVALID_HANDLE)
-        return 0
-    _value_runtime.append(runtime)
-    _value_kind.append(PORTAPY_VALUE_INT)
-    _value_i64.append(value)
-    _value_refs.append(1)
-    _set_status(PORTAPY_OK)
-    return len(_value_refs) - 1
+    return _append_value(runtime, PORTAPY_VALUE_INT, value)
 
 
 def _portapy_value_get_kind_impl(runtime: int, value: int) -> int:
@@ -98,6 +113,17 @@ def _portapy_value_get_kind_impl(runtime: int, value: int) -> int:
         return PORTAPY_VALUE_OBJECT
     _set_status(PORTAPY_OK)
     return _value_kind[value]
+
+
+def _portapy_value_as_bool_impl(runtime: int, value: int) -> int:
+    if not _value_is_valid(runtime, value):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
+    if _value_kind[value] != PORTAPY_VALUE_BOOL:
+        _set_status(PORTAPY_TYPE_ERROR)
+        return 0
+    _set_status(PORTAPY_OK)
+    return _value_i64[value]
 
 
 def _portapy_value_as_i64_impl(runtime: int, value: int) -> int:

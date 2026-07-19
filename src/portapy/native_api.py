@@ -107,6 +107,10 @@ def _portapy_value_from_i64_impl(runtime: int, value: int) -> int:
     return _append_value(runtime, PORTAPY_VALUE_INT, value)
 
 
+def _portapy_value_from_f64_bits_impl(runtime: int, bits: int) -> int:
+    return _append_value(runtime, PORTAPY_VALUE_FLOAT, bits)
+
+
 def _portapy_value_get_kind_impl(runtime: int, value: int) -> int:
     if not _value_is_valid(runtime, value):
         _set_status(PORTAPY_INVALID_HANDLE)
@@ -131,6 +135,17 @@ def _portapy_value_as_i64_impl(runtime: int, value: int) -> int:
         _set_status(PORTAPY_INVALID_HANDLE)
         return 0
     if _value_kind[value] != PORTAPY_VALUE_INT:
+        _set_status(PORTAPY_TYPE_ERROR)
+        return 0
+    _set_status(PORTAPY_OK)
+    return _value_i64[value]
+
+
+def _portapy_value_as_f64_bits_impl(runtime: int, value: int) -> int:
+    if not _value_is_valid(runtime, value):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
+    if _value_kind[value] != PORTAPY_VALUE_FLOAT:
         _set_status(PORTAPY_TYPE_ERROR)
         return 0
     _set_status(PORTAPY_OK)

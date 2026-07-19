@@ -1,0 +1,25 @@
+{
+  "version_line": "3.14",
+  "release_tag": "3.14-dev.1",
+  "stage": "developer-preview",
+  "prerelease": true,
+  "python_built_runtime": true,
+  "native_targets": ["linux-x86_64", "windows-x86_64"],
+  "source_execution_ready": false,
+  "completed_surface": [
+    "runtime handles",
+    "None values",
+    "bool values",
+    "signed 64-bit integer values",
+    "bit-exact binary64 values",
+    "retain and release",
+    "runtime isolation"
+  ],
+  "release_blockers": [
+    "PortaPy-owned Python lexer/parser replacing the bootstrap host ast frontend",
+    "native source and bytecode execution API",
+    "structured errors and traceback retrieval",
+    "host callbacks and module imports",
+    "string and bytes value handles"
+  ]
+}

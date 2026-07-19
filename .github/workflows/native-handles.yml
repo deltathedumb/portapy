@@ -8,23 +8,6 @@ on:
 permissions:
   contents: read
 
-env:
-  PORTAPY_EXPORTS: >-
-    portapy_library_initialize
-    portapy_abi_version
-    portapy_runtime_create
-    portapy_runtime_destroy
-    portapy_value_from_none
-    portapy_value_from_bool
-    portapy_value_from_i64
-    portapy_value_from_f64
-    portapy_value_get_kind
-    portapy_value_as_bool
-    portapy_value_as_i64
-    portapy_value_as_f64
-    portapy_value_retain
-    portapy_value_release
-
 jobs:
   linux:
     runs-on: ubuntu-24.04
@@ -39,64 +22,37 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@beta'
-      - name: Compile and link Python-authored opaque-handle core
-        shell: bash
+      - name: Build genuine Python-authored library
         run: |
-          mkdir -p dist
-          set +e
-          set -o pipefail
-          python -m asmpython build src/portapy/native_api.py \
-            --target linux --type library --backend legacy \
-            --no-pyinbin-fallback --keep-assembly \
-            -o dist/libportapy_handles.so \
-            2>&1 | tee dist/linux-build.log
-          compiler_status=${PIPESTATUS[0]}
-          set -e
-          if [ ! -f dist/libportapy_handles.asm ]; then
-            exit "$compiler_status"
-          fi
-
-          python tools/nasm_module_init.py dist/libportapy_handles.asm \
-            --target linux --public-symbol portapy_library_initialize
-          python tools/nasm_handle_abi.py dist/libportapy_handles.asm --target linux
-          python tools/nasm_scalar_abi.py dist/libportapy_handles.asm --target linux
-          python tools/nasm_float_abi.py dist/libportapy_handles.asm --target linux
-          export_args=()
-          for symbol in $PORTAPY_EXPORTS; do
-            export_args+=(--export "$symbol")
-          done
-          python tools/nasm_exports.py dist/libportapy_handles.asm "${export_args[@]}"
-          python tools/elf_pic.py dist/libportapy_handles.asm
-          nasm -f elf64 -w-label-redef-late \
-            dist/libportapy_handles.asm -o dist/libportapy_handles.o
-
-          {
-            echo '{'
-            echo '  global:'
-            for symbol in $PORTAPY_EXPORTS; do echo "    $symbol;"; done
-            echo '  local: *;'
-            echo '};'
-          } > dist/portapy_handles.map
-          gcc -shared dist/libportapy_handles.o -o dist/libportapy_handles.so \
-            -Wl,--version-script=dist/portapy_handles.map
+          python tools/build_native.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-linux
       - name: Verify exports and execute external host
         run: |
-          if readelf -dW dist/libportapy_handles.so | grep -q TEXTREL; then
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
             echo 'text relocations are forbidden'
             exit 1
           fi
-          nm -D --defined-only dist/libportapy_handles.so | tee dist/linux-exports.txt
+          nm -D --defined-only dist/libportapy.so | tee dist/linux-exports.txt
           awk '{print $3}' dist/linux-exports.txt | grep '^portapy_' | sort > dist/actual-symbols.txt
-          printf '%s\n' $PORTAPY_EXPORTS | sort > dist/expected-symbols.txt
+          python - <<'PY'
+          from pathlib import Path
+          from tools.native_surface import PUBLIC_EXPORTS
+          Path('dist/expected-symbols.txt').write_text(
+              '\n'.join(sorted(PUBLIC_EXPORTS)) + '\n',
+              encoding='utf-8',
+          )
+          PY
           diff -u dist/expected-symbols.txt dist/actual-symbols.txt
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_handle_host.c -ldl -o dist/native_handle_host
-          ./dist/native_handle_host ./dist/libportapy_handles.so | tee dist/host-output.txt
+          ./dist/native_handle_host ./dist/libportapy.so | tee dist/host-output.txt
           grep -qx 'opaque-floats: ok' dist/host-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-native-handles
+          name: linux-native
           path: dist
 
   windows:
@@ -112,57 +68,35 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@beta'
-      - name: Compile and link Python-authored opaque-handle core
+      - name: Build genuine Python-authored library
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          python -m asmpython build src/portapy/native_api.py `
-            --target windows --type library --backend legacy `
-            --no-pyinbin-fallback --keep-assembly `
-            -o dist/portapy_handles.dll `
-            *>&1 | Tee-Object -FilePath dist/windows-build.log
-          $compilerExit = $LASTEXITCODE
-          if (-not (Test-Path dist/portapy_handles.asm)) { exit $compilerExit }
-
-          python tools/nasm_module_init.py dist/portapy_handles.asm `
-            --target windows --public-symbol portapy_library_initialize
-          python tools/nasm_handle_abi.py dist/portapy_handles.asm --target windows
-          python tools/nasm_scalar_abi.py dist/portapy_handles.asm --target windows
-          python tools/nasm_float_abi.py dist/portapy_handles.asm --target windows
-          $exportArgs = @()
-          foreach ($symbol in $env:PORTAPY_EXPORTS.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            $exportArgs += '--export'
-            $exportArgs += $symbol
-          }
-          python tools/nasm_exports.py dist/portapy_handles.asm @exportArgs
-          nasm -f win64 -w-label-redef-late `
-            dist/portapy_handles.asm -o dist/portapy_handles.obj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          $definition = @('LIBRARY portapy_handles', 'EXPORTS')
-          foreach ($symbol in $env:PORTAPY_EXPORTS.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            $definition += "    $symbol"
-          }
-          $definition | Set-Content -Encoding ascii dist/portapy_handles.def
-          gcc -shared dist/portapy_handles.obj dist/portapy_handles.def `
-            -o dist/portapy_handles.dll
+          python tools/build_native.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify exports and execute external host
         shell: powershell
         run: |
-          objdump -p dist/portapy_handles.dll | Out-File -Encoding utf8 dist/windows-exports.txt
-          foreach ($symbol in $env:PORTAPY_EXPORTS.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            if (-not (Select-String -Path dist/windows-exports.txt -Pattern $symbol -Quiet)) {
+          objdump -p dist/portapy.dll | Out-File -Encoding utf8 dist/windows-exports.txt
+          $symbols = python -c "from tools.native_surface import PUBLIC_EXPORTS; print(' '.join(PUBLIC_EXPORTS))"
+          foreach ($symbol in $symbols.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
+            if (-not (Select-String -Path dist/windows-exports.txt -Pattern "\b$symbol\b" -Quiet)) {
               throw "missing export: $symbol"
             }
           }
+          if (Select-String -Path dist/windows-exports.txt -Pattern 'portapy_internal_' -Quiet) {
+            throw 'internal Python symbols must not be exported'
+          }
           gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
             tests/native_handle_host.c -o dist/native_handle_host.exe
-          $output = & dist/native_handle_host.exe dist/portapy_handles.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_handle_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/host-output.txt
           if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-native-handles
+          name: windows-native
           path: dist

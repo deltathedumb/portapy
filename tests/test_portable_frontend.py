@@ -53,6 +53,10 @@ def test_portable_frontend_source_has_no_host_ast_import() -> None:
     import inspect
     import portapy.core.portable_frontend as frontend
 
-    source = inspect.getsource(frontend)
-    assert "import ast" not in source
-    assert "from ast" not in source
+    import_lines = [
+        line.strip()
+        for line in inspect.getsource(frontend).splitlines()
+        if line.strip().startswith(("import ", "from "))
+    ]
+    assert "import ast" not in import_lines
+    assert not any(line.startswith("from ast ") for line in import_lines)

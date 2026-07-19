@@ -77,9 +77,27 @@ def test_if_else_and_while_execute() -> None:
     assert namespace["answer"] == 42
 
 
+def test_containers_indexing_mutation_and_augmented_assignment() -> None:
+    namespace = run_source(
+        "items = [10, 20, 30]\n"
+        "items[1] = 22\n"
+        "items[2] += 12\n"
+        "pair = (items[0], items[2])\n"
+        "mapping = {'answer': items[2]}\n"
+        "mapping['answer'] = mapping['answer'] + items[0]\n"
+        "unique = {items[0], items[1], items[2]}\n"
+        "answer = mapping['answer']\n"
+    )
+    assert namespace["items"] == [10, 22, 42]
+    assert namespace["pair"] == (10, 42)
+    assert namespace["mapping"] == {"answer": 52}
+    assert namespace["unique"] == {10, 22, 42}
+    assert namespace["answer"] == 52
+
+
 def test_unsupported_statement_fails_precisely() -> None:
-    with pytest.raises(PortableFrontendError, match="ListLit"):
-        compile_portable_source("value = [1, 2, 3]\n")
+    with pytest.raises(PortableFrontendError, match="slicing"):
+        compile_portable_source("value = [1, 2, 3][1:]\n")
 
 
 def test_portable_frontend_source_has_no_host_ast_import() -> None:

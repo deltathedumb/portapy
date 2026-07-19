@@ -1,9 +1,9 @@
 """Python-authored core for PortaPy's native opaque-handle ABI.
 
-Every ownership, validation, and evaluation rule in this module is interpreter
-semantics and therefore remains Python source compiled by asmpython. Platform
-assembly wrappers only adapt C pointers, byte spans, out-parameters, and calling
-conventions.
+Every ownership, validation, parsing, and execution rule in this module is
+interpreter semantics and therefore remains Python source compiled by asmpython.
+Platform assembly wrappers only adapt C pointers, byte spans, out-parameters,
+and calling conventions.
 """
 from __future__ import annotations
 
@@ -33,6 +33,9 @@ _value_runtime: list[int] = [0]
 _value_kind: list[int] = [PORTAPY_VALUE_NONE]
 _value_i64: list[int] = [0]
 _value_refs: list[int] = [0]
+_global_runtime: list[int] = [0]
+_global_name: list[str] = [""]
+_global_value: list[int] = [0]
 _last_status: list[int] = [PORTAPY_OK]
 
 
@@ -67,10 +70,64 @@ def _append_value(runtime: int, kind: int, payload: int) -> int:
     return len(_value_refs) - 1
 
 
+def _find_global_slot(runtime: int, name: str) -> int:
+    index = 1
+    while index < len(_global_runtime):
+        if _global_runtime[index] == runtime and _global_name[index] == name:
+            return index
+        index += 1
+    return 0
+
+
+def _bind_global(runtime: int, name: str, value: int) -> int:
+    if not _value_is_valid(runtime, value):
+        return _set_status(PORTAPY_INVALID_HANDLE)
+    slot = _find_global_slot(runtime, name)
+    if slot != 0:
+        old_value = _global_value[slot]
+        if _value_is_valid(runtime, old_value):
+            _value_refs[old_value] -= 1
+        _global_value[slot] = value
+        return _set_status(PORTAPY_OK)
+    _global_runtime.append(runtime)
+    _global_name.append(name)
+    _global_value.append(value)
+    return _set_status(PORTAPY_OK)
+
+
+def _lookup_global_i64(runtime: int, name: str) -> list[int]:
+    slot = _find_global_slot(runtime, name)
+    if slot == 0:
+        return [0, PORTAPY_NOT_FOUND]
+    value = _global_value[slot]
+    if not _value_is_valid(runtime, value):
+        return [0, PORTAPY_NOT_FOUND]
+    if _value_kind[value] != PORTAPY_VALUE_INT:
+        return [0, PORTAPY_TYPE_ERROR]
+    return [_value_i64[value], PORTAPY_OK]
+
+
 def _skip_space(source: str, source_size: int, position: int) -> int:
     while position < source_size and source[position].isspace():
         position += 1
     return position
+
+
+def _parse_identifier_bounds(source: str, source_size: int, position: int) -> list[int]:
+    position = _skip_space(source, source_size, position)
+    if position >= source_size:
+        return [position, position, PORTAPY_COMPILE_ERROR]
+    char = source[position]
+    if not char.isalpha() and char != "_":
+        return [position, position, PORTAPY_COMPILE_ERROR]
+    start = position
+    position += 1
+    while position < source_size:
+        char = source[position]
+        if not char.isalnum() and char != "_":
+            break
+        position += 1
+    return [start, position, PORTAPY_OK]
 
 
 def _parse_number(source: str, source_size: int, position: int) -> list[int]:
@@ -88,14 +145,14 @@ def _parse_number(source: str, source_size: int, position: int) -> list[int]:
     return [value, position, PORTAPY_OK]
 
 
-def _parse_factor(source: str, source_size: int, position: int) -> list[int]:
+def _parse_factor(runtime: int, source: str, source_size: int, position: int) -> list[int]:
     position = _skip_space(source, source_size, position)
     if position >= source_size:
         return [0, position, PORTAPY_COMPILE_ERROR]
 
     char = source[position]
     if char == "+" or char == "-":
-        parsed = _parse_factor(source, source_size, position + 1)
+        parsed = _parse_factor(runtime, source, source_size, position + 1)
         if parsed[2] != PORTAPY_OK:
             return parsed
         if char == "-":
@@ -103,7 +160,7 @@ def _parse_factor(source: str, source_size: int, position: int) -> list[int]:
         return parsed
 
     if char == "(":
-        parsed = _parse_expression(source, source_size, position + 1)
+        parsed = _parse_expression(runtime, source, source_size, position + 1)
         if parsed[2] != PORTAPY_OK:
             return parsed
         end = _skip_space(source, source_size, parsed[1])
@@ -112,11 +169,19 @@ def _parse_factor(source: str, source_size: int, position: int) -> list[int]:
         parsed[1] = end + 1
         return parsed
 
+    if char.isalpha() or char == "_":
+        bounds = _parse_identifier_bounds(source, source_size, position)
+        if bounds[2] != PORTAPY_OK:
+            return [0, bounds[1], bounds[2]]
+        name = source[bounds[0]:bounds[1]]
+        found = _lookup_global_i64(runtime, name)
+        return [found[0], bounds[1], found[1]]
+
     return _parse_number(source, source_size, position)
 
 
-def _parse_term(source: str, source_size: int, position: int) -> list[int]:
-    parsed = _parse_factor(source, source_size, position)
+def _parse_term(runtime: int, source: str, source_size: int, position: int) -> list[int]:
+    parsed = _parse_factor(runtime, source, source_size, position)
     if parsed[2] != PORTAPY_OK:
         return parsed
     value = parsed[0]
@@ -136,7 +201,7 @@ def _parse_term(source: str, source_size: int, position: int) -> list[int]:
         elif operator != "*" and operator != "%":
             return [value, operator_at, PORTAPY_OK]
 
-        right = _parse_factor(source, source_size, operand_at)
+        right = _parse_factor(runtime, source, source_size, operand_at)
         if right[2] != PORTAPY_OK:
             return right
         right_value = right[0]
@@ -153,8 +218,8 @@ def _parse_term(source: str, source_size: int, position: int) -> list[int]:
         position = right[1]
 
 
-def _parse_expression(source: str, source_size: int, position: int) -> list[int]:
-    parsed = _parse_term(source, source_size, position)
+def _parse_expression(runtime: int, source: str, source_size: int, position: int) -> list[int]:
+    parsed = _parse_term(runtime, source, source_size, position)
     if parsed[2] != PORTAPY_OK:
         return parsed
     value = parsed[0]
@@ -168,7 +233,7 @@ def _parse_expression(source: str, source_size: int, position: int) -> list[int]
         if operator != "+" and operator != "-":
             return [value, operator_at, PORTAPY_OK]
 
-        right = _parse_term(source, source_size, operator_at + 1)
+        right = _parse_term(runtime, source, source_size, operator_at + 1)
         if right[2] != PORTAPY_OK:
             return right
         if operator == "+":
@@ -201,6 +266,11 @@ def _portapy_runtime_destroy_impl(runtime: int) -> int:
         if _value_runtime[index] == runtime:
             _value_refs[index] = 0
         index += 1
+    index = 1
+    while index < len(_global_runtime):
+        if _global_runtime[index] == runtime:
+            _global_value[index] = 0
+        index += 1
     return _set_status(PORTAPY_OK)
 
 
@@ -211,7 +281,7 @@ def _portapy_eval_span_impl(runtime: int, source: str, source_size: int) -> int:
     if source_size < 0:
         _set_status(PORTAPY_INVALID_ARGUMENT)
         return 0
-    parsed = _parse_expression(source, source_size, 0)
+    parsed = _parse_expression(runtime, source, source_size, 0)
     if parsed[2] != PORTAPY_OK:
         _set_status(parsed[2])
         return 0
@@ -220,6 +290,51 @@ def _portapy_eval_span_impl(runtime: int, source: str, source_size: int) -> int:
         _set_status(PORTAPY_COMPILE_ERROR)
         return 0
     return _append_value(runtime, PORTAPY_VALUE_INT, parsed[0])
+
+
+def _portapy_exec_span_impl(runtime: int, source: str, source_size: int) -> int:
+    if not _runtime_is_valid(runtime):
+        return _set_status(PORTAPY_INVALID_HANDLE)
+    if source_size < 0:
+        return _set_status(PORTAPY_INVALID_ARGUMENT)
+    bounds = _parse_identifier_bounds(source, source_size, 0)
+    if bounds[2] != PORTAPY_OK:
+        return _set_status(bounds[2])
+    name = source[bounds[0]:bounds[1]]
+    position = _skip_space(source, source_size, bounds[1])
+    if position >= source_size or source[position] != "=":
+        return _set_status(PORTAPY_COMPILE_ERROR)
+    parsed = _parse_expression(runtime, source, source_size, position + 1)
+    if parsed[2] != PORTAPY_OK:
+        return _set_status(parsed[2])
+    end = _skip_space(source, source_size, parsed[1])
+    if end != source_size:
+        return _set_status(PORTAPY_COMPILE_ERROR)
+    value = _append_value(runtime, PORTAPY_VALUE_INT, parsed[0])
+    if value == 0:
+        return _last_status[0]
+    return _bind_global(runtime, name, value)
+
+
+def _portapy_get_global_span_impl(runtime: int, name: str, name_size: int) -> int:
+    if not _runtime_is_valid(runtime):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
+    if name_size <= 0:
+        _set_status(PORTAPY_INVALID_ARGUMENT)
+        return 0
+    key = name[0:name_size]
+    slot = _find_global_slot(runtime, key)
+    if slot == 0:
+        _set_status(PORTAPY_NOT_FOUND)
+        return 0
+    value = _global_value[slot]
+    if not _value_is_valid(runtime, value):
+        _set_status(PORTAPY_NOT_FOUND)
+        return 0
+    _value_refs[value] += 1
+    _set_status(PORTAPY_OK)
+    return value
 
 
 def _portapy_value_from_none_impl(runtime: int) -> int:

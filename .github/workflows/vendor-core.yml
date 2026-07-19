@@ -1,83 +1,46 @@
-name: Vendor pyinbin core
+name: Sync pyinbin core
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: asmpython branch, tag, or commit to review
+        required: true
+        default: beta
 
 permissions:
   contents: write
 
 jobs:
-  vendor:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+  sync:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch pinned reusable core
+      - name: Fetch candidate reusable core
         shell: bash
         run: |
           rm -rf .vendor-asmpython
-          git clone --depth 1 --branch beta https://github.com/deltathedumb/asmpython.git .vendor-asmpython
-          rm -rf src/portapy/core
-          mkdir -p src/portapy/core
-          cp .vendor-asmpython/asmpython/pyinbin/bytecode.py src/portapy/core/bytecode.py
-          cp .vendor-asmpython/asmpython/pyinbin/frontend.py src/portapy/core/frontend.py
-          cp .vendor-asmpython/asmpython/pyinbin/vm.py src/portapy/core/vm.py
-          cat > src/portapy/core/__init__.py <<'PY'
-          """Reusable Python-built PortaPy interpreter core."""
-          from .bytecode import CodeObject, Instruction, Op
-          from .frontend import PyinbinUnsupportedError, compile_source
-          from .vm import VMError, VirtualMachine
-
-          __all__ = [
-              "CodeObject", "Instruction", "Op", "PyinbinUnsupportedError",
-              "VMError", "VirtualMachine", "compile_source",
-          ]
-          PY
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('src/portapy/reference_api.py')
-          source = path.read_text(encoding='utf-8')
-          source = source.replace('from .core.loader import default_builtins\n', '')
-          source = source.replace('self._globals: dict[str, object] = default_builtins()', 'self._globals: dict[str, object] = {}')
-          path.write_text(source, encoding='utf-8')
-          PY
-          upstream_sha=$(git -C .vendor-asmpython rev-parse HEAD)
-          printf '{\n  "repository": "deltathedumb/asmpython",\n  "branch": "beta",\n  "commit": "%s",\n  "source_files": ["bytecode.py", "frontend.py", "vm.py"]\n}\n' "$upstream_sha" > UPSTREAM.json
+          git clone https://github.com/deltathedumb/asmpython.git .vendor-asmpython
+          git -C .vendor-asmpython checkout '${{ inputs.upstream_ref }}'
+          mkdir -p .candidate-core
+          cp .vendor-asmpython/asmpython/pyinbin/bytecode.py .candidate-core/bytecode.py
+          cp .vendor-asmpython/asmpython/pyinbin/frontend.py .candidate-core/frontend.py
+          cp .vendor-asmpython/asmpython/pyinbin/vm.py .candidate-core/vm.py
+          git -C .vendor-asmpython rev-parse HEAD > .candidate-core/UPSTREAM_SHA
           rm -rf .vendor-asmpython
-      - name: Verify standalone hosted core
-        run: |
-          python -m pip install -e '.[test]'
-          pytest -q
-          python - <<'PY'
-          import inspect
-          import portapy.reference_api as api
-          source = inspect.getsource(api)
-          assert 'asmpython.pyinbin' not in source
-          assert '.core.loader' not in source
-          runtime = api.Runtime()
-          assert runtime.exec_utf8('answer = 40 + 2\n') == api.Status.OK
-          status, handle = runtime.get_global('answer')
-          assert status == api.Status.OK
-          assert runtime.as_int(handle) == (api.Status.OK, 42)
-          PY
-      - name: Commit vendored core
+      - name: Show reviewed divergence
         shell: bash
         run: |
-          if git diff --quiet -- src/portapy/core src/portapy/reference_api.py UPSTREAM.json; then
-            echo 'Vendored core is already current.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/portapy/core src/portapy/reference_api.py UPSTREAM.json
-          git commit -m 'Vendor standalone Python-built core'
-          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
+          diff -ru src/portapy/core .candidate-core || true
+          echo 'Automatic replacement is intentionally disabled.'
+          echo 'Apply reviewed semantic changes manually so PortaPy-specific native-compatibility fixes are preserved.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-pyinbin-core
+          path: .candidate-core

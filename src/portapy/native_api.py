@@ -1,8 +1,9 @@
 """Python-authored core for PortaPy's native opaque-handle ABI.
 
-Every ownership and validation rule in this module is interpreter/product
+Every ownership, validation, and evaluation rule in this module is interpreter
 semantics and therefore remains Python source compiled by asmpython. Platform
-assembly wrappers only adapt C pointers, out-parameters, and calling conventions.
+assembly wrappers only adapt C pointers, byte spans, out-parameters, and calling
+conventions.
 """
 from __future__ import annotations
 
@@ -66,6 +67,117 @@ def _append_value(runtime: int, kind: int, payload: int) -> int:
     return len(_value_refs) - 1
 
 
+def _skip_space(source: str, position: int) -> int:
+    while position < len(source) and source[position].isspace():
+        position += 1
+    return position
+
+
+def _parse_number(source: str, position: int) -> list[int]:
+    position = _skip_space(source, position)
+    start = position
+    value = 0
+    while position < len(source):
+        char = source[position]
+        if not char.isdigit():
+            break
+        value = value * 10 + ord(char) - ord("0")
+        position += 1
+    if position == start:
+        return [0, position, PORTAPY_COMPILE_ERROR]
+    return [value, position, PORTAPY_OK]
+
+
+def _parse_factor(source: str, position: int) -> list[int]:
+    position = _skip_space(source, position)
+    if position >= len(source):
+        return [0, position, PORTAPY_COMPILE_ERROR]
+
+    char = source[position]
+    if char == "+" or char == "-":
+        parsed = _parse_factor(source, position + 1)
+        if parsed[2] != PORTAPY_OK:
+            return parsed
+        if char == "-":
+            parsed[0] = -parsed[0]
+        return parsed
+
+    if char == "(":
+        parsed = _parse_expression(source, position + 1)
+        if parsed[2] != PORTAPY_OK:
+            return parsed
+        end = _skip_space(source, parsed[1])
+        if end >= len(source) or source[end] != ")":
+            return [0, end, PORTAPY_COMPILE_ERROR]
+        parsed[1] = end + 1
+        return parsed
+
+    return _parse_number(source, position)
+
+
+def _parse_term(source: str, position: int) -> list[int]:
+    parsed = _parse_factor(source, position)
+    if parsed[2] != PORTAPY_OK:
+        return parsed
+    value = parsed[0]
+    position = parsed[1]
+
+    while True:
+        operator_at = _skip_space(source, position)
+        if operator_at >= len(source):
+            return [value, operator_at, PORTAPY_OK]
+
+        operator = source[operator_at]
+        operand_at = operator_at + 1
+        if operator == "/":
+            if operand_at >= len(source) or source[operand_at] != "/":
+                return [value, operator_at, PORTAPY_OK]
+            operand_at += 1
+        elif operator != "*" and operator != "%":
+            return [value, operator_at, PORTAPY_OK]
+
+        right = _parse_factor(source, operand_at)
+        if right[2] != PORTAPY_OK:
+            return right
+        right_value = right[0]
+        if operator == "*":
+            value = value * right_value
+        elif operator == "/":
+            if right_value == 0:
+                return [0, right[1], PORTAPY_RUNTIME_ERROR]
+            value = value // right_value
+        else:
+            if right_value == 0:
+                return [0, right[1], PORTAPY_RUNTIME_ERROR]
+            value = value % right_value
+        position = right[1]
+
+
+def _parse_expression(source: str, position: int) -> list[int]:
+    parsed = _parse_term(source, position)
+    if parsed[2] != PORTAPY_OK:
+        return parsed
+    value = parsed[0]
+    position = parsed[1]
+
+    while True:
+        operator_at = _skip_space(source, position)
+        if operator_at >= len(source):
+            return [value, operator_at, PORTAPY_OK]
+        operator = source[operator_at]
+        if operator != "+" and operator != "-":
+            return [value, operator_at, PORTAPY_OK]
+
+        right = _parse_term(source, operator_at + 1)
+        if right[2] != PORTAPY_OK:
+            return right
+        if operator == "+":
+            value += right[0]
+        else:
+            value -= right[0]
+        position = right[1]
+
+
 def portapy_abi_version() -> int:
     return 1
 
@@ -90,6 +202,21 @@ def _portapy_runtime_destroy_impl(runtime: int) -> int:
             _value_refs[index] = 0
         index += 1
     return _set_status(PORTAPY_OK)
+
+
+def _portapy_eval_cstr_impl(runtime: int, source: str) -> int:
+    if not _runtime_is_valid(runtime):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
+    parsed = _parse_expression(source, 0)
+    if parsed[2] != PORTAPY_OK:
+        _set_status(parsed[2])
+        return 0
+    end = _skip_space(source, parsed[1])
+    if end != len(source):
+        _set_status(PORTAPY_COMPILE_ERROR)
+        return 0
+    return _append_value(runtime, PORTAPY_VALUE_INT, parsed[0])
 
 
 def _portapy_value_from_none_impl(runtime: int) -> int:

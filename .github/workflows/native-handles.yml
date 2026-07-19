@@ -28,7 +28,7 @@ jobs:
             --target linux \
             --output dist/libportapy.so \
             --work-dir dist/build-linux
-      - name: Verify exports and execute external host
+      - name: Verify exports and execute external hosts
         run: |
           if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
             echo 'text relocations are forbidden'
@@ -49,6 +49,10 @@ jobs:
             tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy.so | tee dist/host-output.txt
           grep -qx 'opaque-floats: ok' dist/host-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_statement_host.c -ldl -o dist/native_statement_host
+          ./dist/native_statement_host ./dist/libportapy.so | tee dist/statement-output.txt
+          grep -qx 'statement-blocks: ok' dist/statement-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -76,7 +80,7 @@ jobs:
             --output dist/portapy.dll `
             --work-dir dist/build-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify exports and execute external host
+      - name: Verify exports and execute external hosts
         shell: powershell
         run: |
           objdump -p dist/portapy.dll | Out-File -Encoding utf8 dist/windows-exports.txt
@@ -95,6 +99,12 @@ jobs:
           $output = & dist/native_handle_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/host-output.txt
           if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_statement_host.c -o dist/native_statement_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $statementOutput = & dist/native_statement_host.exe dist/portapy.dll
+          $statementOutput | Out-File -Encoding utf8 dist/statement-output.txt
+          if ($statementOutput -ne 'statement-blocks: ok') { throw "unexpected statement output: $statementOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

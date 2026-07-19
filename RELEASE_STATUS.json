@@ -15,11 +15,12 @@
     "retain and release",
     "runtime isolation",
     "UTF-8 integer expression evaluation",
-    "single integer assignment statements",
+    "integer assignment blocks with newline and semicolon separators",
+    "blank lines and line comments in assignment blocks",
     "runtime-global integer lookup"
   ],
   "release_blockers": [
-    "general PortaPy-owned Python lexer/parser and statement grammar beyond numeric expressions and single assignments",
+    "general PortaPy-owned Python lexer/parser and statement grammar beyond integer assignment blocks",
     "general source and bytecode execution APIs beyond integer expressions and assignments",
     "structured errors and traceback retrieval",
     "host callbacks and module imports",

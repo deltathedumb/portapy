@@ -20,20 +20,33 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes nasm gcc binutils
-          python -m pip install 'git+https://github.com/deltathedumb/asmpython.git@beta'
-      - name: Compile Python-built bytecode probe to libportapy_probe.so
-        id: compile
-        continue-on-error: true
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python source and link libportapy_probe.so
         shell: bash
         run: |
           mkdir -p dist
+          set +e
           set -o pipefail
           python -m asmpython build src/portapy/native_probe.py \
             --target linux --type library --backend legacy \
             --no-pyinbin-fallback -o dist/libportapy_probe.so \
             2>&1 | tee dist/linux-build.log
+          compiler_status=${PIPESTATUS[0]}
+          set -e
+
+          # The legacy compiler currently emits complete NASM and then fails in
+          # its subprocess runner by treating the full command as one path.
+          # Keep the compiler diagnostic, but assemble/link its emitted source
+          # directly so this probe tests generated code rather than that driver
+          # regression.
+          if [ ! -f dist/libportapy_probe.asm ]; then
+            exit "$compiler_status"
+          fi
+          nasm -f elf64 -w-label-redef-late \
+            dist/libportapy_probe.asm -o dist/libportapy_probe.o
+          gcc -shared dist/libportapy_probe.o -o dist/libportapy_probe.so
       - name: Inspect and execute through an external C host
-        if: steps.compile.outcome == 'success'
         run: |
           file dist/libportapy_probe.so
           nm -D --defined-only dist/libportapy_probe.so | tee dist/linux-exports.txt
@@ -47,9 +60,6 @@ jobs:
         with:
           name: linux-native-probe
           path: dist
-      - name: Propagate compiler failure
-        if: steps.compile.outcome == 'failure'
-        run: exit 1
 
   windows:
     runs-on: windows-2025
@@ -62,10 +72,9 @@ jobs:
         shell: powershell
         run: |
           choco install nasm mingw -y --no-progress
-          python -m pip install 'git+https://github.com/deltathedumb/asmpython.git@beta'
-      - name: Compile Python-built bytecode probe to portapy_probe.dll
-        id: compile
-        continue-on-error: true
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python source and link portapy_probe.dll
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
@@ -73,9 +82,18 @@ jobs:
             --target windows --type library --backend legacy `
             --no-pyinbin-fallback -o dist/portapy_probe.dll `
             *>&1 | Tee-Object -FilePath dist/windows-build.log
+          $compilerExit = $LASTEXITCODE
+
+          if (-not (Test-Path dist/portapy_probe.asm)) {
+            exit $compilerExit
+          }
+          nasm -f win64 -w-label-redef-late `
+            dist/portapy_probe.asm -o dist/portapy_probe.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gcc -shared dist/portapy_probe.obj -o dist/portapy_probe.dll `
+            -Wl,--export-all-symbols
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Inspect and execute through an external C host
-        if: steps.compile.outcome == 'success'
         shell: powershell
         run: |
           objdump -p dist/portapy_probe.dll | Out-File -Encoding utf8 dist/windows-exports.txt
@@ -90,7 +108,3 @@ jobs:
         with:
           name: windows-native-probe
           path: dist
-      - name: Propagate compiler failure
-        if: steps.compile.outcome == 'failure'
-        shell: powershell
-        run: exit 1

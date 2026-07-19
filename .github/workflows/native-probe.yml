@@ -1,0 +1,76 @@
+name: Native shared-library probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install 'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python-built bytecode probe to libportapy_probe.so
+        run: |
+          mkdir -p dist
+          python -m asmpython build src/portapy/native_probe.py \
+            --target linux --type library --backend x86-64 \
+            --no-pyinbin-fallback -o dist/libportapy_probe.so
+      - name: Inspect and execute through an external C host
+        run: |
+          file dist/libportapy_probe.so
+          nm -D --defined-only dist/libportapy_probe.so | tee dist/linux-exports.txt
+          grep -q 'portapy_abi_version' dist/linux-exports.txt
+          grep -q 'portapy_opcode_probe' dist/linux-exports.txt
+          cc -std=c11 -Wall -Wextra -Werror tests/native_probe_host.c -ldl -o dist/native_probe_host
+          ./dist/native_probe_host ./dist/libportapy_probe.so | tee dist/linux-host-output.txt
+          grep -qx 'abi=1 opcode=10' dist/linux-host-output.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-native-probe
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install 'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Compile Python-built bytecode probe to portapy_probe.dll
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python -m asmpython build src/portapy/native_probe.py `
+            --target windows --type library --backend x86-64 `
+            --no-pyinbin-fallback -o dist/portapy_probe.dll
+      - name: Inspect and execute through an external C host
+        shell: powershell
+        run: |
+          objdump -p dist/portapy_probe.dll | Out-File -Encoding utf8 dist/windows-exports.txt
+          Select-String -Path dist/windows-exports.txt -Pattern 'portapy_abi_version' -Quiet | Should -BeTrue
+          Select-String -Path dist/windows-exports.txt -Pattern 'portapy_opcode_probe' -Quiet | Should -BeTrue
+          gcc -std=c11 -Wall -Wextra -Werror tests/native_probe_host.c -o dist/native_probe_host.exe
+          $output = & dist/native_probe_host.exe dist/portapy_probe.dll
+          $output | Out-File -Encoding utf8 dist/windows-host-output.txt
+          if ($output -ne 'abi=1 opcode=10') { throw "unexpected host output: $output" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-probe
+          path: dist

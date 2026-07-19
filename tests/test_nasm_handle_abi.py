@@ -39,21 +39,27 @@ _SOURCE = "\n".join(
 )
 
 
-def test_linux_wrappers_use_sysv_arguments_and_write_outputs() -> None:
+def test_linux_wrappers_preserve_rbx_and_stack_back_outputs() -> None:
     rewritten = append_handle_abi(_SOURCE, target="linux")
     assert "portapy_runtime_create:" in rewritten
     assert "cmp dword [rdi + 8], 1" in rewritten
-    assert "mov rbx, rdx" in rewritten
-    assert "mov [rbx], rcx" in rewritten
-    assert "jmp _portapy_value_release_impl" in rewritten
+    assert "push rbx" in rewritten
+    assert "mov [rsp], rdx" in rewritten
+    assert "mov rdx, [rsp]" in rewritten
+    assert "mov [rdx], rcx" in rewritten
+    assert "call _portapy_value_release_impl" in rewritten
+    assert "jmp _portapy_value_release_impl" not in rewritten
 
 
-def test_windows_wrappers_reserve_shadow_space() -> None:
+def test_windows_wrappers_preserve_rbx_and_reserve_shadow_space() -> None:
     rewritten = append_handle_abi(_SOURCE, target="windows")
     assert "cmp dword [rcx + 8], 1" in rewritten
+    assert "push rbx" in rewritten
     assert "sub rsp, 48" in rewritten
-    assert "mov rbx, r8" in rewritten
-    assert "mov [rbx], r9" in rewritten
+    assert "mov [rsp + 32], r8" in rewritten
+    assert "mov r8, [rsp + 32]" in rewritten
+    assert "mov [r8], r9" in rewritten
+    assert "sub rsp, 32" in rewritten
 
 
 def test_missing_python_implementation_fails_closed() -> None:

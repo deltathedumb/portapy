@@ -77,12 +77,25 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_runtime_destroy(
     portapy_runtime runtime
 );
 
+PORTAPY_API portapy_status PORTAPY_CALL portapy_exec_utf8(
+    portapy_runtime runtime,
+    const uint8_t *source,
+    size_t source_size,
+    const uint8_t *filename,
+    size_t filename_size
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_eval_utf8(
     portapy_runtime runtime,
     const uint8_t *source,
     size_t source_size,
     const uint8_t *filename,
     size_t filename_size,
+    portapy_value *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_get_global_utf8(
+    portapy_runtime runtime,
+    const uint8_t *name,
+    size_t name_size,
     portapy_value *out_value
 );
 

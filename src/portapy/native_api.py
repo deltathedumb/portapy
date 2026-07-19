@@ -29,14 +29,24 @@ PORTAPY_VALUE_OBJECT = 7
 _RUNTIME_CAPACITY = 64
 _VALUE_CAPACITY = 4096
 
-_runtime_active = [0] * (_RUNTIME_CAPACITY + 1)
+
+def _zero_table(size: int) -> list[int]:
+    values: list[int] = []
+    index = 0
+    while index < size:
+        values.append(0)
+        index = index + 1
+    return values
+
+
+_runtime_active = _zero_table(_RUNTIME_CAPACITY + 1)
 _next_runtime = [1]
 
-_value_active = [0] * (_VALUE_CAPACITY + 1)
-_value_owner = [0] * (_VALUE_CAPACITY + 1)
-_value_refs = [0] * (_VALUE_CAPACITY + 1)
-_value_kind = [0] * (_VALUE_CAPACITY + 1)
-_value_i64 = [0] * (_VALUE_CAPACITY + 1)
+_value_active = _zero_table(_VALUE_CAPACITY + 1)
+_value_owner = _zero_table(_VALUE_CAPACITY + 1)
+_value_refs = _zero_table(_VALUE_CAPACITY + 1)
+_value_kind = _zero_table(_VALUE_CAPACITY + 1)
+_value_i64 = _zero_table(_VALUE_CAPACITY + 1)
 _next_value = [1]
 
 

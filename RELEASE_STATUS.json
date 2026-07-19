@@ -13,11 +13,12 @@
     "signed 64-bit integer values",
     "bit-exact binary64 values",
     "retain and release",
-    "runtime isolation"
+    "runtime isolation",
+    "UTF-8 integer expression evaluation"
   ],
   "release_blockers": [
-    "PortaPy-owned Python lexer/parser replacing the bootstrap host ast frontend",
-    "native source and bytecode execution API",
+    "general PortaPy-owned Python lexer/parser and statement grammar beyond the numeric expression subset",
+    "general source and bytecode execution APIs beyond integer expression evaluation",
     "structured errors and traceback retrieval",
     "host callbacks and module imports",
     "string and bytes value handles"

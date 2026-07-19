@@ -29,7 +29,7 @@ jobs:
           mkdir -p dist
           set -o pipefail
           python -m asmpython build src/portapy/native_probe.py \
-            --target linux --type library --backend x86-64 \
+            --target linux --type library --backend legacy \
             --no-pyinbin-fallback -o dist/libportapy_probe.so \
             2>&1 | tee dist/linux-build.log
       - name: Inspect and execute through an external C host
@@ -70,7 +70,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           python -m asmpython build src/portapy/native_probe.py `
-            --target windows --type library --backend x86-64 `
+            --target windows --type library --backend legacy `
             --no-pyinbin-fallback -o dist/portapy_probe.dll `
             *>&1 | Tee-Object -FilePath dist/windows-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,9 +1,9 @@
 """Lower PortaPy's own parser AST into portable bytecode.
 
 This module is the CPython-independent replacement path for the bootstrap
-``frontend.py``.  It deliberately starts with a small, exact subset and raises a
-precise error for every unsupported node.  More nodes will move here until the
-host-``ast`` frontend can be deleted completely.
+``frontend.py``. It grows by exact syntax slices and raises a precise error for
+every unsupported node. More nodes will move here until the host-``ast``
+frontend can be deleted completely.
 """
 from __future__ import annotations
 
@@ -34,6 +34,24 @@ _BINARY_OPS = {
     ">>": Op.BINARY_RSHIFT,
     "@": Op.BINARY_MATMUL,
 }
+_COMPARE_OPS = {
+    "==": Op.COMPARE_EQ,
+    "!=": Op.COMPARE_NE,
+    "<": Op.COMPARE_LT,
+    "<=": Op.COMPARE_LE,
+    ">": Op.COMPARE_GT,
+    ">=": Op.COMPARE_GE,
+    "is": Op.COMPARE_IS,
+    "is not": Op.COMPARE_IS_NOT,
+    "in": Op.COMPARE_IN,
+    "not in": Op.COMPARE_NOT_IN,
+}
+_UNARY_OPS = {
+    "-": Op.UNARY_NEGATIVE,
+    "+": Op.UNARY_POSITIVE,
+    "~": Op.UNARY_INVERT,
+    "not": Op.UNARY_NOT,
+}
 
 
 @dataclass
@@ -58,6 +76,10 @@ class _PortableLowerer:
     def emit(self, op: int, arg: int = 0) -> int:
         self.instructions.append(Instruction(op, arg))
         return len(self.instructions) - 1
+
+    def patch(self, offset: int, target: int) -> None:
+        instruction = self.instructions[offset]
+        self.instructions[offset] = Instruction(instruction.op, target)
 
     def unsupported(self, node: object, detail: str | None = None) -> None:
         position = getattr(node, "pos", None)
@@ -94,6 +116,45 @@ class _PortableLowerer:
             self.expression(node.right)
             self.emit(opcode)
             return
+        if isinstance(node, A.UnaryOp):
+            opcode = _UNARY_OPS.get(node.op)
+            if opcode is None:
+                self.unsupported(node, f"unary operator {node.op!r}")
+            self.expression(node.operand)
+            self.emit(opcode)
+            return
+        if isinstance(node, A.BoolOp):
+            self.expression(node.left)
+            self.emit(Op.DUP_TOP)
+            jump = self.emit(
+                Op.JUMP_IF_FALSE_KEEP if node.op == "and" else Op.JUMP_IF_TRUE_KEEP
+            )
+            self.emit(Op.POP_TOP)
+            self.expression(node.right)
+            self.patch(jump, len(self.instructions))
+            return
+        if isinstance(node, A.Compare):
+            if len(node.ops) + 1 != len(node.operands):
+                self.unsupported(node, "malformed chained comparison")
+            for index, operator in enumerate(node.ops):
+                opcode = _COMPARE_OPS.get(operator)
+                if opcode is None:
+                    self.unsupported(node, f"comparison operator {operator!r}")
+                self.expression(node.operands[index])
+                self.expression(node.operands[index + 1])
+                self.emit(opcode)
+                if index:
+                    self.emit(Op.BINARY_BOOL_AND)
+            return
+        if isinstance(node, A.IfExp):
+            self.expression(node.test)
+            otherwise = self.emit(Op.JUMP_IF_FALSE)
+            self.expression(node.body)
+            end = self.emit(Op.JUMP)
+            self.patch(otherwise, len(self.instructions))
+            self.expression(node.orelse)
+            self.patch(end, len(self.instructions))
+            return
         if isinstance(node, A.Call):
             if node.kwargs or node.dstar is not None:
                 self.unsupported(node, "keyword or ** call arguments")
@@ -117,6 +178,28 @@ class _PortableLowerer:
             if node.value is not None:
                 self.expression(node.value)
             self.emit(Op.RETURN)
+            return
+        if isinstance(node, A.If):
+            self.expression(node.test)
+            otherwise = self.emit(Op.JUMP_IF_FALSE)
+            for statement in node.then:
+                self.statement(statement)
+            end = self.emit(Op.JUMP)
+            self.patch(otherwise, len(self.instructions))
+            for statement in node.orelse:
+                self.statement(statement)
+            self.patch(end, len(self.instructions))
+            return
+        if isinstance(node, A.While):
+            start = len(self.instructions)
+            self.expression(node.test)
+            exit_jump = self.emit(Op.JUMP_IF_FALSE)
+            for statement in node.body:
+                self.statement(statement)
+            self.emit(Op.JUMP, start)
+            self.patch(exit_jump, len(self.instructions))
+            for statement in node.orelse:
+                self.statement(statement)
             return
         if isinstance(node, A.Pass):
             return

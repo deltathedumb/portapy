@@ -1,46 +1,99 @@
-name: Build and release 3.14
+name: Build and release 3.14 developer preview
+
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the GitHub release after all native gates pass
+        description: Publish 3.14-dev.1 after every native gate passes
         required: true
         type: boolean
         default: false
+  push:
+    branches:
+      - release/3.14-dev.1
+
 permissions:
   contents: write
+
 jobs:
-  native:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            target: linux
-            artifact: libportapy.so
-          - os: windows-2025
-            target: windows
-            artifact: portapy.dll
-    runs-on: ${{ matrix.os }}
+  linux:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install asmpython beta
-        run: python -m pip install 'git+https://github.com/deltathedumb/asmpython.git@beta'
-      - name: Build genuine PortaPy shared library
-        shell: bash
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
         run: |
-          test -f src/portapy/native_api.py || { echo 'native_api.py is not implemented; refusing placeholder release'; exit 1; }
-          mkdir -p dist
-          python -m asmpython build src/portapy/native_api.py --target ${{ matrix.target }} --type library --no-pyinbin-fallback -o dist/${{ matrix.artifact }}
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Build libportapy.so
+        run: |
+          python tools/build_native.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-linux
+      - name: Execute Linux release artifact from C
+        run: |
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_handle_host.c -ldl -o dist/native_handle_host
+          ./dist/native_handle_host ./dist/libportapy.so | tee dist/linux-host-output.txt
+          grep -qx 'opaque-floats: ok' dist/linux-host-output.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-native
-          path: dist/${{ matrix.artifact }}
+          name: linux-release
+          path: |
+            dist/libportapy.so
+            dist/libportapy.so.json
+            dist/linux-host-output.txt
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@beta'
+      - name: Build portapy.dll
+        shell: powershell
+        run: |
+          python tools/build_native.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute Windows release artifact from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_handle_host.c -o dist/native_handle_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_handle_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/windows-host-output.txt
+          if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            dist/portapy.dll
+            dist/portapy.dll.json
+            dist/windows-host-output.txt
+
   publish:
-    if: ${{ inputs.publish }}
-    needs: native
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    needs: [linux, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -48,9 +101,31 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - run: python tools/release_gate.py dist
-      - run: cp include/portapy.h dist/portapy.h
-      - name: Publish 3.14
+      - name: Validate release metadata and checksums
+        run: |
+          PYTHONPATH="$PWD" python tools/release_gate.py dist \
+            --expected-tag 3.14-dev.1
+          cp include/portapy.h dist/portapy.h
+          cp LICENSE dist/LICENSE.txt
+          cp RELEASE_STATUS.json dist/RELEASE_STATUS.json
+      - name: Publish PortaPy 3.14 Developer Preview 1
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create 3.14 dist/* --title 'PortaPy 3.14' --notes 'First fully Python-built PortaPy shared-library release.'
+        run: |
+          if gh release view 3.14-dev.1 >/dev/null 2>&1; then
+            echo 'GitHub release 3.14-dev.1 already exists; refusing to replace it.'
+            exit 1
+          fi
+          gh release create 3.14-dev.1 \
+            dist/libportapy.so \
+            dist/libportapy.so.json \
+            dist/portapy.dll \
+            dist/portapy.dll.json \
+            dist/portapy.h \
+            dist/LICENSE.txt \
+            dist/RELEASE_STATUS.json \
+            dist/checksums.json \
+            dist/release-manifest.json \
+            --prerelease \
+            --title 'PortaPy 3.14 Developer Preview 1' \
+            --notes-file dist/RELEASE_NOTES.md

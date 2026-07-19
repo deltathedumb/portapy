@@ -29,9 +29,16 @@ def test_integer_division_matches_python_flooring() -> None:
 
 def test_invalid_syntax_is_compile_error() -> None:
     runtime = api._portapy_runtime_create_impl()
-    for source in ("", "1 +", "(1 + 2", "1 2", "1 / 2", "hello", "2 ** 3"):
+    for source in ("", "1 +", "(1 + 2", "1 2", "1 / 2", "2 ** 3"):
         assert api._portapy_eval_span_impl(runtime, source, len(source)) == 0
         assert api._portapy_last_status_impl() == api.PORTAPY_COMPILE_ERROR
+
+
+def test_unknown_identifier_is_not_found() -> None:
+    runtime = api._portapy_runtime_create_impl()
+    source = "hello"
+    assert api._portapy_eval_span_impl(runtime, source, len(source)) == 0
+    assert api._portapy_last_status_impl() == api.PORTAPY_NOT_FOUND
 
 
 def test_explicit_length_rejects_embedded_nul_tail() -> None:

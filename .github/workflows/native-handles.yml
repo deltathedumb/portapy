@@ -17,9 +17,11 @@ env:
     portapy_value_from_none
     portapy_value_from_bool
     portapy_value_from_i64
+    portapy_value_from_f64
     portapy_value_get_kind
     portapy_value_as_bool
     portapy_value_as_i64
+    portapy_value_as_f64
     portapy_value_retain
     portapy_value_release
 
@@ -58,6 +60,7 @@ jobs:
             --target linux --public-symbol portapy_library_initialize
           python tools/nasm_handle_abi.py dist/libportapy_handles.asm --target linux
           python tools/nasm_scalar_abi.py dist/libportapy_handles.asm --target linux
+          python tools/nasm_float_abi.py dist/libportapy_handles.asm --target linux
           export_args=()
           for symbol in $PORTAPY_EXPORTS; do
             export_args+=(--export "$symbol")
@@ -89,7 +92,7 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy_handles.so | tee dist/host-output.txt
-          grep -qx 'opaque-scalars: ok' dist/host-output.txt
+          grep -qx 'opaque-floats: ok' dist/host-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -125,6 +128,7 @@ jobs:
             --target windows --public-symbol portapy_library_initialize
           python tools/nasm_handle_abi.py dist/portapy_handles.asm --target windows
           python tools/nasm_scalar_abi.py dist/portapy_handles.asm --target windows
+          python tools/nasm_float_abi.py dist/portapy_handles.asm --target windows
           $exportArgs = @()
           foreach ($symbol in $env:PORTAPY_EXPORTS.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
             $exportArgs += '--export'
@@ -156,7 +160,7 @@ jobs:
             tests/native_handle_host.c -o dist/native_handle_host.exe
           $output = & dist/native_handle_host.exe dist/portapy_handles.dll
           $output | Out-File -Encoding utf8 dist/host-output.txt
-          if ($output -ne 'opaque-scalars: ok') { throw "unexpected host output: $output" }
+          if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

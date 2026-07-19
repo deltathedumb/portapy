@@ -16,6 +16,11 @@
 #define ABI_CALL
 #endif
 
+typedef union float_bits {
+    double value;
+    uint64_t bits;
+} float_bits;
+
 typedef portapy_status (ABI_CALL *initialize_fn)(void);
 typedef uint32_t (ABI_CALL *abi_version_fn)(void);
 typedef portapy_status (ABI_CALL *runtime_create_fn)(const portapy_config *, portapy_runtime *);
@@ -23,9 +28,11 @@ typedef portapy_status (ABI_CALL *runtime_destroy_fn)(portapy_runtime);
 typedef portapy_status (ABI_CALL *value_from_none_fn)(portapy_runtime, portapy_value *);
 typedef portapy_status (ABI_CALL *value_from_bool_fn)(portapy_runtime, int, portapy_value *);
 typedef portapy_status (ABI_CALL *value_from_i64_fn)(portapy_runtime, int64_t, portapy_value *);
+typedef portapy_status (ABI_CALL *value_from_f64_fn)(portapy_runtime, double, portapy_value *);
 typedef portapy_status (ABI_CALL *value_get_kind_fn)(portapy_runtime, portapy_value, portapy_value_kind *);
 typedef portapy_status (ABI_CALL *value_as_bool_fn)(portapy_runtime, portapy_value, int *);
 typedef portapy_status (ABI_CALL *value_as_i64_fn)(portapy_runtime, portapy_value, int64_t *);
+typedef portapy_status (ABI_CALL *value_as_f64_fn)(portapy_runtime, portapy_value, double *);
 typedef portapy_status (ABI_CALL *value_lifetime_fn)(portapy_runtime, portapy_value);
 
 #define RESOLVE(type, variable, name) \
@@ -53,9 +60,11 @@ int main(int argc, char **argv) {
     RESOLVE(value_from_none_fn, value_from_none, "portapy_value_from_none");
     RESOLVE(value_from_bool_fn, value_from_bool, "portapy_value_from_bool");
     RESOLVE(value_from_i64_fn, value_from_i64, "portapy_value_from_i64");
+    RESOLVE(value_from_f64_fn, value_from_f64, "portapy_value_from_f64");
     RESOLVE(value_get_kind_fn, value_get_kind, "portapy_value_get_kind");
     RESOLVE(value_as_bool_fn, value_as_bool, "portapy_value_as_bool");
     RESOLVE(value_as_i64_fn, value_as_i64, "portapy_value_as_i64");
+    RESOLVE(value_as_f64_fn, value_as_f64, "portapy_value_as_f64");
     RESOLVE(value_lifetime_fn, value_retain, "portapy_value_retain");
     RESOLVE(value_lifetime_fn, value_release, "portapy_value_release");
 
@@ -101,27 +110,54 @@ int main(int argc, char **argv) {
     if (value_as_bool(first, false_value, &truth) != PORTAPY_OK || truth != 0) return 27;
     if (value_as_bool(second, false_value, &truth) != PORTAPY_INVALID_HANDLE) return 28;
 
-    portapy_value value = PORTAPY_NULL_VALUE;
-    if (value_from_i64(first, -42, &value) != PORTAPY_OK || value == 0) return 29;
-    if (value_get_kind(first, value, &kind) != PORTAPY_OK) return 30;
+    portapy_value integer_value = PORTAPY_NULL_VALUE;
+    if (value_from_i64(first, -42, &integer_value) != PORTAPY_OK || integer_value == 0) return 29;
+    if (value_get_kind(first, integer_value, &kind) != PORTAPY_OK) return 30;
     if (kind != PORTAPY_VALUE_INT) return 31;
     int64_t number = 0;
-    if (value_as_i64(first, value, &number) != PORTAPY_OK || number != -42) return 32;
+    if (value_as_i64(first, integer_value, &number) != PORTAPY_OK || number != -42) return 32;
 
-    if (value_as_i64(second, value, &number) != PORTAPY_INVALID_HANDLE) return 33;
-    if (value_retain(first, value) != PORTAPY_OK) return 34;
-    if (value_release(first, value) != PORTAPY_OK) return 35;
-    if (value_as_i64(first, value, &number) != PORTAPY_OK || number != -42) return 36;
-    if (value_release(first, value) != PORTAPY_OK) return 37;
-    if (value_as_i64(first, value, &number) != PORTAPY_INVALID_HANDLE) return 38;
+    const uint64_t float_patterns[] = {
+        UINT64_C(0x3ff8000000000000),
+        UINT64_C(0x8000000000000000),
+        UINT64_C(0x7ff8000000001234)
+    };
+    portapy_value float_values[3] = {
+        PORTAPY_NULL_VALUE,
+        PORTAPY_NULL_VALUE,
+        PORTAPY_NULL_VALUE
+    };
+    for (size_t index = 0; index < 3; ++index) {
+        float_bits input = {0};
+        float_bits output = {0};
+        input.bits = float_patterns[index];
+        if (value_from_f64(first, input.value, &float_values[index]) != PORTAPY_OK) return 33;
+        if (float_values[index] == PORTAPY_NULL_VALUE) return 34;
+        if (value_get_kind(first, float_values[index], &kind) != PORTAPY_OK) return 35;
+        if (kind != PORTAPY_VALUE_FLOAT) return 36;
+        if (value_as_f64(first, float_values[index], &output.value) != PORTAPY_OK) return 37;
+        if (output.bits != float_patterns[index]) return 38;
+    }
+    float_bits wrong_type = {0};
+    if (value_as_f64(first, integer_value, &wrong_type.value) != PORTAPY_TYPE_ERROR) return 39;
 
-    if (value_release(first, none_value) != PORTAPY_OK) return 39;
-    if (value_release(first, true_value) != PORTAPY_OK) return 40;
-    if (value_release(first, false_value) != PORTAPY_OK) return 41;
-    if (runtime_destroy(first) != PORTAPY_OK) return 42;
-    if (runtime_destroy(first) != PORTAPY_INVALID_HANDLE) return 43;
-    if (runtime_destroy(second) != PORTAPY_OK) return 44;
+    if (value_as_i64(second, integer_value, &number) != PORTAPY_INVALID_HANDLE) return 40;
+    if (value_retain(first, integer_value) != PORTAPY_OK) return 41;
+    if (value_release(first, integer_value) != PORTAPY_OK) return 42;
+    if (value_as_i64(first, integer_value, &number) != PORTAPY_OK || number != -42) return 43;
+    if (value_release(first, integer_value) != PORTAPY_OK) return 44;
+    if (value_as_i64(first, integer_value, &number) != PORTAPY_INVALID_HANDLE) return 45;
 
-    printf("opaque-scalars: ok\n");
+    if (value_release(first, none_value) != PORTAPY_OK) return 46;
+    if (value_release(first, true_value) != PORTAPY_OK) return 47;
+    if (value_release(first, false_value) != PORTAPY_OK) return 48;
+    for (size_t index = 0; index < 3; ++index) {
+        if (value_release(first, float_values[index]) != PORTAPY_OK) return 49;
+    }
+    if (runtime_destroy(first) != PORTAPY_OK) return 50;
+    if (runtime_destroy(first) != PORTAPY_INVALID_HANDLE) return 51;
+    if (runtime_destroy(second) != PORTAPY_OK) return 52;
+
+    printf("opaque-floats: ok\n");
     return 0;
 }

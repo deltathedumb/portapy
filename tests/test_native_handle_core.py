@@ -3,6 +3,31 @@ from __future__ import annotations
 from portapy import native_api as api
 
 
+def test_float_bits_are_preserved_exactly() -> None:
+    runtime = api._portapy_runtime_create_impl()
+    payloads = [
+        0x3FF8000000000000,
+        -0x8000000000000000,
+        0x7FF8000000001234,
+    ]
+    values: list[int] = []
+    for payload in payloads:
+        value = api._portapy_value_from_f64_bits_impl(runtime, payload)
+        values.append(value)
+        assert api._portapy_value_get_kind_impl(runtime, value) == api.PORTAPY_VALUE_FLOAT
+        assert api._portapy_value_as_f64_bits_impl(runtime, value) == payload
+        assert api._portapy_last_status_impl() == api.PORTAPY_OK
+
+    integer = api._portapy_value_from_i64_impl(runtime, 1)
+    assert api._portapy_value_as_f64_bits_impl(runtime, integer) == 0
+    assert api._portapy_last_status_impl() == api.PORTAPY_TYPE_ERROR
+
+    for value in values:
+        assert api._portapy_value_release_impl(runtime, value) == api.PORTAPY_OK
+    assert api._portapy_value_release_impl(runtime, integer) == api.PORTAPY_OK
+    assert api._portapy_runtime_destroy_impl(runtime) == api.PORTAPY_OK
+
+
 def test_none_and_bool_values() -> None:
     runtime = api._portapy_runtime_create_impl()
 

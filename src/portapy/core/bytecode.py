@@ -7,7 +7,7 @@ host Python object graph and maps directly onto the native VM.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import IntEnum
 
 
@@ -177,42 +177,53 @@ class CodeObject:
 
     def replace(self, **changes: object) -> "CodeObject":
         """Return a copy using the subset of CPython code fields we model."""
-        allowed = {
-            key: value for key, value in changes.items()
-            if key in self.__dataclass_fields__
-        }
-        return replace(self, **allowed)
+        return CodeObject(
+            name=changes.get("name", self.name),
+            instructions=changes.get("instructions", self.instructions),
+            constants=changes.get("constants", self.constants),
+            names=changes.get("names", self.names),
+            arg_names=changes.get("arg_names", self.arg_names),
+            kwonly_names=changes.get("kwonly_names", self.kwonly_names),
+            vararg_name=changes.get("vararg_name", self.vararg_name),
+            kwarg_name=changes.get("kwarg_name", self.kwarg_name),
+            posonly_names=changes.get("posonly_names", self.posonly_names),
+            is_generator=changes.get("is_generator", self.is_generator),
+            is_coroutine=changes.get("is_coroutine", self.is_coroutine),
+            free_names=changes.get("free_names", self.free_names),
+            interactive=changes.get("interactive", self.interactive),
+            is_async_generator=changes.get("is_async_generator", self.is_async_generator),
+        )
 
     def validate(self) -> None:
         for offset, instr in enumerate(self.instructions):
             if not isinstance(instr.op, Op):
                 raise ValueError(f"{self.name}: invalid opcode at {offset}")
-            op_value = int(instr.op)
+            op_value = instr.op.value
             if op_value in (
-                int(Op.LOAD_CONST),
-                int(Op.MAKE_FUNCTION),
-                int(Op.MAKE_CLASS),
-                int(Op.MATCH_EXCEPTION),
-                int(Op.MATCH_PATTERN),
+                Op.LOAD_CONST.value,
+                Op.MAKE_FUNCTION.value,
+                Op.MAKE_CLASS.value,
+                Op.MATCH_EXCEPTION.value,
+                Op.MATCH_PATTERN.value,
             ) and not 0 <= instr.arg < len(self.constants):
                 raise ValueError(f"{self.name}: constant index out of range at {offset}")
             if op_value in (
-                int(Op.LOAD_NAME),
-                int(Op.STORE_NAME),
-                int(Op.STORE_GLOBAL),
-                int(Op.GET_ATTR),
-                int(Op.SET_ATTR),
-                int(Op.DELETE_ATTR),
-                int(Op.DELETE_NAME),
+                Op.LOAD_NAME.value,
+                Op.STORE_NAME.value,
+                Op.STORE_GLOBAL.value,
+                Op.GET_ATTR.value,
+                Op.SET_ATTR.value,
+                Op.DELETE_ATTR.value,
+                Op.DELETE_NAME.value,
             ) and not 0 <= instr.arg < len(self.names):
                 raise ValueError(f"{self.name}: name index out of range at {offset}")
             if op_value in (
-                int(Op.JUMP),
-                int(Op.JUMP_IF_FALSE),
-                int(Op.JUMP_IF_TRUE),
-                int(Op.JUMP_IF_FALSE_KEEP),
-                int(Op.JUMP_IF_TRUE_KEEP),
-                int(Op.TRY_BEGIN),
+                Op.JUMP.value,
+                Op.JUMP_IF_FALSE.value,
+                Op.JUMP_IF_TRUE.value,
+                Op.JUMP_IF_FALSE_KEEP.value,
+                Op.JUMP_IF_TRUE_KEEP.value,
+                Op.TRY_BEGIN.value,
             ) and not 0 <= instr.arg <= len(self.instructions):
                 raise ValueError(f"{self.name}: jump target out of range at {offset}")
             if instr.arg < 0:

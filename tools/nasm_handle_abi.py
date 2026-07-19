@@ -47,16 +47,21 @@ portapy_runtime_create:
     cmp dword [rdi + 8], 1
     jne .runtime_create_abi_mismatch
     push rbx
-    mov rbx, rsi
+    sub rsp, 16
+    mov [rsp], rsi
     call _portapy_runtime_create_impl
+    mov [rsp + 8], rax
     test rax, rax
     jz .runtime_create_status
-    mov [rbx], rax
-    pop rbx
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
     xor eax, eax
-    ret
+    jmp .runtime_create_done
 .runtime_create_status:
     call _portapy_last_status_impl
+.runtime_create_done:
+    add rsp, 16
     pop rbx
     ret
 .runtime_create_invalid:
@@ -67,21 +72,25 @@ portapy_runtime_create:
     ret
 
 portapy_runtime_destroy:
-    jmp _portapy_runtime_destroy_impl
+    push rbx
+    call _portapy_runtime_destroy_impl
+    pop rbx
+    ret
 
 portapy_value_from_i64:
     test rdx, rdx
     jz .value_from_i64_invalid
     push rbx
     sub rsp, 16
-    mov rbx, rdx
+    mov [rsp], rdx
     call _portapy_value_from_i64_impl
-    mov [rsp], rax
+    mov [rsp + 8], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_from_i64_done
-    mov rcx, [rsp]
-    mov [rbx], rcx
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
 .value_from_i64_done:
     add rsp, 16
     pop rbx
@@ -95,14 +104,15 @@ portapy_value_get_kind:
     jz .value_get_kind_invalid
     push rbx
     sub rsp, 16
-    mov rbx, rdx
+    mov [rsp], rdx
     call _portapy_value_get_kind_impl
-    mov [rsp], rax
+    mov [rsp + 8], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_get_kind_done
-    mov rcx, [rsp]
-    mov dword [rbx], ecx
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov dword [rdx], ecx
 .value_get_kind_done:
     add rsp, 16
     pop rbx
@@ -116,14 +126,15 @@ portapy_value_as_i64:
     jz .value_as_i64_invalid
     push rbx
     sub rsp, 16
-    mov rbx, rdx
+    mov [rsp], rdx
     call _portapy_value_as_i64_impl
-    mov [rsp], rax
+    mov [rsp + 8], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_as_i64_done
-    mov rcx, [rsp]
-    mov [rbx], rcx
+    mov rdx, [rsp]
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
 .value_as_i64_done:
     add rsp, 16
     pop rbx
@@ -133,10 +144,16 @@ portapy_value_as_i64:
     ret
 
 portapy_value_retain:
-    jmp _portapy_value_retain_impl
+    push rbx
+    call _portapy_value_retain_impl
+    pop rbx
+    ret
 
 portapy_value_release:
-    jmp _portapy_value_release_impl
+    push rbx
+    call _portapy_value_release_impl
+    pop rbx
+    ret
 """
 
 
@@ -154,19 +171,21 @@ portapy_runtime_create:
     cmp dword [rcx + 8], 1
     jne .runtime_create_abi_mismatch
     push rbx
-    sub rsp, 32
-    mov rbx, rdx
+    sub rsp, 48
+    mov [rsp + 32], rdx
     call _portapy_runtime_create_impl
+    mov [rsp + 40], rax
     test rax, rax
     jz .runtime_create_status
-    mov [rbx], rax
-    add rsp, 32
-    pop rbx
+    mov rdx, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov [rdx], r9
     xor eax, eax
-    ret
+    jmp .runtime_create_done
 .runtime_create_status:
     call _portapy_last_status_impl
-    add rsp, 32
+.runtime_create_done:
+    add rsp, 48
     pop rbx
     ret
 .runtime_create_invalid:
@@ -177,21 +196,27 @@ portapy_runtime_create:
     ret
 
 portapy_runtime_destroy:
-    jmp _portapy_runtime_destroy_impl
+    push rbx
+    sub rsp, 32
+    call _portapy_runtime_destroy_impl
+    add rsp, 32
+    pop rbx
+    ret
 
 portapy_value_from_i64:
     test r8, r8
     jz .value_from_i64_invalid
     push rbx
     sub rsp, 48
-    mov rbx, r8
+    mov [rsp + 32], r8
     call _portapy_value_from_i64_impl
-    mov [rsp + 32], rax
+    mov [rsp + 40], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_from_i64_done
-    mov r9, [rsp + 32]
-    mov [rbx], r9
+    mov r8, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov [r8], r9
 .value_from_i64_done:
     add rsp, 48
     pop rbx
@@ -205,14 +230,15 @@ portapy_value_get_kind:
     jz .value_get_kind_invalid
     push rbx
     sub rsp, 48
-    mov rbx, r8
+    mov [rsp + 32], r8
     call _portapy_value_get_kind_impl
-    mov [rsp + 32], rax
+    mov [rsp + 40], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_get_kind_done
-    mov r9, [rsp + 32]
-    mov dword [rbx], r9d
+    mov r8, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov dword [r8], r9d
 .value_get_kind_done:
     add rsp, 48
     pop rbx
@@ -226,14 +252,15 @@ portapy_value_as_i64:
     jz .value_as_i64_invalid
     push rbx
     sub rsp, 48
-    mov rbx, r8
+    mov [rsp + 32], r8
     call _portapy_value_as_i64_impl
-    mov [rsp + 32], rax
+    mov [rsp + 40], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_as_i64_done
-    mov r9, [rsp + 32]
-    mov [rbx], r9
+    mov r8, [rsp + 32]
+    mov r9, [rsp + 40]
+    mov [r8], r9
 .value_as_i64_done:
     add rsp, 48
     pop rbx
@@ -243,10 +270,20 @@ portapy_value_as_i64:
     ret
 
 portapy_value_retain:
-    jmp _portapy_value_retain_impl
+    push rbx
+    sub rsp, 32
+    call _portapy_value_retain_impl
+    add rsp, 32
+    pop rbx
+    ret
 
 portapy_value_release:
-    jmp _portapy_value_release_impl
+    push rbx
+    sub rsp, 32
+    call _portapy_value_release_impl
+    add rsp, 32
+    pop rbx
+    ret
 """
 
 

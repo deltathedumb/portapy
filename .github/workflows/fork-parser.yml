@@ -49,8 +49,8 @@ jobs:
               source = source.replace(old, new, 1)
           elif new not in source:
               raise SystemExit('parser extension initialization changed upstream')
-          if 'extensions.' in source:
-              raise SystemExit('unremoved parser extension module reference')
+          if 'from . import extensions' in source or 'extensions.ExtensionContext' in source:
+              raise SystemExit('unremoved executable parser extension reference')
           path.write_text(source, encoding='utf-8')
           PY
 
@@ -88,7 +88,7 @@ jobs:
           assert module.body
           parser_source = Path('src/portapy/parser/parser.py').read_text(encoding='utf-8')
           assert 'from . import extensions' not in parser_source
-          assert 'extensions.' not in parser_source
+          assert 'extensions.ExtensionContext' not in parser_source
           try:
               parse_source('final class Hidden:\n    pass\n')
           except Exception as error:

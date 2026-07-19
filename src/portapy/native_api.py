@@ -113,6 +113,14 @@ def _skip_space(source: str, source_size: int, position: int) -> int:
     return position
 
 
+def _trim_statement_bounds(source: str, start: int, end: int) -> list[int]:
+    while start < end and source[start].isspace():
+        start += 1
+    while end > start and source[end - 1].isspace():
+        end -= 1
+    return [start, end]
+
+
 def _parse_identifier_bounds(source: str, source_size: int, position: int) -> list[int]:
     position = _skip_space(source, source_size, position)
     if position >= source_size:
@@ -243,6 +251,26 @@ def _parse_expression(runtime: int, source: str, source_size: int, position: int
         position = right[1]
 
 
+def _exec_assignment_span(runtime: int, source: str, source_size: int) -> int:
+    bounds = _parse_identifier_bounds(source, source_size, 0)
+    if bounds[2] != PORTAPY_OK:
+        return _set_status(bounds[2])
+    name = source[bounds[0]:bounds[1]]
+    position = _skip_space(source, source_size, bounds[1])
+    if position >= source_size or source[position] != "=":
+        return _set_status(PORTAPY_COMPILE_ERROR)
+    parsed = _parse_expression(runtime, source, source_size, position + 1)
+    if parsed[2] != PORTAPY_OK:
+        return _set_status(parsed[2])
+    end = _skip_space(source, source_size, parsed[1])
+    if end != source_size:
+        return _set_status(PORTAPY_COMPILE_ERROR)
+    value = _append_value(runtime, PORTAPY_VALUE_INT, parsed[0])
+    if value == 0:
+        return _last_status[0]
+    return _bind_global(runtime, name, value)
+
+
 def portapy_abi_version() -> int:
     return 1
 
@@ -297,23 +325,38 @@ def _portapy_exec_span_impl(runtime: int, source: str, source_size: int) -> int:
         return _set_status(PORTAPY_INVALID_HANDLE)
     if source_size < 0:
         return _set_status(PORTAPY_INVALID_ARGUMENT)
-    bounds = _parse_identifier_bounds(source, source_size, 0)
-    if bounds[2] != PORTAPY_OK:
-        return _set_status(bounds[2])
-    name = source[bounds[0]:bounds[1]]
-    position = _skip_space(source, source_size, bounds[1])
-    if position >= source_size or source[position] != "=":
-        return _set_status(PORTAPY_COMPILE_ERROR)
-    parsed = _parse_expression(runtime, source, source_size, position + 1)
-    if parsed[2] != PORTAPY_OK:
-        return _set_status(parsed[2])
-    end = _skip_space(source, source_size, parsed[1])
-    if end != source_size:
-        return _set_status(PORTAPY_COMPILE_ERROR)
-    value = _append_value(runtime, PORTAPY_VALUE_INT, parsed[0])
-    if value == 0:
-        return _last_status[0]
-    return _bind_global(runtime, name, value)
+
+    position = 0
+    while position < source_size:
+        while position < source_size:
+            char = source[position]
+            if char != ";" and not char.isspace():
+                break
+            position += 1
+        if position >= source_size:
+            return _set_status(PORTAPY_OK)
+
+        start = position
+        while position < source_size:
+            char = source[position]
+            if char == ";" or char == "\n" or char == "#":
+                break
+            position += 1
+        end = position
+        bounds = _trim_statement_bounds(source, start, end)
+        if bounds[0] < bounds[1]:
+            statement = source[bounds[0]:bounds[1]]
+            status = _exec_assignment_span(runtime, statement, len(statement))
+            if status != PORTAPY_OK:
+                return status
+
+        if position < source_size and source[position] == "#":
+            while position < source_size and source[position] != "\n":
+                position += 1
+        if position < source_size:
+            position += 1
+
+    return _set_status(PORTAPY_OK)
 
 
 def _portapy_get_global_span_impl(runtime: int, name: str, name_size: int) -> int:

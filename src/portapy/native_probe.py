@@ -12,4 +12,4 @@ def portapy_abi_version() -> int:
 
 def portapy_opcode_probe() -> int:
     instruction = Instruction(Op.BINARY_ADD, 0)
-    return instruction.op.value
+    return instruction.op

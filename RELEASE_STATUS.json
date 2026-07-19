@@ -14,11 +14,13 @@
     "bit-exact binary64 values",
     "retain and release",
     "runtime isolation",
-    "UTF-8 integer expression evaluation"
+    "UTF-8 integer expression evaluation",
+    "single integer assignment statements",
+    "runtime-global integer lookup"
   ],
   "release_blockers": [
-    "general PortaPy-owned Python lexer/parser and statement grammar beyond the numeric expression subset",
-    "general source and bytecode execution APIs beyond integer expression evaluation",
+    "general PortaPy-owned Python lexer/parser and statement grammar beyond numeric expressions and single assignments",
+    "general source and bytecode execution APIs beyond integer expressions and assignments",
     "structured errors and traceback retrieval",
     "host callbacks and module imports",
     "string and bytes value handles"

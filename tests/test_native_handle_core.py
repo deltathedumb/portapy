@@ -48,6 +48,33 @@ def test_runtime_and_i64_value_lifecycle() -> None:
     assert api._portapy_runtime_destroy_impl(runtime) == api.PORTAPY_INVALID_HANDLE
 
 
+def test_f64_value_lifecycle_and_checked_conversion() -> None:
+    runtime = api._portapy_runtime_create_impl()
+    value = api._portapy_value_from_f64_impl(runtime, -13.25)
+
+    assert value > 0
+    assert api._portapy_value_get_kind_impl(runtime, value) == api.PORTAPY_VALUE_FLOAT
+    assert api._portapy_value_as_f64_impl(runtime, value) == -13.25
+    assert api._portapy_last_status_impl() == api.PORTAPY_OK
+
+    assert api._portapy_value_as_i64_impl(runtime, value) == 0
+    assert api._portapy_last_status_impl() == api.PORTAPY_TYPE_ERROR
+
+    integer = api._portapy_value_from_i64_impl(runtime, 3)
+    assert api._portapy_value_as_f64_impl(runtime, integer) == 0.0
+    assert api._portapy_last_status_impl() == api.PORTAPY_TYPE_ERROR
+
+    assert api._portapy_value_retain_impl(runtime, value) == api.PORTAPY_OK
+    assert api._portapy_value_release_impl(runtime, value) == api.PORTAPY_OK
+    assert api._portapy_value_as_f64_impl(runtime, value) == -13.25
+    assert api._portapy_value_release_impl(runtime, value) == api.PORTAPY_OK
+    assert api._portapy_value_as_f64_impl(runtime, value) == 0.0
+    assert api._portapy_last_status_impl() == api.PORTAPY_INVALID_HANDLE
+
+    assert api._portapy_value_release_impl(runtime, integer) == api.PORTAPY_OK
+    assert api._portapy_runtime_destroy_impl(runtime) == api.PORTAPY_OK
+
+
 def test_values_are_isolated_by_runtime() -> None:
     first = api._portapy_runtime_create_impl()
     second = api._portapy_runtime_create_impl()
@@ -57,10 +84,18 @@ def test_values_are_isolated_by_runtime() -> None:
     assert api._portapy_value_release_impl(second, value) == api.PORTAPY_INVALID_HANDLE
     assert api._portapy_value_as_i64_impl(first, value) == 123
 
+    floating = api._portapy_value_from_f64_impl(first, 0.125)
+    assert api._portapy_value_as_f64_impl(second, floating) == 0.0
+    assert api._portapy_last_status_impl() == api.PORTAPY_INVALID_HANDLE
+    assert api._portapy_value_as_f64_impl(first, floating) == 0.125
+
 
 def test_destroy_invalidates_owned_values() -> None:
     runtime = api._portapy_runtime_create_impl()
     value = api._portapy_value_from_i64_impl(runtime, 7)
+    floating = api._portapy_value_from_f64_impl(runtime, 1.5)
     assert api._portapy_runtime_destroy_impl(runtime) == api.PORTAPY_OK
     assert api._portapy_value_get_kind_impl(runtime, value) == api.PORTAPY_VALUE_OBJECT
+    assert api._portapy_last_status_impl() == api.PORTAPY_INVALID_HANDLE
+    assert api._portapy_value_as_f64_impl(runtime, floating) == 0.0
     assert api._portapy_last_status_impl() == api.PORTAPY_INVALID_HANDLE

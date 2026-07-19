@@ -5,7 +5,7 @@ from portapy.core.bytecode import CodeObject, Instruction, Op
 
 def test_opcode_value_and_validation_remain_exact() -> None:
     instruction = Instruction(Op.BINARY_ADD, 0)
-    assert instruction.op.value == 10
+    assert instruction.op == 10
     code = CodeObject(
         name="probe",
         instructions=[Instruction(Op.LOAD_CONST, 0), Instruction(Op.RETURN, 0)],

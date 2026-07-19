@@ -1,8 +1,8 @@
-"""Portable bytecode model for pyinbin.
+"""Portable bytecode model for PortaPy.
 
 Instructions use integer operands only; names and literal values live in the
 containing ``CodeObject`` tables. This keeps serialization independent of a
-host Python object graph and maps directly onto the future native VM.
+host Python object graph and maps directly onto the native VM.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ class CodeObject:
         if name == "co_name":
             return self.name
         if name == "co_filename":
-            return "<pyinbin>"
+            return "<portapy>"
         if name == "co_firstlineno":
             return 1
         if name == "co_argcount":
@@ -182,11 +182,33 @@ class CodeObject:
         for offset, instr in enumerate(self.instructions):
             if not isinstance(instr.op, Op):
                 raise ValueError(f"{self.name}: invalid opcode at {offset}")
-            if instr.op in (Op.LOAD_CONST, Op.MAKE_FUNCTION, Op.MAKE_CLASS, Op.MATCH_EXCEPTION, Op.MATCH_PATTERN) and not 0 <= instr.arg < len(self.constants):
+            op_value = int(instr.op)
+            if op_value in (
+                int(Op.LOAD_CONST),
+                int(Op.MAKE_FUNCTION),
+                int(Op.MAKE_CLASS),
+                int(Op.MATCH_EXCEPTION),
+                int(Op.MATCH_PATTERN),
+            ) and not 0 <= instr.arg < len(self.constants):
                 raise ValueError(f"{self.name}: constant index out of range at {offset}")
-            if instr.op in (Op.LOAD_NAME, Op.STORE_NAME, Op.STORE_GLOBAL, Op.GET_ATTR, Op.SET_ATTR, Op.DELETE_ATTR, Op.DELETE_NAME) and not 0 <= instr.arg < len(self.names):
+            if op_value in (
+                int(Op.LOAD_NAME),
+                int(Op.STORE_NAME),
+                int(Op.STORE_GLOBAL),
+                int(Op.GET_ATTR),
+                int(Op.SET_ATTR),
+                int(Op.DELETE_ATTR),
+                int(Op.DELETE_NAME),
+            ) and not 0 <= instr.arg < len(self.names):
                 raise ValueError(f"{self.name}: name index out of range at {offset}")
-            if instr.op in (Op.JUMP, Op.JUMP_IF_FALSE, Op.JUMP_IF_TRUE, Op.JUMP_IF_FALSE_KEEP, Op.JUMP_IF_TRUE_KEEP, Op.TRY_BEGIN) and not 0 <= instr.arg <= len(self.instructions):
+            if op_value in (
+                int(Op.JUMP),
+                int(Op.JUMP_IF_FALSE),
+                int(Op.JUMP_IF_TRUE),
+                int(Op.JUMP_IF_FALSE_KEEP),
+                int(Op.JUMP_IF_TRUE_KEEP),
+                int(Op.TRY_BEGIN),
+            ) and not 0 <= instr.arg <= len(self.instructions):
                 raise ValueError(f"{self.name}: jump target out of range at {offset}")
             if instr.arg < 0:
                 raise ValueError(f"{self.name}: negative operand at {offset}")

@@ -12,18 +12,22 @@
     "bool values",
     "signed 64-bit integer values",
     "bit-exact binary64 values",
+    "UTF-8 string value handles",
+    "arbitrary bytes value handles",
+    "checked text and byte buffer copies",
     "retain and release",
     "runtime isolation",
     "UTF-8 integer expression evaluation",
     "integer assignment blocks with newline and semicolon separators",
     "blank lines and line comments in assignment blocks",
-    "runtime-global integer lookup"
+    "runtime-global integer lookup",
+    "per-runtime structured error status, type, message, line, and column",
+    "Linux and Windows external C conformance hosts"
   ],
   "release_blockers": [
     "general PortaPy-owned Python lexer/parser and statement grammar beyond integer assignment blocks",
     "general source and bytecode execution APIs beyond integer expressions and assignments",
-    "structured errors and traceback retrieval",
-    "host callbacks and module imports",
-    "string and bytes value handles"
+    "full traceback frame retrieval beyond structured error location",
+    "host callbacks and module imports"
   ]
 }

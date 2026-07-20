@@ -66,6 +66,16 @@ typedef struct portapy_config {
     void *host_context;
 } portapy_config;
 
+typedef struct portapy_error_info {
+    size_t struct_size;
+    portapy_status status;
+    uint32_t reserved;
+    size_t line;
+    size_t column;
+    size_t type_size;
+    size_t message_size;
+} portapy_error_info;
+
 PORTAPY_API portapy_status PORTAPY_CALL portapy_library_initialize(void);
 PORTAPY_API uint32_t PORTAPY_CALL portapy_abi_version(void);
 
@@ -118,6 +128,18 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_f64(
     double value,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_utf8(
+    portapy_runtime runtime,
+    const uint8_t *data,
+    size_t size,
+    portapy_value *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_bytes(
+    portapy_runtime runtime,
+    const uint8_t *data,
+    size_t size,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_kind(
     portapy_runtime runtime,
     portapy_value value,
@@ -138,6 +160,18 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_f64(
     portapy_value value,
     double *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_size(
+    portapy_runtime runtime,
+    portapy_value value,
+    size_t *out_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_copy_data(
+    portapy_runtime runtime,
+    portapy_value value,
+    uint8_t *buffer,
+    size_t capacity,
+    size_t *out_size
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_retain(
     portapy_runtime runtime,
     portapy_value value
@@ -145,6 +179,26 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_retain(
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_release(
     portapy_runtime runtime,
     portapy_value value
+);
+
+PORTAPY_API portapy_status PORTAPY_CALL portapy_error_get_info(
+    portapy_runtime runtime,
+    portapy_error_info *out_info
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_error_copy_type_utf8(
+    portapy_runtime runtime,
+    uint8_t *buffer,
+    size_t capacity,
+    size_t *out_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_error_copy_message_utf8(
+    portapy_runtime runtime,
+    uint8_t *buffer,
+    size_t capacity,
+    size_t *out_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_error_clear(
+    portapy_runtime runtime
 );
 
 #ifdef __cplusplus

@@ -61,6 +61,10 @@ jobs:
             tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
           ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/linux-boolean-expression-output.txt
           grep -qx 'boolean-expressions: ok' dist/linux-boolean-expression-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
+          ./dist/native_control_flow_host ./dist/libportapy.so | tee dist/linux-control-flow-output.txt
+          grep -qx 'control-flow: ok' dist/linux-control-flow-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
@@ -72,6 +76,7 @@ jobs:
             dist/linux-text-error-output.txt
             dist/linux-typed-literal-output.txt
             dist/linux-boolean-expression-output.txt
+            dist/linux-control-flow-output.txt
 
   windows:
     runs-on: windows-2025
@@ -127,6 +132,12 @@ jobs:
           $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
           $booleanExpressionOutput | Out-File -Encoding utf8 dist/windows-boolean-expression-output.txt
           if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $controlFlowOutput = & dist/native_control_flow_host.exe dist/portapy.dll
+          $controlFlowOutput | Out-File -Encoding utf8 dist/windows-control-flow-output.txt
+          if ($controlFlowOutput -ne 'control-flow: ok') { throw "unexpected control-flow output: $controlFlowOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
@@ -138,6 +149,7 @@ jobs:
             dist/windows-text-error-output.txt
             dist/windows-typed-literal-output.txt
             dist/windows-boolean-expression-output.txt
+            dist/windows-control-flow-output.txt
 
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

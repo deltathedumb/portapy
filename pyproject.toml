@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Pixelated Dream" }]
 
 [project.optional-dependencies]
-build = ["asmpython @ git+https://github.com/deltathedumb/asmpython.git@beta"]
+build = ["asmpython @ git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0"]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

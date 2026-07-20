@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from tools.native_surface import PUBLIC_EXPORTS
+from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
 REQUIRED = {
@@ -66,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     args.dist.mkdir(parents=True, exist_ok=True)
     records: dict[str, dict[str, object]] = {}
     expected_exports = list(PUBLIC_EXPORTS)
+    expected_python_exports = list(PYTHON_MODULE_EXPORTS)
     for target, name in REQUIRED.items():
         path = args.dist / name
         metadata_path = path.with_suffix(path.suffix + ".json")
@@ -85,6 +87,10 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
             raise SystemExit(f"public export surface mismatch in {metadata_path}")
+        if metadata.get("python_module_exports") != expected_python_exports:
+            raise SystemExit(f"Python module surface mismatch in {metadata_path}")
+        if metadata.get("python_module_entry") != "portapy.public_api":
+            raise SystemExit(f"Python module entry mismatch in {metadata_path}")
         records[name] = {
             "platform": target,
             "sha256": actual_digest,
@@ -99,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
         "release": status,
         "artifacts": records,
         "public_exports": expected_exports,
+        "python_module_exports": expected_python_exports,
+        "python_module_entry": "portapy.public_api",
     }
     (args.dist / "release-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
@@ -121,11 +129,16 @@ def main(argv: list[str] | None = None) -> int:
     notes.extend(
         [
             "",
+            "## High-level Python surface",
+            "",
+            "The artifact metadata declares the environment-oriented binary-module "
+            "surface: `new`, `Environment`, `Snapshot`, and structured public errors.",
+            "",
             "## Not yet included",
             "",
-            "This is not the final Python 3.14 interpreter release. Source "
-            "execution remains gated until PortaPy's own Python-written parser "
-            "replaces the bootstrap host-ast frontend.",
+            "This is not the final Python 3.14 interpreter release. Native source "
+            "execution remains gated on compound statements, function/class "
+            "execution, host callbacks, and module imports.",
             "",
         ]
     )

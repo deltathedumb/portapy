@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
-            'git+https://github.com/deltathedumb/asmpython.git@beta'
+            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
       - name: Build genuine Python-authored library
         run: |
           python tools/build_native.py \
@@ -53,6 +53,10 @@ jobs:
             tests/native_statement_host.c -ldl -o dist/native_statement_host
           ./dist/native_statement_host ./dist/libportapy.so | tee dist/statement-output.txt
           grep -qx 'statement-blocks: ok' dist/statement-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_text_error_host.c -ldl -o dist/native_text_error_host
+          ./dist/native_text_error_host ./dist/libportapy.so | tee dist/text-error-output.txt
+          grep -qx 'native-text-errors: ok' dist/text-error-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -71,7 +75,7 @@ jobs:
         run: |
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
-            'git+https://github.com/deltathedumb/asmpython.git@beta'
+            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
       - name: Build genuine Python-authored library
         shell: powershell
         run: |
@@ -105,6 +109,12 @@ jobs:
           $statementOutput = & dist/native_statement_host.exe dist/portapy.dll
           $statementOutput | Out-File -Encoding utf8 dist/statement-output.txt
           if ($statementOutput -ne 'statement-blocks: ok') { throw "unexpected statement output: $statementOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_text_error_host.c -o dist/native_text_error_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $textErrorOutput = & dist/native_text_error_host.exe dist/portapy.dll
+          $textErrorOutput | Out-File -Encoding utf8 dist/text-error-output.txt
+          if ($textErrorOutput -ne 'native-text-errors: ok') { throw "unexpected text/error output: $textErrorOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

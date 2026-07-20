@@ -31,7 +31,7 @@ jobs:
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build libportapy.so
         run: |
-          python tools/build_native.py \
+          python tools/build_native_typed.py \
             --target linux \
             --output dist/libportapy.so \
             --work-dir dist/build-linux
@@ -53,6 +53,10 @@ jobs:
             tests/native_text_error_host.c -ldl -o dist/native_text_error_host
           ./dist/native_text_error_host ./dist/libportapy.so | tee dist/linux-text-error-output.txt
           grep -qx 'native-text-errors: ok' dist/linux-text-error-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
+          ./dist/native_typed_literal_host ./dist/libportapy.so | tee dist/linux-typed-literal-output.txt
+          grep -qx 'typed-literals: ok' dist/linux-typed-literal-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
@@ -62,6 +66,7 @@ jobs:
             dist/linux-host-output.txt
             dist/linux-statement-output.txt
             dist/linux-text-error-output.txt
+            dist/linux-typed-literal-output.txt
 
   windows:
     runs-on: windows-2025
@@ -79,7 +84,7 @@ jobs:
       - name: Build portapy.dll
         shell: powershell
         run: |
-          python tools/build_native.py `
+          python tools/build_native_typed.py `
             --target windows `
             --output dist/portapy.dll `
             --work-dir dist/build-windows
@@ -105,6 +110,12 @@ jobs:
           $textErrorOutput = & dist/native_text_error_host.exe dist/portapy.dll
           $textErrorOutput | Out-File -Encoding utf8 dist/windows-text-error-output.txt
           if ($textErrorOutput -ne 'native-text-errors: ok') { throw "unexpected text/error output: $textErrorOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_typed_literal_host.c -o dist/native_typed_literal_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $typedLiteralOutput = & dist/native_typed_literal_host.exe dist/portapy.dll
+          $typedLiteralOutput | Out-File -Encoding utf8 dist/windows-typed-literal-output.txt
+          if ($typedLiteralOutput -ne 'typed-literals: ok') { throw "unexpected typed literal output: $typedLiteralOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
@@ -114,6 +125,7 @@ jobs:
             dist/windows-host-output.txt
             dist/windows-statement-output.txt
             dist/windows-text-error-output.txt
+            dist/windows-typed-literal-output.txt
 
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

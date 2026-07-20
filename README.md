@@ -24,6 +24,8 @@ Implemented native ABI and source surface:
 - retain/release and runtime-owned teardown
 - integer arithmetic expressions
 - native `None`, boolean, quoted string, and bytes literals
+- equality, ordering, `is`, and `is not` comparisons
+- `not`, `and`, and `or` with Python-style truthiness and operand returns
 - typed global assignment, lookup, aliasing, and `eval`
 - newline/semicolon statement blocks with quote-aware comments and separators
 - exact public export allowlists
@@ -31,7 +33,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on general expression grammar, compound statements, functions and calls, full traceback-frame retrieval, host callbacks, and module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on broader expression grammar, compound statements, functions and calls, full traceback-frame retrieval, host callbacks, and module imports.
 
 ## Relationship to pyinbin
 

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   linux:
@@ -28,6 +29,32 @@ jobs:
             --target linux \
             --output dist/libportapy.so \
             --work-dir dist/build-linux
+      - name: Report Linux build failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '<!-- portapy-native-linux-diagnostic -->'
+            echo '### Linux native build diagnostic'
+            echo
+            echo '```text'
+            find dist -maxdepth 3 -type f -print 2>/dev/null || true
+            echo
+            for file in \
+              dist/build-linux/linux-asmpython-build.log \
+              dist/build-linux/linux-nasm.log \
+              dist/build-linux/linux-glue.log \
+              dist/build-linux/linux-link.log; do
+              if [ -f "$file" ]; then
+                echo "===== $file ====="
+                tail -n 120 "$file"
+              fi
+            done
+            echo '```'
+          } > /tmp/portapy-linux-diagnostic.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/portapy-linux-diagnostic.md
       - name: Verify exports and execute external hosts
         run: |
           if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
@@ -88,6 +115,35 @@ jobs:
             --output dist/portapy.dll `
             --work-dir dist/build-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Report Windows build failure
+        if: failure() && github.event_name == 'pull_request'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $lines = @(
+            '<!-- portapy-native-windows-diagnostic -->',
+            '### Windows native build diagnostic',
+            '',
+            '```text'
+          )
+          Get-ChildItem -Path dist -File -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object { $lines += $_.FullName }
+          foreach ($file in @(
+            'dist/build-windows/windows-asmpython-build.log',
+            'dist/build-windows/windows-nasm.log',
+            'dist/build-windows/windows-glue.log',
+            'dist/build-windows/windows-link.log'
+          )) {
+            if (Test-Path $file) {
+              $lines += "===== $file ====="
+              $lines += Get-Content $file -Tail 120
+            }
+          }
+          $lines += '```'
+          $lines | Set-Content -Encoding utf8 $env:RUNNER_TEMP\portapy-windows-diagnostic.md
+          gh pr comment "${{ github.event.pull_request.number }}" `
+            --body-file $env:RUNNER_TEMP\portapy-windows-diagnostic.md
       - name: Verify exports and execute external hosts
         shell: powershell
         run: |

@@ -1,4 +1,4 @@
-"""Build PortaPy using the typed-literal native source entry."""
+"""Build PortaPy using the extended Python-authored native source entry."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--source",
         type=Path,
-        default=REPOSITORY_ROOT / "src" / "portapy" / "native_api_typed.py",
+        default=REPOSITORY_ROOT / "src" / "portapy" / "native_api_expressions.py",
     )
     parser.add_argument("--work-dir", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
             work_dir=args.work_dir,
         )
     except BuildFailure as error:
-        print(f"portapy typed native build failed: {error}", file=sys.stderr)
+        print(f"portapy native source build failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(metadata, sort_keys=True))
     return 0

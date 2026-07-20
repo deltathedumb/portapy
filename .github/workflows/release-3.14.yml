@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
-            'git+https://github.com/deltathedumb/asmpython.git@beta'
+            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
       - name: Build libportapy.so
         run: |
           python tools/build_native.py \
@@ -45,6 +45,14 @@ jobs:
             tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy.so | tee dist/linux-host-output.txt
           grep -qx 'opaque-floats: ok' dist/linux-host-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_statement_host.c -ldl -o dist/native_statement_host
+          ./dist/native_statement_host ./dist/libportapy.so | tee dist/linux-statement-output.txt
+          grep -qx 'statement-blocks: ok' dist/linux-statement-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_text_error_host.c -ldl -o dist/native_text_error_host
+          ./dist/native_text_error_host ./dist/libportapy.so | tee dist/linux-text-error-output.txt
+          grep -qx 'native-text-errors: ok' dist/linux-text-error-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
@@ -52,6 +60,8 @@ jobs:
             dist/libportapy.so
             dist/libportapy.so.json
             dist/linux-host-output.txt
+            dist/linux-statement-output.txt
+            dist/linux-text-error-output.txt
 
   windows:
     runs-on: windows-2025
@@ -65,7 +75,7 @@ jobs:
         run: |
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
-            'git+https://github.com/deltathedumb/asmpython.git@beta'
+            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
       - name: Build portapy.dll
         shell: powershell
         run: |
@@ -83,6 +93,18 @@ jobs:
           $output = & dist/native_handle_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/windows-host-output.txt
           if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_statement_host.c -o dist/native_statement_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $statementOutput = & dist/native_statement_host.exe dist/portapy.dll
+          $statementOutput | Out-File -Encoding utf8 dist/windows-statement-output.txt
+          if ($statementOutput -ne 'statement-blocks: ok') { throw "unexpected statement output: $statementOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_text_error_host.c -o dist/native_text_error_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $textErrorOutput = & dist/native_text_error_host.exe dist/portapy.dll
+          $textErrorOutput | Out-File -Encoding utf8 dist/windows-text-error-output.txt
+          if ($textErrorOutput -ne 'native-text-errors: ok') { throw "unexpected text/error output: $textErrorOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
@@ -90,6 +112,8 @@ jobs:
             dist/portapy.dll
             dist/portapy.dll.json
             dist/windows-host-output.txt
+            dist/windows-statement-output.txt
+            dist/windows-text-error-output.txt
 
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

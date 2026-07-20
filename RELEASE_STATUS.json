@@ -17,23 +17,29 @@
     "checked text and byte buffer copies",
     "retain and release",
     "runtime isolation",
-    "integer arithmetic expression evaluation",
+    "precedence-aware integer arithmetic and power expressions",
+    "integer shifts and bitwise expressions",
+    "string and bytes concatenation and repetition",
     "typed literal evaluation for None, bool, str, and bytes",
     "equality and ordering comparisons",
     "identity comparisons with is and is not",
     "not, and, and or with operand-return semantics",
     "truthiness for native scalar handles",
-    "typed global assignment and aliasing",
-    "integer assignment blocks with newline and semicolon separators",
+    "typed global assignment, aliasing, and augmented assignment",
+    "statement blocks with newline and semicolon separators",
+    "bare expression statements and pass",
     "quote-aware statement separators and comments",
     "runtime-global typed value lookup",
     "per-runtime structured error status, type, message, line, and column",
+    "hosted new/Environment/Snapshot public API",
+    "declared Python binary-module export metadata",
     "Linux and Windows external C conformance hosts"
   ],
   "release_blockers": [
-    "general PortaPy-owned expression grammar beyond scalar arithmetic, comparisons, and boolean operators",
-    "compound statements, functions, calls, and general VM execution",
+    "compound statements including if, while, for, try, with, and match in the native source entry",
+    "native function definitions, calls, classes, and general VM execution",
     "full traceback frame retrieval beyond structured error location",
-    "host callbacks and module imports"
+    "native host callbacks required by add_modules and expose",
+    "native module import registration and loading"
   ]
 }

@@ -1,0 +1,185 @@
+name: Native full-core probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and verified asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Compile full frontend and VM
+        shell: bash
+        run: |
+          mkdir -p dist
+          set +e
+          set -o pipefail
+          python -m asmpython build src/portapy/native_full_core_probe.py \
+            --target linux --type library --backend legacy \
+            --no-pyinbin-fallback --keep-assembly \
+            -o dist/libportapy_full_core_probe.so \
+            2>&1 | tee dist/linux-full-core-build.log
+          compiler_status=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f dist/libportapy_full_core_probe.asm ]; then
+            exit "$compiler_status"
+          fi
+          python tools/nasm_module_init.py dist/libportapy_full_core_probe.asm \
+            --target linux --public-symbol portapy_library_initialize
+          python tools/nasm_exports.py dist/libportapy_full_core_probe.asm \
+            --export portapy_library_initialize \
+            --export portapy_abi_version \
+            --export portapy_full_core_probe
+          python tools/elf_pic.py dist/libportapy_full_core_probe.asm
+          nasm -f elf64 -w-label-redef-late \
+            dist/libportapy_full_core_probe.asm \
+            -o dist/libportapy_full_core_probe.o
+          cat > dist/portapy_full_core_probe.map <<'MAP'
+          {
+            global:
+              portapy_library_initialize;
+              portapy_abi_version;
+              portapy_full_core_probe;
+            local: *;
+          };
+          MAP
+          gcc -shared dist/libportapy_full_core_probe.o \
+            -Wl,--version-script=dist/portapy_full_core_probe.map \
+            -o dist/libportapy_full_core_probe.so
+      - name: Execute full core from external C host
+        run: |
+          if readelf -dW dist/libportapy_full_core_probe.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          cc -std=c11 -Wall -Wextra -Werror \
+            tests/native_full_core_probe_host.c -ldl \
+            -o dist/native_full_core_probe_host
+          ./dist/native_full_core_probe_host \
+            ./dist/libportapy_full_core_probe.so \
+            | tee dist/linux-full-core-output.txt
+          grep -qx 'full-core=42' dist/linux-full-core-output.txt
+      - name: Report Linux full-core failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '<!-- portapy-full-core-linux-diagnostic -->'
+            echo '### Linux full-core compiler diagnostic'
+            echo
+            echo '```text'
+            if [ -f dist/linux-full-core-build.log ]; then
+              tail -n 180 dist/linux-full-core-build.log
+            else
+              echo 'No compiler log was produced.'
+            fi
+            echo '```'
+          } > /tmp/portapy-full-core-linux.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/portapy-full-core-linux.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-full-core-probe
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and verified asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Compile full frontend and VM
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python -m asmpython build src/portapy/native_full_core_probe.py `
+            --target windows --type library --backend legacy `
+            --no-pyinbin-fallback --keep-assembly `
+            -o dist/portapy_full_core_probe.dll `
+            *>&1 | Tee-Object -FilePath dist/windows-full-core-build.log
+          $compilerExit = $LASTEXITCODE
+          if (-not (Test-Path dist/portapy_full_core_probe.asm)) {
+            exit $compilerExit
+          }
+          python tools/nasm_module_init.py dist/portapy_full_core_probe.asm `
+            --target windows --public-symbol portapy_library_initialize
+          python tools/nasm_exports.py dist/portapy_full_core_probe.asm `
+            --export portapy_library_initialize `
+            --export portapy_abi_version `
+            --export portapy_full_core_probe
+          nasm -f win64 -w-label-redef-late `
+            dist/portapy_full_core_probe.asm `
+            -o dist/portapy_full_core_probe.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          LIBRARY portapy_full_core_probe
+          EXPORTS
+              portapy_library_initialize
+              portapy_abi_version
+              portapy_full_core_probe
+          '@ | Set-Content -Encoding ascii dist/portapy_full_core_probe.def
+          gcc -shared dist/portapy_full_core_probe.obj `
+            dist/portapy_full_core_probe.def `
+            -o dist/portapy_full_core_probe.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute full core from external C host
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror `
+            tests/native_full_core_probe_host.c `
+            -o dist/native_full_core_probe_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_full_core_probe_host.exe `
+            dist/portapy_full_core_probe.dll
+          $output | Out-File -Encoding utf8 dist/windows-full-core-output.txt
+          if ($output -ne 'full-core=42') { throw "unexpected full-core output: $output" }
+      - name: Report Windows full-core failure
+        if: failure() && github.event_name == 'pull_request'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $lines = @(
+            '<!-- portapy-full-core-windows-diagnostic -->',
+            '### Windows full-core compiler diagnostic',
+            '',
+            '```text'
+          )
+          if (Test-Path dist/windows-full-core-build.log) {
+            $lines += Get-Content dist/windows-full-core-build.log -Tail 180
+          } else {
+            $lines += 'No compiler log was produced.'
+          }
+          $lines += '```'
+          $path = "$env:RUNNER_TEMP\portapy-full-core-windows.md"
+          $lines | Set-Content -Encoding utf8 $path
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file $path
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-full-core-probe
+          path: dist

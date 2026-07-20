@@ -14,12 +14,20 @@ PUBLIC_EXPORTS = (
     "portapy_value_from_bool",
     "portapy_value_from_i64",
     "portapy_value_from_f64",
+    "portapy_value_from_utf8",
+    "portapy_value_from_bytes",
     "portapy_value_get_kind",
     "portapy_value_as_bool",
     "portapy_value_as_i64",
     "portapy_value_as_f64",
+    "portapy_value_get_size",
+    "portapy_value_copy_data",
     "portapy_value_retain",
     "portapy_value_release",
+    "portapy_error_get_info",
+    "portapy_error_copy_type_utf8",
+    "portapy_error_copy_message_utf8",
+    "portapy_error_clear",
 )
 
 

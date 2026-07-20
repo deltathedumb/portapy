@@ -57,6 +57,10 @@ jobs:
             tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
           ./dist/native_typed_literal_host ./dist/libportapy.so | tee dist/linux-typed-literal-output.txt
           grep -qx 'typed-literals: ok' dist/linux-typed-literal-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
+          ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/linux-boolean-expression-output.txt
+          grep -qx 'boolean-expressions: ok' dist/linux-boolean-expression-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
@@ -67,6 +71,7 @@ jobs:
             dist/linux-statement-output.txt
             dist/linux-text-error-output.txt
             dist/linux-typed-literal-output.txt
+            dist/linux-boolean-expression-output.txt
 
   windows:
     runs-on: windows-2025
@@ -116,6 +121,12 @@ jobs:
           $typedLiteralOutput = & dist/native_typed_literal_host.exe dist/portapy.dll
           $typedLiteralOutput | Out-File -Encoding utf8 dist/windows-typed-literal-output.txt
           if ($typedLiteralOutput -ne 'typed-literals: ok') { throw "unexpected typed literal output: $typedLiteralOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
+          $booleanExpressionOutput | Out-File -Encoding utf8 dist/windows-boolean-expression-output.txt
+          if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
@@ -126,6 +137,7 @@ jobs:
             dist/windows-statement-output.txt
             dist/windows-text-error-output.txt
             dist/windows-typed-literal-output.txt
+            dist/windows-boolean-expression-output.txt
 
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

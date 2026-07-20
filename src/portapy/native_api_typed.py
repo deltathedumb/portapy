@@ -18,12 +18,10 @@ from .native_api import (
     PORTAPY_VALUE_BYTES,
     PORTAPY_VALUE_INT,
     PORTAPY_VALUE_NONE,
-    PORTAPY_VALUE_OBJECT,
     PORTAPY_VALUE_STRING,
     _append_data_value,
     _append_value,
     _bind_global,
-    _byte_data,
     _clear_runtime_error,
     _fail,
     _find_global_slot,
@@ -31,7 +29,7 @@ from .native_api import (
     _last_status,
     _parse_expression,
     _parse_identifier_bounds,
-    _record_parse_failure,
+    _runtime_error_line,
     _runtime_is_valid,
     _set_data_byte,
     _set_status,
@@ -39,7 +37,6 @@ from .native_api import (
     _trim_statement_bounds,
     _validate_utf8_value,
     _value_is_valid,
-    _value_kind,
     _value_refs,
     portapy_abi_version,
     _portapy_error_clear_impl,
@@ -147,11 +144,13 @@ def _parse_data_literal(
             while index < len(temporary):
                 status = _set_data_byte(runtime, value, index, temporary[index])
                 if status != PORTAPY_OK:
+                    _value_refs[value] -= 1
                     return [0, position, status]
                 index += 1
             if kind == PORTAPY_VALUE_STRING:
                 status = _validate_utf8_value(runtime, value)
                 if status != PORTAPY_OK:
+                    _value_refs[value] -= 1
                     return [0, position, status]
             return [value, position, PORTAPY_OK]
         parsed = _literal_byte(source, source_size, position)
@@ -207,11 +206,14 @@ def _parse_typed_expression(
         if remaining < source_size:
             return _numeric_value(runtime, source, source_size, position)
         if name == "None":
-            return [_append_value(runtime, PORTAPY_VALUE_NONE, 0), bounds[1], PORTAPY_OK]
+            value = _append_value(runtime, PORTAPY_VALUE_NONE, 0)
+            return [value, bounds[1], _last_status[0]]
         if name == "True":
-            return [_append_value(runtime, PORTAPY_VALUE_BOOL, 1), bounds[1], PORTAPY_OK]
+            value = _append_value(runtime, PORTAPY_VALUE_BOOL, 1)
+            return [value, bounds[1], _last_status[0]]
         if name == "False":
-            return [_append_value(runtime, PORTAPY_VALUE_BOOL, 0), bounds[1], PORTAPY_OK]
+            value = _append_value(runtime, PORTAPY_VALUE_BOOL, 0)
+            return [value, bounds[1], _last_status[0]]
         return _retain_global(runtime, name, bounds[1])
     return _numeric_value(runtime, source, source_size, position)
 

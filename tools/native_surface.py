@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 
-ASSEMBLY_EXPORTS = (
+ASSEMBLY_PUBLIC_EXPORTS = (
     "portapy_library_initialize",
     "portapy_abi_version",
     "portapy_runtime_create",
@@ -33,7 +33,26 @@ GLUE_EXPORTS = (
     "portapy_error_clear",
 )
 
-PUBLIC_EXPORTS = ASSEMBLY_EXPORTS + GLUE_EXPORTS
+GLUE_INTERNALS = (
+    "_portapy_last_status_impl",
+    "_portapy_value_from_data_begin_impl",
+    "_portapy_value_set_data_byte_impl",
+    "_portapy_value_validate_utf8_impl",
+    "_portapy_value_get_size_impl",
+    "_portapy_value_get_byte_impl",
+    "_portapy_value_release_impl",
+    "_portapy_error_status_impl",
+    "_portapy_error_line_impl",
+    "_portapy_error_column_impl",
+    "_portapy_error_type_size_impl",
+    "_portapy_error_type_byte_impl",
+    "_portapy_error_message_size_impl",
+    "_portapy_error_message_byte_impl",
+    "_portapy_error_clear_impl",
+)
+
+ASSEMBLY_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + GLUE_INTERNALS
+PUBLIC_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + GLUE_EXPORTS
 
 
 def linux_version_script() -> str:

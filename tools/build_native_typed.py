@@ -16,6 +16,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from tools.build_native import BuildFailure, build_native
+from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     except BuildFailure as error:
         print(f"portapy expression native build failed: {error}", file=sys.stderr)
         return 1
+
+    metadata["python_module_exports"] = list(PYTHON_MODULE_EXPORTS)
+    metadata["python_module_entry"] = "portapy.public_api"
+    metadata_path = args.output.resolve().with_suffix(args.output.suffix + ".json")
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metadata, sort_keys=True))
     return 0
 

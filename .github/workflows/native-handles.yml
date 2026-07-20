@@ -92,6 +92,10 @@ jobs:
             tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
           ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/boolean-expression-output.txt
           grep -qx 'boolean-expressions: ok' dist/boolean-expression-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
+          ./dist/native_control_flow_host ./dist/libportapy.so | tee dist/control-flow-output.txt
+          grep -qx 'control-flow: ok' dist/control-flow-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -191,6 +195,12 @@ jobs:
           $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
           $booleanExpressionOutput | Out-File -Encoding utf8 dist/boolean-expression-output.txt
           if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $controlFlowOutput = & dist/native_control_flow_host.exe dist/portapy.dll
+          $controlFlowOutput | Out-File -Encoding utf8 dist/control-flow-output.txt
+          if ($controlFlowOutput -ne 'control-flow: ok') { throw "unexpected control-flow output: $controlFlowOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

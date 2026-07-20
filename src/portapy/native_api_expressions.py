@@ -22,7 +22,6 @@ from .native_api import (
     _set_status,
     _skip_space,
     _trim_statement_bounds,
-    _value_refs,
     portapy_abi_version,
     _portapy_error_clear_impl,
     _portapy_error_column_impl,
@@ -68,10 +67,71 @@ def _parse_scalar_complete(runtime: int, source: str, start: int, end: int) -> l
     return [parsed[0], end, PORTAPY_OK]
 
 
-# The boolean parser intentionally resolves this helper dynamically. Replacing
-# it composes the two Python-authored parser layers without copying semantics
+def _find_comparison(source: str, start: int, end: int) -> list[int]:
+    """Find a top-level comparison without misclassifying ``<<`` or ``>>``."""
+    quote = ""
+    escaped = False
+    depth = 0
+    position = start
+    while position < end:
+        char = source[position]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            position += 1
+            continue
+        if char == "'" or char == '"':
+            quote = char
+            position += 1
+            continue
+        if char == "(":
+            depth += 1
+            position += 1
+            continue
+        if char == ")":
+            if depth > 0:
+                depth -= 1
+            position += 1
+            continue
+        if depth != 0:
+            position += 1
+            continue
+        if char == "=" and position + 1 < end and source[position + 1] == "=":
+            return [position, position + 2, _boolean._CMP_EQ]
+        if char == "!" and position + 1 < end and source[position + 1] == "=":
+            return [position, position + 2, _boolean._CMP_NE]
+        if char == "<":
+            if position + 1 < end and source[position + 1] == "<":
+                position += 2
+                continue
+            if position + 1 < end and source[position + 1] == "=":
+                return [position, position + 2, _boolean._CMP_LE]
+            return [position, position + 1, _boolean._CMP_LT]
+        if char == ">":
+            if position + 1 < end and source[position + 1] == ">":
+                position += 2
+                continue
+            if position + 1 < end and source[position + 1] == "=":
+                return [position, position + 2, _boolean._CMP_GE]
+            return [position, position + 1, _boolean._CMP_GT]
+        if _boolean._word_at(source, position, end, "is"):
+            after_is = _skip_space(source, end, position + 2)
+            if _boolean._word_at(source, after_is, end, "not"):
+                return [position, after_is + 3, _boolean._CMP_IS_NOT]
+            return [position, position + 2, _boolean._CMP_IS]
+        position += 1
+    return [-1, -1, 0]
+
+
+# The boolean parser intentionally resolves these helpers dynamically. Replacing
+# them composes the two Python-authored parser layers without copying semantics
 # into C or generated assembly.
 _boolean._parse_typed_complete = _parse_scalar_complete
+_boolean._find_comparison = _find_comparison
 
 
 def _parse_expression(runtime: int, source: str, start: int, end: int) -> list[int]:

@@ -103,6 +103,65 @@ class Runtime:
     def clear_error(self) -> None:
         self._last_error = None
 
+    def has_global(self, name: str) -> tuple[Status, bool]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, False
+        if not isinstance(name, str) or not name:
+            return self._capture(
+                Status.INVALID_ARGUMENT,
+                ValueError("global name must be a non-empty string"),
+            ), False
+        return Status.OK, name in self._globals
+
+    def set_global(self, name: str, value: object) -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if not isinstance(name, str) or not name:
+            return self._capture(
+                Status.INVALID_ARGUMENT,
+                ValueError("global name must be a non-empty string"),
+            )
+        self._globals[name] = value
+        return Status.OK
+
+    def delete_global(self, name: str) -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if name not in self._globals:
+            return self._capture(Status.NOT_FOUND, KeyError(name))
+        del self._globals[name]
+        return Status.OK
+
+    def read_global(self, name: str) -> tuple[Status, object]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, None
+        if name not in self._globals:
+            return self._capture(Status.NOT_FOUND, KeyError(name)), None
+        return Status.OK, self._globals[name]
+
+    def snapshot_globals(self) -> tuple[Status, dict[str, object]]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, {}
+        return Status.OK, dict(self._globals)
+
+    def restore_globals(self, bindings: dict[str, object]) -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if not isinstance(bindings, dict):
+            return self._capture(
+                Status.INVALID_ARGUMENT,
+                TypeError("snapshot bindings must be a dict"),
+            )
+        self._globals.clear()
+        self._globals.update(bindings)
+        return Status.OK
+
     def exec_utf8(self, source: str, filename: str = "<portapy>") -> Status:
         blocked = self._ready()
         if blocked is not None:
@@ -139,6 +198,15 @@ class Runtime:
         if name not in self._globals:
             return self._capture(Status.NOT_FOUND, KeyError(name)), 0
         return Status.OK, self._store(self._globals[name])
+
+    def unbox(self, handle: int) -> tuple[Status, object]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, None
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), None
+        return Status.OK, slot.value
 
     def call(
         self,

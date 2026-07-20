@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from tools.native_surface import PUBLIC_EXPORTS
+from tools.python_surface import PYTHON_MODULE_EXPORTS
 from tools.release_gate import main
 
 
@@ -26,9 +27,11 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "artifact": name,
             "size": artifact.stat().st_size,
             "sha256": _sha256(artifact),
-            "source": "src/portapy/native_api.py",
+            "source": "src/portapy/native_api_expressions.py",
             "source_sha256": "0" * 64,
             "public_exports": list(PUBLIC_EXPORTS),
+            "python_module_exports": list(PYTHON_MODULE_EXPORTS),
+            "python_module_entry": "portapy.public_api",
             "python_built_runtime": True,
         }
         artifact.with_suffix(artifact.suffix + ".json").write_text(
@@ -58,5 +61,7 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
     manifest = json.loads((dist / "release-manifest.json").read_text(encoding="utf-8"))
     assert manifest["release"]["stage"] == "developer-preview"
     assert manifest["public_exports"] == list(PUBLIC_EXPORTS)
+    assert manifest["python_module_exports"] == list(PYTHON_MODULE_EXPORTS)
+    assert manifest["python_module_entry"] == "portapy.public_api"
     notes = (dist / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     assert "not the final Python 3.14 interpreter release" in notes

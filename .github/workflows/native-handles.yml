@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
-            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build genuine Python-authored library
         run: |
           python tools/build_native.py \
@@ -75,7 +75,7 @@ jobs:
         run: |
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
-            'git+https://github.com/deltathedumb/asmpython.git@beta/3.14.0'
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build genuine Python-authored library
         shell: powershell
         run: |

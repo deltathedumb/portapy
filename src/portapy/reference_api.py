@@ -103,6 +103,41 @@ class Runtime:
     def clear_error(self) -> None:
         self._last_error = None
 
+    def set_global(self, name: str, value: object) -> Status:
+        """Inject one host value into the runtime's global namespace."""
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if not isinstance(name, str) or not name.isidentifier():
+            return self._capture(
+                Status.INVALID_ARGUMENT,
+                ValueError(f"invalid PortaPy global name: {name!r}"),
+            )
+        self._globals[name] = value
+        return Status.OK
+
+    def snapshot_globals(self, include_private: bool = False) -> tuple[Status, dict[str, object]]:
+        """Return a detached, shallow snapshot of the runtime namespace."""
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, {}
+        values: dict[str, object] = {}
+        for name, value in self._globals.items():
+            if not include_private and name.startswith("__"):
+                continue
+            values[name] = value
+        return Status.OK, values
+
+    def unbox(self, handle: int) -> tuple[Status, object]:
+        """Return a hosted value for a valid opaque handle."""
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, None
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), None
+        return Status.OK, slot.value
+
     def exec_utf8(self, source: str, filename: str = "<portapy>") -> Status:
         blocked = self._ready()
         if blocked is not None:

@@ -88,6 +88,10 @@ jobs:
             tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
           ./dist/native_typed_literal_host ./dist/libportapy.so | tee dist/typed-literal-output.txt
           grep -qx 'typed-literals: ok' dist/typed-literal-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
+          ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/boolean-expression-output.txt
+          grep -qx 'boolean-expressions: ok' dist/boolean-expression-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -181,6 +185,12 @@ jobs:
           $typedLiteralOutput = & dist/native_typed_literal_host.exe dist/portapy.dll
           $typedLiteralOutput | Out-File -Encoding utf8 dist/typed-literal-output.txt
           if ($typedLiteralOutput -ne 'typed-literals: ok') { throw "unexpected typed literal output: $typedLiteralOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
+          $booleanExpressionOutput | Out-File -Encoding utf8 dist/boolean-expression-output.txt
+          if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

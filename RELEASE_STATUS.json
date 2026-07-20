@@ -18,15 +18,17 @@
     "retain and release",
     "runtime isolation",
     "UTF-8 integer expression evaluation",
+    "typed literal evaluation for None, bool, str, and bytes",
+    "typed global assignment and aliasing",
     "integer assignment blocks with newline and semicolon separators",
-    "blank lines and line comments in assignment blocks",
-    "runtime-global integer lookup",
+    "quote-aware statement separators and comments",
+    "runtime-global typed value lookup",
     "per-runtime structured error status, type, message, line, and column",
     "Linux and Windows external C conformance hosts"
   ],
   "release_blockers": [
-    "general PortaPy-owned Python lexer/parser and statement grammar beyond integer assignment blocks",
-    "general source and bytecode execution APIs beyond integer expressions and assignments",
+    "general PortaPy-owned expression grammar beyond scalar literals and integer arithmetic",
+    "compound statements, functions, calls, and general VM execution",
     "full traceback frame retrieval beyond structured error location",
     "host callbacks and module imports"
   ]

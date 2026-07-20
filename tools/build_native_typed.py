@@ -1,4 +1,8 @@
-"""Build PortaPy using the extended Python-authored native source entry."""
+"""Build PortaPy using the general scalar-expression native source entry.
+
+The historical filename remains as a compatibility shim for existing CI and
+release workflows. Its default source advances with the native interpreter.
+"""
 from __future__ import annotations
 
 import argparse
@@ -33,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
             work_dir=args.work_dir,
         )
     except BuildFailure as error:
-        print(f"portapy native source build failed: {error}", file=sys.stderr)
+        print(f"portapy expression native build failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(metadata, sort_keys=True))
     return 0

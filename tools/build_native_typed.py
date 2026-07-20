@@ -32,7 +32,12 @@ def main(argv: list[str] | None = None) -> int:
     source = args.source
     generated = False
     if source is None:
-        source = args.work_dir / "native_api_expressions_generated.py"
+        source = (
+            REPOSITORY_ROOT
+            / "src"
+            / "portapy"
+            / f"_native_api_generated_{args.target}.py"
+        )
         generate_native_expression_entry(source)
         generated = True
 
@@ -46,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     except (BuildFailure, ValueError) as error:
         print(f"portapy expression native build failed: {error}", file=sys.stderr)
         return 1
+    finally:
+        if generated:
+            source.unlink(missing_ok=True)
 
     metadata["generated_expression_entry"] = generated
     metadata["semantic_sources"] = [

@@ -29,7 +29,7 @@ def _execute_assignment() -> str:
         parsed = _parse_boolean_expression(runtime, source, start, end)
         if parsed[2] != PORTAPY_OK:
             return _record_expression_failure(runtime, parsed[2], parsed[1])
-        _release_value(runtime, parsed[0])
+        _scalar_release(runtime, parsed[0])
         return _set_status(PORTAPY_OK)
 
     left_text = statement[0:int(assignment[1])]
@@ -51,9 +51,9 @@ def _execute_assignment() -> str:
         return _record_expression_failure(runtime, parsed[2], start + parsed[1])
 
     if assignment[0] != "=":
-        current = _retain_scalar_global(runtime, name, start)
+        current = _scalar_retain_global(runtime, name, start)
         if current[2] != PORTAPY_OK:
-            _release_value(runtime, parsed[0])
+            _scalar_release(runtime, parsed[0])
             return _record_expression_failure(runtime, current[2], start)
         operator = str(assignment[0])[:-1]
         combined = _scalar_binary(
@@ -95,10 +95,8 @@ def generate_native_control_entry(
 from .{scalar_module} import (
     _scalar_binary,
     _scalar_find_assignment,
-)
-from .native_api import (
-    _release as _release_value,
-    _retain_global as _retain_scalar_global,
+    _scalar_release,
+    _scalar_retain_global,
 )"""
     if old_import not in source:
         raise ValueError("control-flow source has an unexpected expression import")

@@ -59,6 +59,19 @@ jobs:
           cat /tmp/report.log >> "$GITHUB_OUTPUT"
           echo 'PORTAPY_BUILD_REPORT' >> "$GITHUB_OUTPUT"
           exit 0
+      - name: Upload normalized compiler input
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-diagnostic-source
+          path: |
+            /tmp/build.log
+            /tmp/report.log
+            src/portapy/native_full_reference_entry.py
+            src/portapy/core/frontend.py
+            src/portapy/core/vm.py
+            src/portapy/core/loader.py
+            src/portapy/core/bytecode.py
 
   report-linux:
     needs: build-linux

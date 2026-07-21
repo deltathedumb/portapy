@@ -7,6 +7,7 @@ from tools.native_surface import (
     DICT_GLUE_INTERNALS,
     ENVIRONMENT_GLUE_INTERNALS,
     HOST_CALL_GLUE_INTERNALS,
+    LIST_GLUE_INTERNALS,
     TUPLE_GLUE_INTERNALS,
 )
 
@@ -35,6 +36,7 @@ def _adapters() -> tuple[str, ...]:
         + ENVIRONMENT_GLUE_INTERNALS
         + TUPLE_GLUE_INTERNALS
         + DICT_GLUE_INTERNALS
+        + LIST_GLUE_INTERNALS
     )
 
 
@@ -52,6 +54,7 @@ def test_linux_dispatch_and_generated_helper_adapters_preserve_sysv_state() -> N
     assert "call _portapy_global_name_byte_impl" in rewritten
     assert "call _portapy_tuple_get_item_impl" in rewritten
     assert "call _portapy_dict_get_item_span_impl" in rewritten
+    assert "call _portapy_list_append_impl" in rewritten
     assert "call _portapy_cabi_tuple_release_impl" in rewritten
     assert "call _portapy_value_release_impl" not in rewritten
 
@@ -82,6 +85,7 @@ def test_c_bridge_sources_use_adapter_symbols() -> None:
     environment = (root / "native" / "environment_glue.c").read_text(encoding="utf-8")
     tuples = (root / "native" / "tuple_glue.c").read_text(encoding="utf-8")
     dictionaries = (root / "native" / "dict_glue.c").read_text(encoding="utf-8")
+    lists = (root / "native" / "list_glue.c").read_text(encoding="utf-8")
 
     assert "_portapy_cabi_host_pending_arg_impl" in host_call
     assert "_portapy_host_pending_arg_impl(runtime" not in host_call
@@ -93,3 +97,6 @@ def test_c_bridge_sources_use_adapter_symbols() -> None:
     assert "_portapy_cabi_dict_begin_impl" in dictionaries
     assert "_portapy_dict_begin_impl(" not in dictionaries
     assert "_portapy_cabi_dict_set_span_impl" in dictionaries
+    assert "_portapy_cabi_list_begin_impl" in lists
+    assert "_portapy_list_begin_impl(" not in lists
+    assert "_portapy_cabi_list_append_impl" in lists

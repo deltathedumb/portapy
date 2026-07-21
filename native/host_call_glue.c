@@ -4,12 +4,21 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-extern int64_t _portapy_last_status_impl(void);
-extern uint64_t _portapy_value_from_host_callable_impl(uint64_t runtime, uint64_t callable_id);
-extern uint64_t _portapy_value_get_host_callable_id_impl(uint64_t runtime, uint64_t value);
-extern int64_t _portapy_host_pending_arg_count_impl(uint64_t runtime);
-extern uint64_t _portapy_host_pending_arg_impl(uint64_t runtime, int64_t index);
-extern uint64_t _portapy_host_dispatch_complete_impl(
+extern int64_t _portapy_cabi_last_status_impl(void);
+extern uint64_t _portapy_cabi_value_from_host_callable_impl(
+    uint64_t runtime,
+    uint64_t callable_id
+);
+extern uint64_t _portapy_cabi_value_get_host_callable_id_impl(
+    uint64_t runtime,
+    uint64_t value
+);
+extern int64_t _portapy_cabi_host_pending_arg_count_impl(uint64_t runtime);
+extern uint64_t _portapy_cabi_host_pending_arg_impl(
+    uint64_t runtime,
+    int64_t index
+);
+extern uint64_t _portapy_cabi_host_dispatch_complete_impl(
     uint64_t runtime,
     int64_t status,
     uint64_t result
@@ -85,8 +94,11 @@ portapy_status PORTAPY_CALL portapy_value_from_host_callable(
         return PORTAPY_INVALID_ARGUMENT;
     }
     *out_value = PORTAPY_NULL_VALUE;
-    portapy_value value = _portapy_value_from_host_callable_impl(runtime, callable_id);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    portapy_value value = _portapy_cabi_value_from_host_callable_impl(
+        runtime,
+        callable_id
+    );
+    portapy_status status = (portapy_status)_portapy_cabi_last_status_impl();
     if (status == PORTAPY_OK) {
         *out_value = value;
     }
@@ -102,8 +114,11 @@ portapy_status PORTAPY_CALL portapy_value_get_host_callable_id(
         return PORTAPY_INVALID_ARGUMENT;
     }
     *out_callable_id = 0;
-    uint64_t callable_id = _portapy_value_get_host_callable_id_impl(runtime, value);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    uint64_t callable_id = _portapy_cabi_value_get_host_callable_id_impl(
+        runtime,
+        value
+    );
+    portapy_status status = (portapy_status)_portapy_cabi_last_status_impl();
     if (status == PORTAPY_OK) {
         *out_callable_id = callable_id;
     }
@@ -113,17 +128,17 @@ portapy_status PORTAPY_CALL portapy_value_get_host_callable_id(
 uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id) {
     host_handler_slot *slot = find_slot(runtime);
     if (slot == NULL || slot->handler == NULL) {
-        return _portapy_host_dispatch_complete_impl(
+        return _portapy_cabi_host_dispatch_complete_impl(
             runtime,
             PORTAPY_INTERRUPTED,
             PORTAPY_NULL_VALUE
         );
     }
 
-    int64_t raw_count = _portapy_host_pending_arg_count_impl(runtime);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    int64_t raw_count = _portapy_cabi_host_pending_arg_count_impl(runtime);
+    portapy_status status = (portapy_status)_portapy_cabi_last_status_impl();
     if (status != PORTAPY_OK || raw_count < 0) {
-        return _portapy_host_dispatch_complete_impl(
+        return _portapy_cabi_host_dispatch_complete_impl(
             runtime,
             status == PORTAPY_OK ? PORTAPY_RUNTIME_ERROR : status,
             PORTAPY_NULL_VALUE
@@ -134,7 +149,7 @@ uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id)
     if (count != 0) {
         arguments = (portapy_value *)malloc(count * sizeof(portapy_value));
         if (arguments == NULL) {
-            return _portapy_host_dispatch_complete_impl(
+            return _portapy_cabi_host_dispatch_complete_impl(
                 runtime,
                 PORTAPY_RUNTIME_ERROR,
                 PORTAPY_NULL_VALUE
@@ -142,11 +157,14 @@ uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id)
         }
     }
     for (size_t index = 0; index < count; ++index) {
-        arguments[index] = _portapy_host_pending_arg_impl(runtime, (int64_t)index);
-        status = (portapy_status)_portapy_last_status_impl();
+        arguments[index] = _portapy_cabi_host_pending_arg_impl(
+            runtime,
+            (int64_t)index
+        );
+        status = (portapy_status)_portapy_cabi_last_status_impl();
         if (status != PORTAPY_OK) {
             free(arguments);
-            return _portapy_host_dispatch_complete_impl(
+            return _portapy_cabi_host_dispatch_complete_impl(
                 runtime,
                 status,
                 PORTAPY_NULL_VALUE
@@ -164,5 +182,5 @@ uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id)
         &result
     );
     free(arguments);
-    return _portapy_host_dispatch_complete_impl(runtime, status, result);
+    return _portapy_cabi_host_dispatch_complete_impl(runtime, status, result);
 }

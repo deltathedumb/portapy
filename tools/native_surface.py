@@ -79,19 +79,22 @@ HOST_GLUE_INTERNALS = (
     "_portapy_host_get_attr_span_impl",
 )
 
+# C glue links against these ABI-preserving assembly adapters rather than the
+# generated helpers directly. The adapters are internal to the shared library.
 HOST_CALL_GLUE_INTERNALS = (
-    "_portapy_value_from_host_callable_impl",
-    "_portapy_value_get_host_callable_id_impl",
-    "_portapy_host_pending_arg_count_impl",
-    "_portapy_host_pending_arg_impl",
-    "_portapy_host_dispatch_complete_impl",
+    "_portapy_cabi_last_status_impl",
+    "_portapy_cabi_value_from_host_callable_impl",
+    "_portapy_cabi_value_get_host_callable_id_impl",
+    "_portapy_cabi_host_pending_arg_count_impl",
+    "_portapy_cabi_host_pending_arg_impl",
+    "_portapy_cabi_host_dispatch_complete_impl",
 )
 
 ENVIRONMENT_GLUE_INTERNALS = (
-    "_portapy_delete_global_span_impl",
-    "_portapy_global_count_impl",
-    "_portapy_global_name_size_impl",
-    "_portapy_global_name_byte_impl",
+    "_portapy_cabi_delete_global_span_impl",
+    "_portapy_cabi_global_count_impl",
+    "_portapy_cabi_global_name_size_impl",
+    "_portapy_cabi_global_name_byte_impl",
 )
 
 # Compatibility constants used by older tooling and tests.

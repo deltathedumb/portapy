@@ -5,15 +5,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern int64_t _portapy_last_status_impl(void);
-extern int64_t _portapy_delete_global_span_impl(
+extern int64_t _portapy_cabi_last_status_impl(void);
+extern int64_t _portapy_cabi_delete_global_span_impl(
     uint64_t runtime,
     const char *name,
     int64_t name_size
 );
-extern int64_t _portapy_global_count_impl(uint64_t runtime);
-extern int64_t _portapy_global_name_size_impl(uint64_t runtime, int64_t index);
-extern int64_t _portapy_global_name_byte_impl(
+extern int64_t _portapy_cabi_global_count_impl(uint64_t runtime);
+extern int64_t _portapy_cabi_global_name_size_impl(
+    uint64_t runtime,
+    int64_t index
+);
+extern int64_t _portapy_cabi_global_name_byte_impl(
     uint64_t runtime,
     int64_t index,
     int64_t byte_index
@@ -53,7 +56,7 @@ portapy_status PORTAPY_CALL portapy_delete_global_utf8(
     if (status != PORTAPY_OK) {
         return status;
     }
-    status = (portapy_status)_portapy_delete_global_span_impl(
+    status = (portapy_status)_portapy_cabi_delete_global_span_impl(
         runtime,
         text,
         (int64_t)name_size
@@ -70,8 +73,8 @@ portapy_status PORTAPY_CALL portapy_global_count(
         return PORTAPY_INVALID_ARGUMENT;
     }
     *out_count = 0;
-    int64_t count = _portapy_global_count_impl(runtime);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    int64_t count = _portapy_cabi_global_count_impl(runtime);
+    portapy_status status = (portapy_status)_portapy_cabi_last_status_impl();
     if (status == PORTAPY_OK) {
         *out_count = (size_t)count;
     }
@@ -93,8 +96,11 @@ portapy_status PORTAPY_CALL portapy_global_name_copy_utf8(
         return PORTAPY_INVALID_ARGUMENT;
     }
     *out_size = 0;
-    int64_t raw_size = _portapy_global_name_size_impl(runtime, (int64_t)index);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    int64_t raw_size = _portapy_cabi_global_name_size_impl(
+        runtime,
+        (int64_t)index
+    );
+    portapy_status status = (portapy_status)_portapy_cabi_last_status_impl();
     if (status != PORTAPY_OK) {
         return status;
     }
@@ -104,12 +110,12 @@ portapy_status PORTAPY_CALL portapy_global_name_copy_utf8(
         return PORTAPY_INVALID_ARGUMENT;
     }
     for (size_t offset = 0; offset < required; ++offset) {
-        int64_t byte = _portapy_global_name_byte_impl(
+        int64_t byte = _portapy_cabi_global_name_byte_impl(
             runtime,
             (int64_t)index,
             (int64_t)offset
         );
-        status = (portapy_status)_portapy_last_status_impl();
+        status = (portapy_status)_portapy_cabi_last_status_impl();
         if (status != PORTAPY_OK) {
             return status;
         }

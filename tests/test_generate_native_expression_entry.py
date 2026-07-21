@@ -10,6 +10,10 @@ from tools.generate_native_expression_entry import (
     generate_namespaced_scalar_entry,
     generate_native_expression_entry,
 )
+from tools.rewrite_generated_parser import (
+    rewrite_generated_expression,
+    rewrite_generated_scalar,
+)
 
 
 def _load_generated(path: Path, name: str):
@@ -23,19 +27,30 @@ def _load_generated(path: Path, name: str):
     return module
 
 
+def _generate_scalar(path: Path) -> Path:
+    return rewrite_generated_scalar(generate_namespaced_scalar_entry(path))
+
+
+def _generate_expression(path: Path, scalar_name: str) -> Path:
+    return rewrite_generated_expression(
+        generate_native_expression_entry(path, scalar_module=scalar_name)
+    )
+
+
 def test_generator_produces_namespace_safe_source(tmp_path: Path) -> None:
     scalar_name = "_generated_scalar_source_test"
     expression_name = "_generated_expression_source_test"
-    scalar_output = generate_namespaced_scalar_entry(tmp_path / f"{scalar_name}.py")
-    expression_output = generate_native_expression_entry(
+    scalar_output = _generate_scalar(tmp_path / f"{scalar_name}.py")
+    expression_output = _generate_expression(
         tmp_path / f"{expression_name}.py",
-        scalar_module=scalar_name,
+        scalar_name,
     )
     scalar_source = scalar_output.read_text(encoding="utf-8")
     expression_source = expression_output.read_text(encoding="utf-8")
 
     assert "def _scalar_parse_comparison(" in scalar_source
     assert "def _parse_comparison(" not in scalar_source
+    assert "for operator in operators" not in scalar_source
     assert f"from .{scalar_name} import" in expression_source
     assert "_scalar_parse_comparison" in expression_source
     assert "native_api_expressions as" not in expression_source
@@ -46,18 +61,19 @@ def test_generated_entry_preserves_boolean_and_scalar_semantics(tmp_path: Path) 
     scalar_name = "_generated_scalar_test"
     expression_name = "_generated_native_expression_test"
     _load_generated(
-        generate_namespaced_scalar_entry(tmp_path / f"{scalar_name}.py"),
+        _generate_scalar(tmp_path / f"{scalar_name}.py"),
         scalar_name,
     )
     api = _load_generated(
-        generate_native_expression_entry(
-            tmp_path / f"{expression_name}.py",
-            scalar_module=scalar_name,
-        ),
+        _generate_expression(tmp_path / f"{expression_name}.py", scalar_name),
         expression_name,
     )
     try:
         runtime = api._portapy_runtime_create_impl()
+
+        multiplied = api._portapy_eval_span_impl(runtime, "1 + 2 * 3", len("1 + 2 * 3"))
+        assert multiplied != 0
+        assert base._portapy_value_as_i64_impl(runtime, multiplied) == 7
 
         shifted = api._portapy_eval_span_impl(runtime, "1 << 4 | 3", len("1 << 4 | 3"))
         assert shifted != 0
@@ -86,14 +102,11 @@ def test_generated_control_flow_uses_general_scalar_grammar(tmp_path: Path) -> N
     expression_name = "_generated_expression_for_control_test"
     control_name = "_generated_control_test"
     _load_generated(
-        generate_namespaced_scalar_entry(tmp_path / f"{scalar_name}.py"),
+        _generate_scalar(tmp_path / f"{scalar_name}.py"),
         scalar_name,
     )
     _load_generated(
-        generate_native_expression_entry(
-            tmp_path / f"{expression_name}.py",
-            scalar_module=scalar_name,
-        ),
+        _generate_expression(tmp_path / f"{expression_name}.py", scalar_name),
         expression_name,
     )
     control = _load_generated(

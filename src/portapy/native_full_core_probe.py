@@ -89,6 +89,7 @@ answer = box.get() + probe.value - 42 if traced else -1
 """
     status = _portapy_exec_span_impl(runtime, source, len(source))
     if status != PORTAPY_OK:
+        print("FULL CORE PROBE ERROR", instance.last_error())
         return -1
     handle = _portapy_get_global_span_impl(runtime, "answer", 6)
     if _portapy_value_get_kind_impl(runtime, handle) != PORTAPY_VALUE_INT:

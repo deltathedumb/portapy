@@ -34,6 +34,14 @@ jobs:
             tests/native_host_call_host.c -ldl -o dist/native_host_call_host
           ./dist/native_host_call_host ./dist/libportapy.so | tee dist/host-call-output.txt
           grep -qx 'native-host-calls: ok' dist/host-call-output.txt
+      - name: Execute managed environment ABI from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_managed_environment_host.c -ldl \
+            -o dist/native_managed_environment_host
+          ./dist/native_managed_environment_host ./dist/libportapy.so \
+            | tee dist/managed-environment-output.txt
+          grep -qx 'managed-environment: ok' dist/managed-environment-output.txt
       - name: Execute public tuple ABI from C
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
@@ -82,6 +90,28 @@ jobs:
           $output = & dist/native_host_call_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/host-call-output.txt
           if ($output -ne 'native-host-calls: ok') { throw "unexpected host-call output: $output" }
+      - name: Execute managed environment ABI from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_managed_environment_host.c `
+            -o dist/native_managed_environment_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_managed_environment_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/managed-environment-output.txt
+          if ($output -ne 'managed-environment: ok') { throw "unexpected managed environment output: $output" }
+      - name: Execute direct C# environment API
+        shell: powershell
+        run: |
+          $project = 'tests/csharp/PortaPy.ManagedSmoke/PortaPy.ManagedSmoke.csproj'
+          dotnet build $project -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $outputDirectory = 'tests/csharp/PortaPy.ManagedSmoke/bin/Release/net8.0'
+          Copy-Item dist/portapy.dll "$outputDirectory/portapy.dll"
+          $output = & dotnet "$outputDirectory/PortaPy.ManagedSmoke.dll"
+          $output | Out-File -Encoding utf8 dist/csharp-managed-environment-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output[-1] -ne 'csharp-managed-environment: ok') { throw "unexpected C# output: $output" }
       - name: Execute public tuple ABI from C
         shell: powershell
         run: |

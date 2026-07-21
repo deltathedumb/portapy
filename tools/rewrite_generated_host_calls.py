@@ -31,12 +31,28 @@ def _dispatch_host_call() -> str:
     return '''def _dispatch_host_call(
     runtime: int,
     callable_id: int,
-    argument_start: int,
-    argument_count: int,
-    position: int,
+    argument_source: object,
+    count_or_position: int,
+    position: int = -1,
 ) -> list[int]:
+    argument_start = 0
+    argument_count = 0
+    temporary_arguments = False
+    if type(argument_source) is list:
+        argument_start = _host_call_argument_top[0]
+        index = 0
+        while index < len(argument_source):
+            _push_host_call_argument(argument_source[index])
+            index += 1
+        argument_count = len(argument_source)
+        position = count_or_position
+        temporary_arguments = True
+    else:
+        argument_start = int(argument_source)
+        argument_count = count_or_position
     _begin_pending_call(runtime, callable_id, argument_start, argument_count)
     result = _portapy_host_dispatch_impl(runtime, callable_id)
+    status = PORTAPY_OK
     if result == 0:
         status = _portapy_last_status_impl()
         frame = _find_pending_frame(runtime)
@@ -44,6 +60,14 @@ def _dispatch_host_call() -> str:
             _clear_pending_frame(runtime, frame)
         if status == PORTAPY_OK:
             status = PORTAPY_RUNTIME_ERROR
+    release = argument_start
+    end = argument_start + argument_count
+    while release < end:
+        _scalar_release(runtime, _host_call_argument_values[release])
+        release += 1
+    if temporary_arguments:
+        _host_call_argument_top[0] = argument_start
+    if result == 0:
         return [0, position, status]
     return [result, position, PORTAPY_OK]'''
 

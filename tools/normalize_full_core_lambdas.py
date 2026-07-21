@@ -17,6 +17,16 @@ ASMPYTHON_STDLIB = ASMPYTHON_ROOT / "stdlib"
 ASMPYTHON_SEMA = Path(asmpython_sema.__file__).resolve()
 
 
+_FSTRING_CONVERTER = (
+    "converter = ascii if value.conversion == 97 else repr if value.conversion == 114 else str\n"
+    "                            self.emit(Op.LOAD_CONST, self.constant(converter))"
+)
+_FSTRING_NAME_CONVERTER = (
+    'converter_name = "ascii" if value.conversion == 97 else "repr" if value.conversion == 114 else "str"\n'
+    "                            self.emit(Op.LOAD_NAME, self.name_index(converter_name))"
+)
+
+
 def _normalize_ascii(source: str) -> tuple[str, int, int]:
     call_count = source.count("ascii(")
     conversion_count = source.count("!a")
@@ -83,9 +93,18 @@ def main() -> int:
     if count != 1:
         raise RuntimeError(f"expected one starred lambda argument list, found {count}")
     frontend = frontend.replace(old, new, 1)
+
+    converter_count = frontend.count(_FSTRING_CONVERTER)
+    if converter_count != 2:
+        raise RuntimeError(
+            f"expected two host-function f-string converters, found {converter_count}"
+        )
+    frontend = frontend.replace(_FSTRING_CONVERTER, _FSTRING_NAME_CONVERTER)
+
     frontend, frontend_ascii_count, frontend_ascii_conversion_count = _normalize_ascii(frontend)
     FRONTEND_PATH.write_text(frontend, encoding="utf-8")
     print("REPLACED STARRED LAMBDA ARGUMENT LIST", count)
+    print("REPLACED FSTRING HOST CONVERTERS", converter_count)
     print("REPLACED FRONTEND ASCII CALLS", frontend_ascii_count)
     print("REPLACED FRONTEND ASCII CONVERSIONS", frontend_ascii_conversion_count)
 

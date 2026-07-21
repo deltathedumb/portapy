@@ -23,6 +23,13 @@ _HOST_IMPORT = """from .native_api_host import (
     _resolve_host_path as _host_resolve_path,
 )"""
 _SCALAR_IMPORT = "from .native_api_scalar import _find_assignment, _release, _retain_global"
+_ENVIRONMENT_IMPORT = """from .native_api_environment import (
+    _portapy_delete_global_span_impl,
+    _portapy_global_count_impl,
+    _portapy_global_name_byte_impl,
+    _portapy_global_name_size_impl,
+)
+"""
 
 
 def _rename(source: str, mapping: dict[str, str]) -> str:
@@ -73,6 +80,11 @@ def generate_native_host_call_entry(
 )"""
     source = source.replace(_HOST_IMPORT, host_import, 1)
     source = source.replace(_SCALAR_IMPORT, scalar_import, 1)
+    source = source.replace(
+        "from __future__ import annotations\n",
+        "from __future__ import annotations\n\n" + _ENVIRONMENT_IMPORT,
+        1,
+    )
     source = _rename(
         source,
         {

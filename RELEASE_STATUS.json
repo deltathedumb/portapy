@@ -37,6 +37,12 @@
     "qualified and flattened host calls",
     "nested host calls",
     "structured host callback failures",
+    "native global enumeration and deletion",
+    "native import_binary and load_native module facades",
+    "automatic native add_modules and expose adaptation",
+    "automatic Python scalar, module, object, and callable boxing",
+    "native snapshot.var enumeration and shallow restore",
+    "native environment remove and exact post-snapshot cleanup",
     "statement blocks with newline and semicolon separators",
     "bare expression statements and pass",
     "indented if and else blocks",
@@ -55,13 +61,12 @@
     "read-only snapshot.var access and shallow snapshot restore",
     "module injection and flattened expose API in the hosted runtime",
     "declared Python binary-module export metadata",
-    "Linux and Windows external C conformance hosts"
+    "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
     "compound statements inside native functions",
     "default and keyword arguments, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
-    "binary-module adapter that maps add_modules and expose onto the native C ABI",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"
   ]

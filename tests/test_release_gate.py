@@ -36,6 +36,7 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "python_built_runtime": True,
             "host_bridge": True,
             "host_calls": True,
+            "native_environment_adapter": True,
             "generated_host_call_entry": True,
         }
         artifact.with_suffix(artifact.suffix + ".json").write_text(

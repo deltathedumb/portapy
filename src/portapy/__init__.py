@@ -8,6 +8,15 @@ from .environment import (
     PortaPyError,
     new,
 )
+from .native_binary import (
+    NativeCallableReference,
+    NativeEnvironment,
+    NativeEnvironmentSnapshot,
+    NativeHostReference,
+    NativePortaPyModule,
+    import_binary,
+    load_native,
+)
 from .reference_api import ErrorInfo, Runtime, Status, ValueKind
 
 Snapshot = EnvironmentSnapshot
@@ -22,11 +31,18 @@ __all__ = [
     "EnvironmentSnapshot",
     "ErrorInfo",
     "ExecutionError",
+    "NativeCallableReference",
+    "NativeEnvironment",
+    "NativeEnvironmentSnapshot",
+    "NativeHostReference",
+    "NativePortaPyModule",
     "PortaPyError",
     "PortaPyExecutionError",
     "Runtime",
     "Snapshot",
     "Status",
     "ValueKind",
+    "import_binary",
+    "load_native",
     "new",
 ]

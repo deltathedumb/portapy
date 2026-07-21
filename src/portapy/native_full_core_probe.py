@@ -26,8 +26,12 @@ class Box:
     def __init__(self, value):
         self.value = value
 
+def crash():
+    return 1 / 0
+
 box = Box(outer())
 answer = box.value
+crash()
 """
 
 
@@ -40,5 +44,16 @@ def portapy_full_core_probe() -> int:
     namespace["__pyinbin_import__"] = _probe_import
     code = compile_source(_PROBE_SOURCE, "<native-full-core-probe>")
     machine = VirtualMachine()
-    machine.run(code, namespace)
-    return namespace.get("answer", -1)
+    try:
+        machine.run(code, namespace)
+    except Exception as error:
+        trace = machine._synthetic_tracebacks.get(id(error))
+        found = False
+        while trace is not None:
+            if trace.tb_frame.f_code.co_name == "crash":
+                found = True
+            trace = trace.tb_next
+        if found:
+            return namespace.get("answer", -1)
+        return -2
+    return -3

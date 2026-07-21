@@ -65,6 +65,14 @@ ENVIRONMENT_API_EXPORTS = (
     "portapy_add_callable_utf8",
 )
 
+TRACEBACK_GLUE_EXPORTS = (
+    "portapy_error_traceback_count",
+    "portapy_error_traceback_get_frame",
+    "portapy_error_traceback_copy_filename_utf8",
+    "portapy_error_traceback_copy_function_utf8",
+    "portapy_error_traceback_copy_source_utf8",
+)
+
 TUPLE_GLUE_EXPORTS = (
     "portapy_value_from_tuple",
     "portapy_tuple_get_size",
@@ -129,6 +137,16 @@ ENVIRONMENT_GLUE_INTERNALS = (
     "_portapy_cabi_global_name_byte_impl",
 )
 
+TRACEBACK_INTERNALS = (
+    "_portapy_traceback_count_impl",
+    "_portapy_traceback_line_impl",
+    "_portapy_traceback_column_impl",
+    "_portapy_traceback_function_size_impl",
+    "_portapy_traceback_function_byte_impl",
+    "_portapy_traceback_source_size_impl",
+    "_portapy_traceback_source_byte_impl",
+)
+
 TUPLE_GLUE_INTERNALS = (
     "_portapy_cabi_tuple_begin_impl",
     "_portapy_cabi_tuple_set_item_impl",
@@ -174,6 +192,7 @@ def assembly_exports(
     if host_calls:
         result += HOST_CALL_GLUE_INTERNALS
         result += ENVIRONMENT_GLUE_INTERNALS
+        result += TRACEBACK_INTERNALS
         result += TUPLE_GLUE_INTERNALS
         result += DICT_GLUE_INTERNALS
         result += LIST_GLUE_INTERNALS
@@ -192,6 +211,7 @@ def public_exports(
         result += HOST_CALL_GLUE_EXPORTS
         result += ENVIRONMENT_GLUE_EXPORTS
         result += ENVIRONMENT_API_EXPORTS
+        result += TRACEBACK_GLUE_EXPORTS
         result += TUPLE_GLUE_EXPORTS
         result += DICT_GLUE_EXPORTS
         result += LIST_GLUE_EXPORTS

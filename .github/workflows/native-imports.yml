@@ -1,0 +1,88 @@
+name: Native host imports
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package, toolchain, and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+          python -m pip install -e '.[test]'
+      - name: Test generated import semantics
+        run: python -m pytest tests/test_rewrite_generated_imports.py
+      - name: Build native library
+        run: |
+          python tools/build_native_host_calls.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-imports-linux
+      - name: Exercise imports through public ABI
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_import_host.c -ldl -o dist/native_import_host
+          ./dist/native_import_host ./dist/libportapy.so \
+            | tee dist/native-import-output.txt
+          grep -qx 'native-host-imports: ok' dist/native-import-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-imports-linux
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package, toolchain, and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+          python -m pip install -e '.[test]'
+      - name: Test generated import semantics
+        shell: powershell
+        run: python -m pytest tests/test_rewrite_generated_imports.py
+      - name: Build native library
+        shell: powershell
+        run: |
+          python tools/build_native_host_calls.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-imports-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise imports through public ABI
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_import_host.c -o dist/native_import_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = @(& dist/native_import_host.exe dist/portapy.dll)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output | Out-File -Encoding utf8 dist/native-import-output.txt
+          if ($output[-1] -ne 'native-host-imports: ok') {
+            throw "unexpected import output: $($output -join [Environment]::NewLine)"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-imports-windows
+          path: dist

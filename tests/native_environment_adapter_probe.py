@@ -26,6 +26,14 @@ def tuple_roundtrip(value: tuple[object, ...]) -> tuple[object, ...]:
     return (value[-1], value[1], value[0] + 24)
 
 
+def dict_roundtrip(value: dict[str, object]) -> dict[str, object]:
+    assert value == {"left": 18, "right": 24, "nested": {"value": 42}}
+    return {
+        "total": int(value["left"]) + int(value["right"]),
+        "nested": value["nested"],
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: native_environment_adapter_probe.py <library>")
@@ -39,10 +47,15 @@ def main() -> int:
                 "game": game,
                 "add": add,
                 "tuple_roundtrip": tuple_roundtrip,
+                "dict_roundtrip": dict_roundtrip,
             }
         )
         environment.set("input_value", 41.9)
         environment.set("input_tuple", (18, (1, 2), "é"))
+        environment.set(
+            "input_mapping",
+            {"left": 18, "right": 24, "nested": {"value": 42}},
+        )
         environment.execute(
             "http_provider = game.provider.HttpProvider\n"
             "floor_value = math.floor(input_value)\n"
@@ -51,6 +64,9 @@ def main() -> int:
             "tuple_first = input_tuple[0]\n"
             "tuple_size = len(input_tuple)\n"
             "tuple_result = tuple_roundtrip(input_tuple)\n"
+            "mapping_total = input_mapping[\"left\"] + input_mapping[\"right\"]\n"
+            "mapping_size = len(input_mapping)\n"
+            "mapping_result = dict_roundtrip(input_mapping)\n"
         )
 
         snapshot = environment.snapshot()
@@ -63,22 +79,41 @@ def main() -> int:
         assert snapshot.var["game"] is game
         assert snapshot.var["add"] is add
         assert snapshot.var["tuple_roundtrip"] is tuple_roundtrip
+        assert snapshot.var["dict_roundtrip"] is dict_roundtrip
         assert snapshot.var["input_tuple"] == (18, (1, 2), "é")
         assert snapshot.var["tuple_first"] == 18
         assert snapshot.var["tuple_size"] == 3
         assert snapshot.var["tuple_result"] == ("é", (1, 2), 42)
+        assert snapshot.var["input_mapping"] == {
+            "left": 18,
+            "right": 24,
+            "nested": {"value": 42},
+        }
+        assert snapshot.var["mapping_total"] == 42
+        assert snapshot.var["mapping_size"] == 3
+        assert snapshot.var["mapping_result"] == {
+            "total": 42,
+            "nested": {"value": 42},
+        }
 
         environment.execute(
             "answer = 7\n"
             "input_tuple = (99,)\n"
             "extra = 99\n"
         )
+        environment.set("input_mapping", {"changed": 99})
         assert environment.get("answer") == 7
         assert environment.get("input_tuple") == (99,)
+        assert environment.get("input_mapping") == {"changed": 99}
         assert environment.get("extra") == 99
         snapshot.restore()
         assert environment.get("answer") == 42
         assert environment.get("input_tuple") == (18, (1, 2), "é")
+        assert environment.get("input_mapping") == {
+            "left": 18,
+            "right": 24,
+            "nested": {"value": 42},
+        }
         try:
             environment.get("extra")
         except ExecutionError:

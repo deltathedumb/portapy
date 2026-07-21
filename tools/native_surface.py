@@ -59,6 +59,14 @@ TUPLE_GLUE_EXPORTS = (
     "portapy_tuple_get_item",
 )
 
+DICT_GLUE_EXPORTS = (
+    "portapy_value_from_dict",
+    "portapy_dict_set_utf8",
+    "portapy_dict_get_size",
+    "portapy_dict_key_copy_utf8",
+    "portapy_dict_get_item_utf8",
+)
+
 BASE_GLUE_INTERNALS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_data_begin_impl",
@@ -85,8 +93,6 @@ HOST_GLUE_INTERNALS = (
     "_portapy_host_get_attr_span_impl",
 )
 
-# C glue links against these ABI-preserving assembly adapters rather than the
-# generated helpers directly. The adapters are internal to the shared library.
 HOST_CALL_GLUE_INTERNALS = (
     "_portapy_cabi_last_status_impl",
     "_portapy_cabi_value_from_host_callable_impl",
@@ -112,7 +118,15 @@ TUPLE_GLUE_INTERNALS = (
     "_portapy_cabi_tuple_release_impl",
 )
 
-# Compatibility constants used by older tooling and tests.
+DICT_GLUE_INTERNALS = (
+    "_portapy_cabi_dict_begin_impl",
+    "_portapy_cabi_dict_set_span_impl",
+    "_portapy_cabi_dict_get_size_impl",
+    "_portapy_cabi_dict_key_size_impl",
+    "_portapy_cabi_dict_key_byte_impl",
+    "_portapy_cabi_dict_get_item_span_impl",
+)
+
 GLUE_EXPORTS = BASE_GLUE_EXPORTS
 GLUE_INTERNALS = BASE_GLUE_INTERNALS
 ASSEMBLY_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_INTERNALS
@@ -131,6 +145,7 @@ def assembly_exports(
         result += HOST_CALL_GLUE_INTERNALS
         result += ENVIRONMENT_GLUE_INTERNALS
         result += TUPLE_GLUE_INTERNALS
+        result += DICT_GLUE_INTERNALS
     return result
 
 
@@ -146,6 +161,7 @@ def public_exports(
         result += HOST_CALL_GLUE_EXPORTS
         result += ENVIRONMENT_GLUE_EXPORTS
         result += TUPLE_GLUE_EXPORTS
+        result += DICT_GLUE_EXPORTS
     return result
 
 

@@ -22,7 +22,7 @@ The first-class helper exports are:
 - `portapy_execute()` and `portapy_evaluate()`
 - `portapy_destroy()`
 
-`portapy_environment` is an alias of the opaque `portapy_runtime` handle, so a host may freely drop from the helper layer into the complete low-level runtime, value, global, callback, container, and error APIs.
+`portapy_environment` is an alias of the opaque `portapy_runtime` handle, so a host may freely drop from the helper layer into the complete low-level runtime, value, global, callback, container, traceback, and error APIs.
 
 See [`docs/FFI.md`](docs/FFI.md) for C and direct C# P/Invoke examples.
 
@@ -38,13 +38,14 @@ from somnia import env
 
 portapy = import_binary("portapy.dll")
 environment = portapy.new()
-environment.add(math)       # available as math.floor(...)
+environment.add(math)       # module object becomes the global `math`
 environment.add_all(env)    # public members become direct globals
 environment.set("requested_value", 41.9)
 environment.set("coordinates", (10, 20, (30, 40)))
 environment.set("settings", {"scale": 2, "nested": {"value": 21}})
 environment.set("samples", [18, [1, 2], 24])
 environment.execute("""
+import math
 http_provider = game.provider.HttpProvider
 floor_value = math.floor(requested_value)
 answer = floor_value + 1
@@ -63,17 +64,34 @@ samples = snapshot.var["samples"]
 
 `add(value)` binds a named function, class, module, or object using its `__name__`, unless an explicit name is supplied. `add_all(module)` flattens all eligible public members from a module, object, or mapping. `add_module()`, `add_modules()`, `expose()`, and `add_builtin()` remain compatibility or fine-grained namespace operations.
 
+Executed source may use `import module`, aliases, comma-separated imports, and `from module import member` for module objects already added by the host. Imports perform namespace resolution only; they never load host modules. `from module import *` is intentionally replaced by the explicit host-side `add_all(module)` operation.
+
 The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, tuples, lists, string-key mappings, modules, objects, and callables into native PortaPy values. Tuples, lists, and mappings are converted recursively and remain ordinary PortaPy values across globals, snapshots, and host callback arguments/results. Native mapping keys are currently restricted to non-empty ASCII strings. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
 
 Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment and deletes globals created after the snapshot. Mutations inside referenced host objects are intentionally not deep-rolled back.
 
-The hosted implementation uses the same API:
+Native failures include indexed traceback frames:
+
+```python
+from portapy import ExecutionError
+
+try:
+    environment.execute("result = missing_name")
+except ExecutionError as error:
+    print(error.error.traceback_text)
+    for frame in environment.traceback_frames:
+        print(frame.filename, frame.function, frame.line, frame.source_line)
+```
+
+The hosted implementation uses the same environment API:
 
 ```python
 import portapy
 
+
 def plus_one(value):
     return value + 1
+
 
 environment = portapy.new()
 environment.add(plus_one)
@@ -100,17 +118,21 @@ The helper API is built on, and interoperates with, the complete public C ABI:
 - `portapy_global_count()` and `portapy_global_name_copy_utf8()` for exact snapshot enumeration.
 - `portapy_host_set_attr_utf8()` for host-owned attribute graphs.
 - `portapy_host_set_call_handler()` for a raw synchronous dispatcher per runtime.
+- `portapy_error_traceback_count()` and `portapy_error_traceback_get_frame()` for indexed frames.
+- traceback filename, function, and source-line UTF-8 copy functions declared in `include/portapy_traceback.h`.
 - helper callbacks and raw callback dispatchers coexisting in one environment.
 - checked conversions, retained callback results, structured errors, and retain/release ownership.
 
 ## 3.14 Developer Preview 1
 
-`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, functions, host-object graph, host-call parser, and namespace management are Python-authored and compiled by asmpython. Linux and Windows artifacts are exercised from independent C hosts and from the high-level Python binary facade before publication.
+`3.14-dev.1` is a genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured errors, tracebacks, control flow, functions, imports, host-object graph, host-call parser, and namespace management are Python-authored and compiled by asmpython. Linux and Windows artifacts are exercised from independent C hosts and from the high-level Python binary facade before publication.
 
 Implemented native ABI and source surface:
 
 - isolated runtime and environment handles
 - first-class cross-language `new`, `add`, `add_all`, `execute`, `evaluate`, and `destroy` exports
+- host-owned module loading with native `import` and `from ... import ...` namespace semantics
+- indexed native traceback frames and `NativeTracebackFrame` Python objects
 - `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, dictionary, list, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
 - retained native global injection, enumeration, replacement, and deletion
@@ -128,7 +150,7 @@ Implemented native ABI and source surface:
 - public list construction, size, retained item extraction, replacement, and append
 - recursive tuple, dictionary, and list release through normal value ownership
 - recursive tuple/list/mapping globals, snapshots, and host callback round-trips
-- per-runtime structured error status, type, message, line, and column
+- per-runtime structured error status, type, message, line, column, and traceback frames
 - retain/release and runtime-owned teardown
 - precedence-aware integer arithmetic, powers, shifts, and bitwise expressions
 - string/bytes concatenation and repetition
@@ -168,10 +190,10 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include closures, classes, completing the frontend/bytecode VM transition, broader object syntax, full traceback-frame retrieval, and native module imports inside executed PortaPy source. Host module loading is intentionally outside the PortaPy embedding API.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates are native closures/classes, the complete standalone frontend/bytecode VM transition, and broader object syntax. Host module loading remains intentionally outside the PortaPy embedding API.
 
 ## Relationship to pyinbin
 
 `pyinbin` remains tailored to asmpython's native/static import pipeline and packaged-source fallback. PortaPy forks the reusable interpreter core and exposes it as a separately versioned embeddable product.
 
-See `docs/DESIGN.md`, `docs/FFI.md`, `RELEASE_STATUS.json`, and `include/portapy.h`.
+See `docs/DESIGN.md`, `docs/FFI.md`, `RELEASE_STATUS.json`, `include/portapy.h`, and `include/portapy_traceback.h`.

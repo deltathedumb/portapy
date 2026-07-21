@@ -93,6 +93,7 @@ def main() -> int:
         )
 
         snapshot = environment.snapshot()
+        assert "__pyinbin_import__" not in snapshot.var
         assert snapshot.var["http_provider"] is game.provider.HttpProvider
         assert snapshot.var["input_value"] == 41.9
         assert snapshot.var["floor_value"] == 41
@@ -148,6 +149,12 @@ def main() -> int:
             pass
         else:
             raise AssertionError("snapshot restore did not delete extra global")
+
+        environment.execute(
+            "import math\n"
+            "post_restore_import = math.floor(42.9)\n"
+        )
+        assert environment.get("post_restore_import") == 42
 
         environment.remove("answer")
         environment.remove("answer", missing_ok=True)

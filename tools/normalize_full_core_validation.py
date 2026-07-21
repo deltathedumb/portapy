@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
+from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 
 
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
@@ -22,6 +23,7 @@ def _normalize_opcode_validation() -> None:
 
 def main() -> int:
     normalize_native_parser()
+    normalize_pattern_slices()
     _normalize_opcode_validation()
     return 0
 

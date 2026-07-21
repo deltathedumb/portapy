@@ -33,6 +33,9 @@ from tools.normalize_full_reference_data_builders import (
 from tools.normalize_full_reference_error_locations import (
     main as normalize_reference_error_locations,
 )
+from tools.normalize_full_reference_error_text import (
+    main as normalize_reference_error_text,
+)
 from tools.normalize_full_reference_errors import (
     main as normalize_reference_errors,
 )
@@ -100,6 +103,7 @@ def main() -> int:
     normalize_reference_abi_helpers()
     normalize_reference_float_bits()
     normalize_reference_errors()
+    normalize_reference_error_text()
     normalize_reference_error_locations()
     normalize_reference_value_kinds()
     normalize_reference_nested_kinds()

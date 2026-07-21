@@ -24,6 +24,11 @@ _SCALAR_IMPORT = """from .native_api_scalar import (
 )"""
 _TRACEBACK_FORWARDERS = '''
 
+
+def _traceback_filename_for_runtime(runtime: int) -> str:
+    return _fn_traceback_filename_for_runtime(runtime)
+
+
 def _portapy_traceback_set_filename_impl(runtime: int, filename: str, filename_size: int) -> int:
     return _fn_portapy_traceback_set_filename_impl(runtime, filename, filename_size)
 
@@ -120,6 +125,7 @@ def generate_native_host_entry(
     _fn_parse_call_or_expression,
     _fn_portapy_eval_span_impl,
     _fn_portapy_exec_span_impl,
+    _fn_traceback_filename_for_runtime,
     _fn_portapy_traceback_set_filename_impl,
     _fn_portapy_traceback_default_filename_impl,
     _fn_portapy_traceback_reset_impl,

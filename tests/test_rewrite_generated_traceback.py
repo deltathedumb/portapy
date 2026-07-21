@@ -21,11 +21,13 @@ def _trace_namespace() -> dict[str, object]:
         "PORTAPY_OK": 0,
         "PORTAPY_INVALID_ARGUMENT": 1,
         "PORTAPY_NOT_FOUND": 5,
+        "PORTAPY_INVALID_HANDLE": 7,
         "_function_definition_line": [0, 1, 3],
         "_function_body": ["", "return missing", "return inner()"],
         "_function_name": ["", "inner", "outer"],
         "_function_parameters": ["", "", ""],
         "_runtime_error_line": [0, 2],
+        "_runtime_is_valid": lambda runtime: runtime in (1, 2),
         "_portapy_error_column_impl": lambda runtime: set_status(0) or 12,
         "_portapy_last_status_impl": lambda: status[0],
         "_set_status": set_status,
@@ -78,6 +80,13 @@ def test_traceback_reset_is_per_runtime() -> None:
     assert namespace["_portapy_traceback_reset_impl"](1) == 0
     assert namespace["_portapy_traceback_count_impl"](1) == 0
     assert namespace["_portapy_traceback_count_impl"](2) == 1
+
+
+def test_invalid_runtime_is_rejected() -> None:
+    namespace = _trace_namespace()
+
+    assert namespace["_portapy_traceback_count_impl"](99) == 0
+    assert namespace["status"][0] == 7
 
 
 def test_traceback_rewrite_instruments_function_unwind(tmp_path: Path) -> None:

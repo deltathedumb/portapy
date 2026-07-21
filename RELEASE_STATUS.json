@@ -56,6 +56,9 @@
     "break and continue propagation inside native functions",
     "early return propagation through nested function blocks",
     "trailing scalar default function arguments",
+    "definition-time default expression capture",
+    "captured default replacement on function redefinition",
+    "transactional failed function redefinition",
     "named function call arguments",
     "mixed positional then keyword calls",
     "reordered keyword argument binding",
@@ -73,7 +76,7 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "definition-time default capture, variadic and parameter-kind markers, closures, classes, and general VM execution",
+    "variadic and parameter-kind markers, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"

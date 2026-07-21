@@ -189,7 +189,7 @@ def main() -> int:
     verified = ast.parse(source)
     text = ast.unparse(verified)
     required = (
-        '"UnicodeDecodeError"',
+        "UnicodeDecodeError",
         "instance._error_line",
         "instance._error_column",
         "_native_error_location(source_text)",

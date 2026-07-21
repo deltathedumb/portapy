@@ -99,24 +99,12 @@ jobs:
       - name: Install quietly
         shell: powershell
         run: |
-          $PSNativeCommandUseErrorActionPreference = $false
           $installLog = Join-Path $env:RUNNER_TEMP 'portapy-install-windows.log'
           & .\tools\install_windows_toolchain.ps1 *>> $installLog
           if ($LASTEXITCODE -ne 0) { Get-Content $installLog; exit $LASTEXITCODE }
           python -m pip install -e '.[test]' *>> $installLog
           if ($LASTEXITCODE -ne 0) { Get-Content $installLog; exit $LASTEXITCODE }
-          $compiler = 'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-          $compilerInstalled = $false
-          for ($attempt = 1; $attempt -le 3; $attempt += 1) {
-            "Installing pinned asmpython (attempt $attempt/3)" | Out-File -FilePath $installLog -Encoding utf8 -Append
-            python -m pip install --no-cache-dir --force-reinstall $compiler *>> $installLog
-            if ($LASTEXITCODE -eq 0) {
-              $compilerInstalled = $true
-              break
-            }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if (-not $compilerInstalled) { Get-Content $installLog; exit 1 }
+          & .\tools\install_pinned_asmpython.ps1 -LogPath $installLog
       - name: Capture compiler diagnostic
         id: build
         shell: powershell

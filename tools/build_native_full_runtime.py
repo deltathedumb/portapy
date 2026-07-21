@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shlex
+import subprocess
 import sys
 
 
@@ -22,11 +24,61 @@ from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
 SOURCE = REPOSITORY_ROOT / "src" / "portapy" / "native_full_reference_entry.py"
+COMPILER_WRAPPER = REPOSITORY_ROOT / "tools" / "run_full_core_asmpython.py"
 
 
 def _prepare_full_runtime_sources() -> None:
     """Apply the complete verified native normalization pipeline once."""
     normalize_full_runtime()
+
+
+def _install_full_runtime_compiler() -> None:
+    """Route production compilation through the proven full-core CLI wrapper."""
+
+    def compile_python_source(
+        *,
+        target: str,
+        source: Path,
+        output: Path,
+        build_log: Path,
+    ) -> Path:
+        command = [
+            sys.executable,
+            str(COMPILER_WRAPPER),
+            "build",
+            str(source),
+            "--target",
+            target,
+            "--type",
+            "library",
+            "--backend",
+            "legacy",
+            "--no-pyinbin-fallback",
+            "--keep-assembly",
+            "-o",
+            str(output),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=REPOSITORY_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        build_log.parent.mkdir(parents=True, exist_ok=True)
+        build_log.write_text(completed.stdout, encoding="utf-8")
+
+        assembly = output.with_suffix(".asm")
+        if not assembly.is_file():
+            rendered = shlex.join(command)
+            raise BuildFailure(
+                f"asmpython did not emit assembly (exit {completed.returncode}): "
+                f"{rendered}\n{completed.stdout}"
+            )
+        return assembly
+
+    base_build._compile_python_source = compile_python_source
 
 
 def _install_full_runtime_transforms() -> None:
@@ -79,6 +131,7 @@ def build_full_runtime(
 ) -> dict[str, object]:
     if normalize:
         _prepare_full_runtime_sources()
+    _install_full_runtime_compiler()
     _install_full_runtime_transforms()
 
     metadata = base_build.build_native(

@@ -7,7 +7,7 @@ from tools.rewrite_generated_parser import (
     _replace_function,
     rewrite_generated_scalar as _rewrite_generated_scalar,
 )
-from tools.rewrite_generated_tuple import rewrite_generated_tuple
+from tools.rewrite_generated_tuple_safe import rewrite_generated_tuple
 from tools.rewrite_generated_tuple_expression import rewrite_generated_tuple_expression
 
 

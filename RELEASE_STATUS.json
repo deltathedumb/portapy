@@ -35,6 +35,12 @@
     "recursive tuple release through ordinary value ownership",
     "recursive Python tuple boxing and unboxing",
     "tuple globals snapshots and host callback round-trips",
+    "native dictionary literals",
+    "empty nested mixed-key and trailing-comma dictionaries",
+    "dictionary indexing len truthiness and structural equality",
+    "dictionary duplicate-key replacement",
+    "recursive dictionary key and value ownership",
+    "dictionary values in native functions and control flow",
     "equality and ordering comparisons",
     "identity comparisons with is and is not",
     "not and or with operand-return semantics",
@@ -78,6 +84,9 @@
     "keyword-only parameters with bare star markers",
     "positional variadic parameters packed into immutable tuples",
     "empty nested and mixed positional variadic calls",
+    "keyword variadic parameters packed into owned dictionaries",
+    "empty nested and mixed keyword variadic calls",
+    "combined positional variadic keyword-only default and keyword variadic binding",
     "missing duplicate unexpected and parameter-kind argument errors",
     "callable value handles",
     "cross-exec function persistence",
@@ -92,8 +101,8 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "keyword variadic parameters and native list and dictionary containers",
-    "closures classes and general VM execution",
+    "native list containers and public dictionary ABI boxing and extraction",
+    "closures classes and complete frontend bytecode VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"

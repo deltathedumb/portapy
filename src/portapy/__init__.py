@@ -29,7 +29,7 @@ from .reference_api import ErrorInfo, Runtime, Status, ValueKind
 Snapshot = EnvironmentSnapshot
 PortaPyExecutionError = ExecutionError
 
-__version__ = "3.14.0-dev"
+__version__ = "3.14.0"
 
 __all__ = [
     "BindingError",

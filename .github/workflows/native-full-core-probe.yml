@@ -29,6 +29,7 @@ jobs:
           python tools/normalize_full_core_lambdas.py
           python tools/normalize_full_core_native_semantics.py
           python tools/normalize_full_core_opcode_maps.py
+          python tools/normalize_full_core_validation.py
           mkdir -p dist/debug-tree
           python - <<'PY'
           from pathlib import Path
@@ -140,6 +141,8 @@ jobs:
           python tools/normalize_full_core_native_semantics.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_validation.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile full frontend and VM
         shell: powershell

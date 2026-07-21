@@ -100,7 +100,7 @@ jobs:
         shell: powershell
         run: |
           $installLog = Join-Path $env:RUNNER_TEMP 'portapy-install-windows.log'
-          choco install nasm mingw -y --no-progress *> $installLog
+          & .\tools\install_windows_toolchain.ps1 *>> $installLog
           if ($LASTEXITCODE -ne 0) { Get-Content $installLog; exit $LASTEXITCODE }
           python -m pip install -e '.[test]' *>> $installLog
           if ($LASTEXITCODE -ne 0) { Get-Content $installLog; exit $LASTEXITCODE }
@@ -145,6 +145,7 @@ jobs:
         with:
           name: native-build-diagnostic-windows
           path: |
+            ${{ runner.temp }}/portapy-install-windows.log
             ${{ runner.temp }}/portapy-build-windows.log
             ${{ runner.temp }}/portapy-report-windows.log
             ${{ runner.temp }}/portapy-build-windows

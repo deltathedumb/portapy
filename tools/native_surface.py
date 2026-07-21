@@ -67,6 +67,14 @@ DICT_GLUE_EXPORTS = (
     "portapy_dict_get_item_utf8",
 )
 
+LIST_GLUE_EXPORTS = (
+    "portapy_value_from_list",
+    "portapy_list_get_size",
+    "portapy_list_get_item",
+    "portapy_list_set_item",
+    "portapy_list_append",
+)
+
 BASE_GLUE_INTERNALS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_data_begin_impl",
@@ -127,6 +135,16 @@ DICT_GLUE_INTERNALS = (
     "_portapy_cabi_dict_get_item_span_impl",
 )
 
+LIST_GLUE_INTERNALS = (
+    "_portapy_cabi_list_begin_impl",
+    "_portapy_cabi_list_initialize_item_impl",
+    "_portapy_cabi_list_finish_impl",
+    "_portapy_cabi_list_get_size_impl",
+    "_portapy_cabi_list_get_item_impl",
+    "_portapy_cabi_list_set_item_impl",
+    "_portapy_cabi_list_append_impl",
+)
+
 GLUE_EXPORTS = BASE_GLUE_EXPORTS
 GLUE_INTERNALS = BASE_GLUE_INTERNALS
 ASSEMBLY_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_INTERNALS
@@ -146,6 +164,7 @@ def assembly_exports(
         result += ENVIRONMENT_GLUE_INTERNALS
         result += TUPLE_GLUE_INTERNALS
         result += DICT_GLUE_INTERNALS
+        result += LIST_GLUE_INTERNALS
     return result
 
 
@@ -162,6 +181,7 @@ def public_exports(
         result += ENVIRONMENT_GLUE_EXPORTS
         result += TUPLE_GLUE_EXPORTS
         result += DICT_GLUE_EXPORTS
+        result += LIST_GLUE_EXPORTS
     return result
 
 

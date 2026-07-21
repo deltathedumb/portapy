@@ -27,12 +27,14 @@ environment.expose(env)
 environment.set("requested_value", 41.9)
 environment.set("coordinates", (10, 20, (30, 40)))
 environment.set("settings", {"scale": 2, "nested": {"value": 21}})
+environment.set("samples", [18, [1, 2], 24])
 environment.execute("""
 http_provider = game.provider.HttpProvider
 floor_value = math.floor(requested_value)
 answer = floor_value + 1
 first_coordinate = coordinates[0]
 scaled = settings["nested"]["value"] * settings["scale"]
+first_sample = samples[0]
 """)
 
 snapshot = environment.snapshot()
@@ -40,11 +42,12 @@ http_provider = snapshot.var["http_provider"]
 answer = snapshot.var["answer"]
 coordinates = snapshot.var["coordinates"]
 settings = snapshot.var["settings"]
+samples = snapshot.var["samples"]
 ```
 
 `add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
 
-The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, tuples, string-key mappings, modules, objects, and callables into native PortaPy values. Tuples and mappings are converted recursively and remain ordinary PortaPy values across globals, snapshots, and host callback arguments/results. Native mapping keys are currently restricted to non-empty ASCII strings. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
+The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, tuples, lists, string-key mappings, modules, objects, and callables into native PortaPy values. Tuples, lists, and mappings are converted recursively and remain ordinary PortaPy values across globals, snapshots, and host callback arguments/results. Native mapping keys are currently restricted to non-empty ASCII strings. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
 
 Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment and deletes globals created after the snapshot. Mutations inside referenced host objects are intentionally not deep-rolled back.
 
@@ -67,6 +70,8 @@ The native C ABI underneath the facade provides:
 - `portapy_tuple_get_size()` and `portapy_tuple_get_item()` for retained tuple extraction.
 - `portapy_value_from_dict()` and `portapy_dict_set_utf8()` for owned string-key dictionaries.
 - `portapy_dict_get_size()`, `portapy_dict_key_copy_utf8()`, and `portapy_dict_get_item_utf8()` for enumeration and retained lookup.
+- `portapy_value_from_list()` for mutable lists built from borrowed item handles.
+- `portapy_list_get_size()`, `portapy_list_get_item()`, `portapy_list_set_item()`, and `portapy_list_append()` for retained extraction and mutation.
 - `portapy_set_global_utf8()` and `portapy_delete_global_utf8()` for namespace management.
 - `portapy_global_count()` and `portapy_global_name_copy_utf8()` for exact snapshot enumeration.
 - `portapy_host_set_attr_utf8()` for host-owned attribute graphs.
@@ -83,7 +88,7 @@ The native C ABI underneath the facade provides:
 Implemented native ABI and source surface:
 
 - isolated runtime handles
-- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, dictionary, callable, and opaque object handles
+- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, dictionary, list, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
 - retained native global injection, enumeration, replacement, and deletion
 - host attribute graph registration, replacement, lookup, and dotted traversal
@@ -91,25 +96,28 @@ Implemented native ABI and source surface:
 - borrowed callback arguments, owned callback results, and structured callback failures
 - `import_binary()` / `load_native()` module facades
 - native `new()`, `add_modules()`, `expose()`, `set()`, `get()`, `remove()`, `execute()`, `evaluate()`, and snapshots
-- automatic Python scalar, tuple, string-key mapping, module, object, and callable adaptation
+- automatic Python scalar, tuple, list, string-key mapping, module, object, and callable adaptation
 - exact native snapshot restoration with post-snapshot global cleanup
 - checked value-kind/conversion and buffer-copy operations
 - public tuple construction, size, and retained item extraction
 - public dictionary construction, replacement, key enumeration, and retained lookup
-- recursive tuple and dictionary release through normal value ownership
-- recursive tuple/mapping globals, snapshots, and host callback round-trips
+- public list construction, size, retained item extraction, replacement, and append
+- recursive tuple, dictionary, and list release through normal value ownership
+- recursive tuple/list/mapping globals, snapshots, and host callback round-trips
 - per-runtime structured error status, type, message, line, and column
 - retain/release and runtime-owned teardown
 - precedence-aware integer arithmetic, powers, shifts, and bitwise expressions
 - string/bytes concatenation and repetition
-- native `None`, boolean, quoted string, bytes, and immutable tuple literals
+- native `None`, boolean, quoted string, bytes, tuple, dictionary, and list literals
 - empty, single-item, multi-item, and nested tuples
 - positive, negative, and chained tuple indexing
 - tuple-aware `len()`, truthiness, and recursive structural equality
 - owned string-key dictionaries with `len()`, truthiness, equality, and indexing
-- recursive dictionary child ownership
+- mutable lists with positive/negative indexing, `len()`, truthiness, and recursive structural equality
+- recursive dictionary and list child ownership
 - UTF-8 source literals across hosted Unicode and native byte-oriented source boundaries
-- tuple and dictionary values passed through native functions and control flow
+- tuple, dictionary, and list values passed through native functions and control flow
+- container literals inside native function calls
 - equality, ordering, `is`, and `is not` comparisons
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
 - typed global assignment, lookup, aliasing, augmented assignment, and `eval`
@@ -119,7 +127,7 @@ Implemented native ABI and source surface:
 - positional `def` functions, zero/multi-argument calls, nested calls, and `return`
 - recursive `if`/`else` and `while` blocks inside native functions
 - nested `break`, `continue`, and early `return` propagation inside functions
-- trailing scalar defaults captured once when each `def` executes
+- trailing scalar defaults captured once when each `def` executes`
 - transactional capture replacement on successful function redefinition
 - positional/keyword, mixed, reordered, and nested default calls
 - `/` positional-only and bare `*` keyword-only parameter markers
@@ -136,7 +144,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include native list containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include closures, classes, completing the frontend/bytecode VM transition, broader object syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

@@ -46,6 +46,16 @@
     "public dictionary recursive ownership",
     "recursive Python mapping boxing and unboxing",
     "dictionary globals snapshots and host callback round-trips",
+    "owned mutable list values",
+    "empty nested and trailing-comma list literals",
+    "positive and negative list indexing",
+    "list len truthiness and recursive structural equality",
+    "recursive list child ownership",
+    "list values in native functions and control flow",
+    "container literals inside native function calls",
+    "public list construction size retained extraction replacement and append",
+    "recursive Python list boxing and unboxing",
+    "list globals snapshots and host callback round-trips",
     "equality and ordering comparisons",
     "identity comparisons with is and is not",
     "not and or with operand-return semantics",
@@ -63,7 +73,7 @@
     "native global enumeration and deletion",
     "native import_binary and load_native module facades",
     "automatic native add_modules and expose adaptation",
-    "automatic Python scalar module object callable tuple and mapping boxing",
+    "automatic Python scalar module object callable tuple list and mapping boxing",
     "native snapshot.var enumeration and shallow restore",
     "native environment remove and exact post-snapshot cleanup",
     "statement blocks with newline and semicolon separators",
@@ -103,9 +113,8 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "native list containers and public list boxing",
-    "closures classes and general VM execution",
-    "broader object and container syntax in the standalone native source parser",
+    "closures classes and complete frontend bytecode VM execution",
+    "broader object syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"
   ]

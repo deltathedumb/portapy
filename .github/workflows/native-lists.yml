@@ -1,0 +1,98 @@
+name: Native list ABI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+          python -m pip install -e .
+      - name: Build native library with list ABI
+        run: |
+          python tools/build_native_host_calls.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-lists-linux
+      - name: Execute public list ABI from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_list_host.c -ldl -o dist/native_list_host
+          ./dist/native_list_host ./dist/libportapy.so \
+            | tee dist/list-output.txt
+          grep -qx 'native-lists: ok' dist/list-output.txt
+      - name: Exercise Python list facade
+        run: |
+          python tests/native_list_adapter_probe.py ./dist/libportapy.so \
+            | tee dist/list-adapter-output.txt
+          grep -qx 'native-list-adapter: ok' dist/list-adapter-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-native-lists
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+          python -m pip install -e .
+      - name: Build native library with list ABI
+        shell: powershell
+        run: |
+          python tools/build_native_host_calls.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-lists-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute public list ABI from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_list_host.c -o dist/native_list_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_list_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/list-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-lists: ok') {
+            throw "unexpected native list output: $output"
+          }
+      - name: Exercise Python list facade
+        shell: powershell
+        run: |
+          $output = @(python tests/native_list_adapter_probe.py dist/portapy.dll)
+          $output | Out-File -Encoding utf8 dist/list-adapter-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $lastLine = $output[-1]
+          if ($lastLine -ne 'native-list-adapter: ok') {
+            throw "unexpected native list adapter output: $($output -join [Environment]::NewLine)"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-native-lists
+          path: dist

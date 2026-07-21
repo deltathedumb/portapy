@@ -36,6 +36,7 @@ class ValueKind(IntEnum):
     OBJECT = 7
     TUPLE = 8
     DICT = 9
+    LIST = 10
 
 
 @dataclass(frozen=True)
@@ -288,6 +289,8 @@ class Runtime:
             kind = ValueKind.TUPLE
         elif type(value) is dict:
             kind = ValueKind.DICT
+        elif type(value) is list:
+            kind = ValueKind.LIST
         elif callable(value):
             kind = ValueKind.CALLABLE
         else:

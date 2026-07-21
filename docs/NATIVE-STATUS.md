@@ -5,9 +5,14 @@ PortaPy interpreter. A probe library is not a PortaPy release.
 
 ## Verified or actively gated
 
-- PortaPy owns a standalone fork of pyinbin's Python-authored bytecode, frontend,
-  and VM modules.
-- Hosted tests execute the fork without importing `asmpython.pyinbin`.
+- PortaPy owns Python-authored bytecode, frontend, VM, lexer, parser, AST-node,
+  and diagnostic modules.
+- The portable frontend parses and lowers source without importing host `ast`.
+- The full-core native transition probe compiles the mature
+  `portapy.core.frontend` and `VirtualMachine` together on Windows and Linux.
+- The full-core probe generates its private parser runtime from
+  `src/portapy/parser`; asmpython remains the compiler rather than the parser
+  implementation being embedded.
 - asmpython's legacy backend generates the native NASM used for Windows and Linux
   shared libraries.
 - The public native contract is a language-neutral C ABI.
@@ -25,6 +30,8 @@ PortaPy interpreter. A probe library is not a PortaPy release.
   objects, including aliases and dotted object paths.
 - Missing native modules and members produce structured `ModuleNotFoundError` and
   `ImportError` state.
+- Returned native lexical closures capture cells, preserve isolated closure
+  instances, and observe later mutation of captured state.
 - The public traceback ABI exposes indexed filename, function, line, column, and
   source-line frames. Native Python exposes the same data as
   `NativeTracebackFrame` objects.
@@ -35,6 +42,7 @@ PortaPy interpreter. A probe library is not a PortaPy release.
   - public labels are declared from an explicit allowlist,
   - ELF external functions use PLT and external data uses GOT,
   - unsupported external memory forms fail closed,
+  - ELF relocatable constant tables are moved out of read-only data,
   - ELF version scripts and Windows `.def` files limit public exports.
 - Low-level external hosts invoke the generated module initializer explicitly;
   `portapy_new()` performs library initialization automatically.
@@ -43,20 +51,18 @@ PortaPy interpreter. A probe library is not a PortaPy release.
 
 The remaining blockers for a final standalone `3.14` release are:
 
-1. Replace the temporary standalone parser/executor path with the complete
-   Python-authored frontend and bytecode VM.
-2. Remove the compiled frontend's dependency on host `ast`; source parsing must
-   be fully contained in PortaPy's compiled Python source.
-3. Carry the mature hosted closure, class, descriptor, exception, generator, and
-   async semantics through that standalone native frontend/VM path.
-4. Complete broader native object syntax and object-model conformance.
-5. Prove the final libraries execute without CPython or a Python installation.
-6. Run the final release matrix, verify exact export tables and no Linux
+1. Replace the incremental native parser/executor with the complete standalone
+   frontend and bytecode VM.
+2. Carry classes, descriptors, exceptions, generators, async execution, and the
+   broader object model through that final path.
+3. Prove the final libraries execute without CPython or a Python installation.
+4. Run the final release matrix, verify exact export tables and no Linux
    `TEXTREL`, and attach checksums, headers, examples, and build metadata.
 
-Runtime handles, values, UTF-8 execution, functions, imports, callbacks,
-containers, structured errors, and traceback frames are already implemented and
-must remain gated while the architectural transition proceeds.
+Runtime handles, values, UTF-8 execution, functions, closures, imports, callbacks,
+containers, structured errors, traceback frames, and the language-neutral
+embedding API are implemented and must remain gated during the final architectural
+transition.
 
 ## Non-negotiable implementation rule
 

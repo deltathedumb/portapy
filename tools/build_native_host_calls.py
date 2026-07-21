@@ -31,6 +31,7 @@ from tools.native_surface import (
     ENVIRONMENT_GLUE_INTERNALS,
     HOST_CALL_GLUE_INTERNALS,
     LIST_GLUE_INTERNALS,
+    TRACEBACK_INTERNALS,
     TUPLE_GLUE_INTERNALS,
     linux_version_script,
     public_exports,
@@ -90,6 +91,7 @@ def _upgrade_linked_artifact(
         list(
             HOST_CALL_GLUE_INTERNALS
             + ENVIRONMENT_GLUE_INTERNALS
+            + TRACEBACK_INTERNALS
             + TUPLE_GLUE_INTERNALS
             + DICT_GLUE_INTERNALS
             + LIST_GLUE_INTERNALS
@@ -104,6 +106,7 @@ def _upgrade_linked_artifact(
     call_object = work_dir / f"portapy-host-call-glue{suffix}"
     environment_object = work_dir / f"portapy-environment-glue{suffix}"
     environment_api_object = work_dir / f"portapy-environment-api{suffix}"
+    traceback_object = work_dir / f"portapy-traceback-glue{suffix}"
     tuple_object = work_dir / f"portapy-tuple-glue{suffix}"
     dict_object = work_dir / f"portapy-dict-glue{suffix}"
     list_object = work_dir / f"portapy-list-glue{suffix}"
@@ -143,6 +146,13 @@ def _upgrade_linked_artifact(
     _compile_bridge_glue(
         gcc=gcc,
         target=target,
+        source=REPOSITORY_ROOT / "native" / "traceback_glue.c",
+        output=traceback_object,
+        log=work_dir / f"{target}-traceback-glue.log",
+    )
+    _compile_bridge_glue(
+        gcc=gcc,
+        target=target,
         source=REPOSITORY_ROOT / "native" / "tuple_glue.c",
         output=tuple_object,
         log=work_dir / f"{target}-tuple-glue.log",
@@ -169,6 +179,7 @@ def _upgrade_linked_artifact(
         str(call_object),
         str(environment_object),
         str(environment_api_object),
+        str(traceback_object),
         str(tuple_object),
         str(dict_object),
         str(list_object),
@@ -290,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["host_calls"] = True
     metadata["native_environment_adapter"] = True
     metadata["public_environment_api"] = True
+    metadata["public_traceback_abi"] = True
     metadata["public_tuple_abi"] = True
     metadata["public_dict_abi"] = True
     metadata["public_list_abi"] = True
@@ -305,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         "native/environment_api.c",
         "native/environment_glue.c",
         "native/host_call_glue.c",
+        "native/traceback_glue.c",
     ]
     metadata["semantic_sources"] = [
         "src/portapy/native_api.py",
@@ -316,6 +329,9 @@ def main(argv: list[str] | None = None) -> int:
         "src/portapy/native_api_host.py",
         "src/portapy/native_api_host_calls.py",
         "src/portapy/native_api_environment.py",
+        "tools/rewrite_generated_imports.py",
+        "tools/rewrite_generated_traceback.py",
+        "tools/rewrite_generated_traceback_entry.py",
         "tools/rewrite_generated_tuple.py",
         "tools/rewrite_generated_dict.py",
         "tools/rewrite_generated_list.py",

@@ -172,7 +172,8 @@ def test_kwargs_survive_nested_calls_equality_and_local_restore(tmp_path: Path) 
             "def outer(value, **rest):\n"
             "    return value + rest[\"bonus\"]\n"
             "saved = capture(alpha=18, beta=24)\n"
-            "same = saved == capture(alpha=18, beta=24)\n"
+            "saved_again = capture(alpha=18, beta=24)\n"
+            "same = saved == saved_again\n"
             "answer = outer(saved[\"alpha\"], bonus=saved[\"beta\"])\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK

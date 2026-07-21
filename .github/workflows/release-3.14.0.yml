@@ -1,0 +1,136 @@
+name: Build and release PortaPy 3.14.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish 3.14.0 after every native gate passes
+        required: true
+        type: boolean
+        default: false
+  push:
+    branches:
+      - release/3.14.0
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package and native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build full libportapy.so
+        run: |
+          python tools/build_native_typed.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-linux
+      - name: Validate Linux stable artifact
+        run: |
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          python tools/run_native_release_conformance.py \
+            dist/libportapy.so \
+            --output-dir dist/conformance-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portapy-linux-3.14.0
+          path: |
+            dist/libportapy.so
+            dist/libportapy.so.json
+            dist/conformance-linux
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package and native toolchain
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build full portapy.dll
+        shell: powershell
+        run: |
+          python tools/build_native_typed.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Windows stable artifact
+        shell: powershell
+        run: |
+          python tools/run_native_release_conformance.py `
+            dist/portapy.dll `
+            --compiler gcc `
+            --output-dir dist/conformance-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portapy-windows-3.14.0
+          path: |
+            dist/portapy.dll
+            dist/portapy.dll.json
+            dist/conformance-windows
+
+  publish:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-download
+      - name: Assemble release directory
+        run: |
+          mkdir -p dist
+          cp dist-download/portapy-linux-3.14.0/libportapy.so dist/
+          cp dist-download/portapy-linux-3.14.0/libportapy.so.json dist/
+          cp dist-download/portapy-windows-3.14.0/portapy.dll dist/
+          cp dist-download/portapy-windows-3.14.0/portapy.dll.json dist/
+      - name: Validate metadata and checksums
+        run: |
+          PYTHONPATH="$PWD" python tools/release_gate.py dist \
+            --expected-tag 3.14.0
+          cp include/portapy.h dist/portapy.h
+          cp LICENSE dist/LICENSE.txt
+          cp RELEASE_STATUS.json dist/RELEASE_STATUS.json
+      - name: Publish PortaPy 3.14.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 3.14.0 >/dev/null 2>&1; then
+            echo 'GitHub release 3.14.0 already exists; refusing to replace it.'
+            exit 1
+          fi
+          gh release create 3.14.0 \
+            dist/libportapy.so \
+            dist/libportapy.so.json \
+            dist/portapy.dll \
+            dist/portapy.dll.json \
+            dist/portapy.h \
+            dist/LICENSE.txt \
+            dist/RELEASE_STATUS.json \
+            dist/checksums.json \
+            dist/release-manifest.json \
+            --title 'PortaPy 3.14.0' \
+            --notes-file dist/RELEASE_NOTES.md

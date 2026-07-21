@@ -62,14 +62,14 @@ static portapy_status ABI_CALL hello_world(
 }
 
 static portapy_status ABI_CALL raw_dispatch(
-    void *raw_context,
+    void *raw_context_pointer,
     portapy_runtime runtime,
     uint64_t callable_id,
     const portapy_value *arguments,
     size_t argument_count,
     portapy_value *out_result
 ) {
-    raw_context *context = (raw_context *)raw_context;
+    raw_context *context = (raw_context *)raw_context_pointer;
     if (
         context == NULL
         || callable_id != UINT64_C(9001)

@@ -47,6 +47,8 @@ class _PortableLowerer(_unpacking._PortableLowerer):
 
     def compile_function_code(self, node: A.FuncDef) -> CodeObject:
         code = super().compile_function_code(node)
+        code.definition_line = int(getattr(node.pos, "line", 0))
+        code.definition_column = int(getattr(node.pos, "column", 0))
         if getattr(node, "is_async", False):
             code.is_coroutine = True
             code.is_async_generator = bool(code.is_generator)

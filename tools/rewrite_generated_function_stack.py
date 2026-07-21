@@ -8,6 +8,9 @@ from tools.generated_function_control_source import (
     execute_function_body_source,
 )
 from tools.rewrite_generated_function_arguments_safe import rewrite_generated_function_arguments
+from tools.rewrite_generated_function_containers import (
+    rewrite_generated_function_containers,
+)
 from tools.rewrite_generated_function_default_capture import (
     rewrite_generated_function_default_capture,
 )
@@ -102,6 +105,7 @@ def rewrite_generated_function(path: Path) -> Path:
     rewrite_generated_function_parameter_kinds(path)
     rewrite_generated_function_varargs(path)
     rewrite_generated_function_kwargs(path)
+    rewrite_generated_function_containers(path)
     return path
 
 

@@ -46,6 +46,9 @@ def test_installs_sequential_native_data_builders(
     assert "self.data: list[int] = []" in builder_text
     assert "while index < size" not in builder_text
 
+    begin = _function(module, "_portapy_value_from_data_begin_impl")
+    assert "instance._store(_DataBuilder(kind, size), _native_kind_member(kind))" in begin
+
     setter = _function(module, "_portapy_value_set_data_byte_impl")
     assert "index != len(target.data)" in setter
     assert "target.data.append(byte)" in setter

@@ -47,4 +47,5 @@ def test_full_reference_normalization_installs_import_loader_and_utf8_spans(
     loader_source = ast.unparse(loader)
     assert "self.instance.read_global(parts[0])" in loader_source
     assert "getattr(value, parts[index])" in loader_source
-    assert "raise ModuleNotFoundError(name)" in loader_source
+    assert "raise ImportError(name)" in loader_source
+    assert "ModuleNotFoundError" not in loader_source

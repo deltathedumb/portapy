@@ -17,10 +17,6 @@ from tools.build_native_host_calls import _upgrade_linked_artifact
 from tools.elf_runtime_abi import fix_linux_runtime_abi
 from tools.nasm_direct_float_abi import append_direct_float_abi
 from tools.native_surface import public_exports
-from tools.normalize_full_core_lambdas import main as normalize_lambdas
-from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
-from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
-from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_core_validation import main as normalize_full_runtime
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
@@ -29,17 +25,7 @@ SOURCE = REPOSITORY_ROOT / "src" / "portapy" / "native_full_reference_entry.py"
 
 
 def _prepare_full_runtime_sources() -> None:
-    """Apply the verified full-core native normalization sequence once.
-
-    This is the same ordering used by the original Linux/Windows full-core
-    probe workflow.  Keeping it in the canonical builder makes a direct
-    ``build_native_typed.py`` invocation self-contained instead of depending
-    on CI having pre-mutated the checkout.
-    """
-    normalize_probe()
-    normalize_lambdas()
-    normalize_native_semantics()
-    normalize_opcode_maps()
+    """Apply the complete verified native normalization pipeline once."""
     normalize_full_runtime()
 
 

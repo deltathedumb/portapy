@@ -15,6 +15,9 @@ from tools.normalize_full_core_keyword_calls import (
 )
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
+from tools.normalize_full_reference_abi_helpers import (
+    main as normalize_reference_abi_helpers,
+)
 
 
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
@@ -33,6 +36,7 @@ def _normalize_opcode_validation() -> None:
 
 def main() -> int:
     materialize_reference_entry()
+    normalize_reference_abi_helpers()
     normalize_native_parser()
     normalize_closures()
     normalize_pattern_slices()

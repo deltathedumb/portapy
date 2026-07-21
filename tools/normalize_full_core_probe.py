@@ -95,7 +95,8 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
 
 def normalize(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
     source = path.read_text(encoding="utf-8")
-    for old, new in replacements:
+    ordered = sorted(replacements, key=lambda item: len(item[0]), reverse=True)
+    for old, new in ordered:
         count = source.count(old)
         if count < 1:
             raise RuntimeError(

@@ -24,6 +24,7 @@ from tools.generate_native_expression_entry import (
 )
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 from tools.rewrite_generated_parser_safe import (
+    rewrite_generated_control,
     rewrite_generated_expression,
     rewrite_generated_scalar,
 )
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
             expression_module=expression_module,
             scalar_module=scalar_module,
         )
+        rewrite_generated_control(control_source)
         generated_paths.extend([scalar_source, expression_source, control_source])
         source = control_source
 

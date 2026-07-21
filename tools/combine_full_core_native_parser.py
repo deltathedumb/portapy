@@ -42,7 +42,7 @@ def _prepare_runtime(module: ast.Module) -> list[ast.stmt]:
     output: list[ast.stmt] = []
     removed_exception_table = 0
     removed_statement_alias = 0
-    stubbed_closure_scan = 0
+    closure_scan_count = 0
 
     for node in _strip_docstring(module.body):
         if isinstance(node, ast.ImportFrom) and node.module == "__future__":
@@ -60,8 +60,7 @@ def _prepare_runtime(module: ast.Module) -> list[ast.stmt]:
         if isinstance(node, ast.ClassDef) and node.name == "_npr_parser_Parser":
             for item in node.body:
                 if isinstance(item, ast.FunctionDef) and item.name == "_find_free_vars":
-                    item.body = ast.parse("return [], []").body
-                    stubbed_closure_scan += 1
+                    closure_scan_count += 1
         output.append(node)
 
     if removed_exception_table != 1:
@@ -74,11 +73,12 @@ def _prepare_runtime(module: ast.Module) -> list[ast.stmt]:
             "private parser statement alias: expected at most 1, "
             f"found {removed_statement_alias}"
         )
-    if stubbed_closure_scan != 1:
+    if closure_scan_count != 1:
         raise RuntimeError(
             "private parser closure scan: expected 1, "
-            f"found {stubbed_closure_scan}"
+            f"found {closure_scan_count}"
         )
+    print("PRESERVED PRIVATE PARSER CLOSURE SCAN", closure_scan_count)
     print("PREPARED EMBEDDED PARSER RUNTIME", len(output))
     return output
 

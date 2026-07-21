@@ -41,15 +41,11 @@ def main() -> int:
     module = import_binary(Path(sys.argv[1]))
     with module.new() as environment:
         game = Game()
-        environment.add_modules(math)
-        environment.expose(
-            {
-                "game": game,
-                "add": add,
-                "tuple_roundtrip": tuple_roundtrip,
-                "dict_roundtrip": dict_roundtrip,
-            }
-        )
+        environment.add(math)
+        environment.add(add)
+        environment.add(tuple_roundtrip)
+        environment.add(dict_roundtrip)
+        environment.add_all({"game": game})
         environment.set("input_value", 41.9)
         environment.set("input_tuple", (18, (1, 2), "é"))
         environment.set(

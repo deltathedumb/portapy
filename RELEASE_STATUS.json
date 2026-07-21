@@ -62,7 +62,9 @@
     "named function call arguments",
     "mixed positional then keyword calls",
     "reordered keyword argument binding",
-    "missing duplicate and unexpected argument errors",
+    "positional-only parameters with slash markers",
+    "keyword-only parameters with bare star markers",
+    "missing duplicate unexpected and parameter-kind argument errors",
     "callable value handles",
     "cross-exec function persistence",
     "local function binding save and restore",
@@ -76,7 +78,7 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "variadic and parameter-kind markers, closures, classes, and general VM execution",
+    "variadic parameters, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"

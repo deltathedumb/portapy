@@ -51,16 +51,6 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "\n"
             "    __code__ = _CodeDescriptor()\n"
             "    __globals__ = _GlobalsDescriptor()",
-            "class _FunctionCodeDescriptor:\n"
-            "    def __get__(self, instance: object, owner: type) -> object:\n"
-            "        return self if instance is None else instance.code\n"
-            "\n"
-            "\n"
-            "class _FunctionGlobalsDescriptor:\n"
-            "    def __get__(self, instance: object, owner: type) -> object:\n"
-            "        return self if instance is None else instance.globals\n"
-            "\n"
-            "\n"
             "@dataclass(eq=False)\n"
             "class Function:\n"
             "    code: CodeObject\n"
@@ -69,10 +59,7 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "    kw_defaults: dict[str, object] = field(default_factory=dict)\n"
             "    closure: dict[str, object] | None = None\n"
             "    vm: \"VirtualMachine | None\" = None\n"
-            "    _metadata: dict[str, object] = field(default_factory=dict, init=False, repr=False)\n"
-            "\n"
-            "    __code__ = _FunctionCodeDescriptor()\n"
-            "    __globals__ = _FunctionGlobalsDescriptor()",
+            "    _metadata: dict[str, object] = field(default_factory=dict, init=False, repr=False)",
         ),
         (
             "class SuperProxy:",
@@ -81,6 +68,10 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "\n"
             "\n"
             "class SuperProxy:",
+        ),
+        (
+            "        return self.cache_info_type(0, 0, self.maxsize, len(self.cache))",
+            "        return _full_core_probe_noop()",
         ),
         (
             "                    return lambda *args, **kwargs: None",

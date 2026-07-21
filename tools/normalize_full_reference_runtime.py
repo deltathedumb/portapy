@@ -23,6 +23,21 @@ _NATIVE_CAPTURE_METHOD = '''    def _capture(self, status: Status, error: BaseEx
             "PortaPy operation failed",
             "PortaPy operation failed",
         )
+        self._error_line = 0
+        self._error_column = 0
+        return status
+
+    def _capture_native(
+        self,
+        status: Status,
+        type_name: str,
+        message: str,
+        line: int = 0,
+        column: int = 0,
+    ) -> Status:
+        self._last_error = ErrorInfo(status, type_name, message, message)
+        self._error_line = line
+        self._error_column = column
         return status
 '''
 _SLOT = '''@dataclass
@@ -171,6 +186,19 @@ _NATIVE_AS_UTF8_METHOD = '''    def as_utf8(self, handle: int) -> tuple[Status, 
             return self._capture(Status.TYPE_ERROR, TypeError("value is not str")), b""
         return Status.OK, slot.value.encode("utf-8")
 '''
+_LAST_ERROR_INIT = '''        self._last_error: ErrorInfo | None = None
+        self._closed = False
+'''
+_NATIVE_LAST_ERROR_INIT = '''        self._last_error: ErrorInfo | None = None
+        self._error_line = 0
+        self._error_column = 0
+        self._closed = False
+'''
+_CLEAR_ERROR = "        self._last_error = None\n"
+_NATIVE_CLEAR_ERROR = '''        self._last_error = None
+        self._error_line = 0
+        self._error_column = 0
+'''
 _VALUES_ANNOTATION = "self._values: dict[int, _Slot] = {}"
 _NATIVE_VALUES_ANNOTATION = "self._values: dict[str, _Slot] = {}"
 _HANDLE_SUBSCRIPT = "self._values[handle]"
@@ -210,10 +238,18 @@ def main() -> int:
         (_AS_INT_METHOD, _NATIVE_AS_INT_METHOD, "integer conversion"),
         (_AS_FLOAT_METHOD, _NATIVE_AS_FLOAT_METHOD, "float conversion"),
         (_AS_UTF8_METHOD, _NATIVE_AS_UTF8_METHOD, "UTF-8 conversion"),
+        (_LAST_ERROR_INIT, _NATIVE_LAST_ERROR_INIT, "error coordinate initialization"),
         (_VALUES_ANNOTATION, _NATIVE_VALUES_ANNOTATION, "value-table annotation"),
     )
     for old, new, label in replacements:
         source = _replace_exact(source, old, new, label=label, expected=1)
+    source = _replace_exact(
+        source,
+        _CLEAR_ERROR,
+        _NATIVE_CLEAR_ERROR,
+        label="error coordinate reset",
+        expected=3,
+    )
     source = _replace_exact(
         source,
         _HANDLE_SUBSCRIPT,
@@ -236,7 +272,8 @@ def main() -> int:
         expected=1,
     )
     PATH.write_text(source, encoding="utf-8")
-    print("NORMALIZED NATIVE REFERENCE ERROR CAPTURE", 1)
+    print("NORMALIZED NATIVE REFERENCE ERROR CAPTURE", 2)
+    print("NORMALIZED NATIVE ERROR COORDINATES", 4)
     print("NORMALIZED NATIVE VALUE HANDLE KEYS", 11)
     print("NORMALIZED NATIVE VALUE KIND SLOTS", 9)
     return 0

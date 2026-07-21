@@ -193,6 +193,8 @@ def _native_expression_kind(runtime: int, expression: str) -> int:
         or "!=" in text
         or "<=" in text
         or ">=" in text
+        or "<" in text
+        or ">" in text
         or " is " in text
         or " in " in text
         or " and " in text

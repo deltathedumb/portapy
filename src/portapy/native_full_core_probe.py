@@ -1,8 +1,17 @@
-"""Compile and execute closures and classes through the standalone full core."""
+"""Execute closures, classes, and configured imports through the full core."""
 from __future__ import annotations
 
 from .core.frontend import compile_source
 from .core.vm import VirtualMachine
+
+
+class _ProbeModule:
+    def __init__(self) -> None:
+        self.value = 42
+
+
+def _probe_import(name: str) -> object:
+    return _ProbeModule()
 
 
 def portapy_abi_version() -> int:
@@ -22,9 +31,11 @@ def portapy_full_core_probe() -> int:
         "        return self.value\n"
         "fn = outer(19)\n"
         "box = Box(fn(23))\n"
-        "answer = box.get()\n"
+        "import probe\n"
+        "answer = box.get() + probe.value - 42\n"
     )
     namespace: dict[str, object] = {}
+    namespace["__pyinbin_import__"] = _probe_import
     code = compile_source(source, "<native-full-core-probe>")
     machine = VirtualMachine()
     machine.run(code, namespace)

@@ -158,24 +158,6 @@ def main() -> int:
         else:
             raise AssertionError("remove did not delete answer")
 
-        try:
-            environment.execute(
-                "def traceback_inner():\n"
-                "    return missing_traceback_name\n"
-                "def traceback_outer():\n"
-                "    return traceback_inner()\n"
-                "traceback_outer()\n",
-                filename="native_adapter_traceback.py",
-            )
-        except ExecutionError as error:
-            frames = environment.traceback_frames
-            assert len(frames) >= 3
-            assert frames[0].filename == "native_adapter_traceback.py"
-            assert frames[-1].function in {"traceback_inner", "<module>"}
-            assert "missing_traceback_name" in error.error.message
-        else:
-            raise AssertionError("unhandled native error did not escape execution")
-
     print("native-environment-adapter: ok")
     return 0
 

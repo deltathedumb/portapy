@@ -15,6 +15,10 @@ def _function(module: ast.Module, name: str) -> ast.FunctionDef:
     )
 
 
+def _source(module: ast.Module, name: str) -> str:
+    return ast.unparse(_function(module, name))
+
+
 def test_full_reference_normalization_installs_runtime_support(
     tmp_path: Path,
     monkeypatch,
@@ -36,22 +40,37 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "_PortaPyImportLoader" in classes
     assert "source_size > len(source)" not in source
 
-    runtime_source = ast.unparse(_function(module, "_portapy_runtime_create_impl"))
+    runtime_source = _source(module, "_portapy_runtime_create_impl")
     assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
     assert "_PortaPyImportLoader(instance)" in runtime_source
     assert "__pyinbin_import__" in runtime_source
 
-    kind_source = ast.unparse(_function(module, "_portapy_value_get_kind_impl"))
+    kind_source = _source(module, "_portapy_value_get_kind_impl")
     assert "instance.value_kind(value)" in kind_source
     assert "return int(kind)" in kind_source
     assert "instance.unbox(value)" not in kind_source
     assert "_value_kind(" not in kind_source
 
-    bool_source = ast.unparse(_function(module, "_portapy_value_as_bool_impl"))
+    bool_source = _source(module, "_portapy_value_as_bool_impl")
     assert "instance.value_kind(value)" in bool_source
     assert "kind is not ValueKind.BOOL" in bool_source
     assert "instance.unbox(value)" in bool_source
     assert "type(target)" not in bool_source
+
+    assert "instance._store(_DataBuilder(kind, size), kind)" in _source(
+        module, "_portapy_value_from_data_begin_impl"
+    )
+    tagged_stores = {
+        "_portapy_value_from_host_object_impl": "ValueKind.OBJECT",
+        "_portapy_value_from_host_callable_impl": "ValueKind.CALLABLE",
+        "_portapy_tuple_begin_impl": "ValueKind.TUPLE",
+        "_portapy_dict_begin_impl": "ValueKind.DICT",
+        "_portapy_list_begin_impl": "ValueKind.LIST",
+    }
+    for function_name, kind in tagged_stores.items():
+        function_source = _source(module, function_name)
+        assert "instance._store(" in function_source
+        assert kind in function_source
 
     loader = next(
         node

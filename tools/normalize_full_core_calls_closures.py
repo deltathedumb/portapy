@@ -108,14 +108,34 @@ _FREE_VARS = '''    def _find_free_vars(self, fdef: _npr_ast_nodes_FuncDef) -> t
 
 
 _CALL_ARGS = '''    def _parse_call_args(self):
-        args: list[object] = []
-        kwargs: list[object] = []
-        while not self._check('OP', ')'):
-            value = self._parse_expr()
-            args.append(value)
+        args: list = []
+        kwargs: list = []
+        if self._check('OP', ')'):
+            return (args, kwargs)
+        while True:
+            if self._check('NAME') and self._peek(1).kind == 'OP' and (self._peek(1).value == '='):
+                name = self._eat().value
+                self._eat()
+                kwargs.append((name, self._parse_expr()))
+            elif self._check('OP', '**'):
+                star_pos = self._eat().pos
+                args.append(_npr_ast_nodes_DoubleStarred(value=self._parse_expr(), pos=star_pos))
+            else:
+                if kwargs:
+                    raise _npr_errors_ParseError('positional argument follows keyword argument', self._peek().pos)
+                if self._check('OP', '*'):
+                    star_pos = self._eat().pos
+                    args.append(_npr_ast_nodes_Starred(value=self._parse_expr(), pos=star_pos))
+                else:
+                    arg = self._parse_expr()
+                    if self._check('KEYWORD', 'for'):
+                        arg = self._parse_comprehension_tail(arg, arg.pos)
+                    args.append(arg)
             if not self._check('OP', ','):
                 break
             self._eat()
+            if self._check('OP', ')'):
+                break
         return (args, kwargs)
 '''
 

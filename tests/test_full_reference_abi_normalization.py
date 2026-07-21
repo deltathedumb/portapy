@@ -39,6 +39,7 @@ def test_full_reference_normalization_installs_runtime_support(
     }
     assert "_PortaPyImportLoader" in classes
     assert "source_size > len(source)" not in source
+    assert "_set_status(PORTAPY_" not in source
 
     runtime_source = _source(module, "_portapy_runtime_create_impl")
     assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
@@ -63,6 +64,10 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "instance.unbox(value)" in bool_source
     assert "type(target)" not in bool_source
     assert "PORTAPY_" not in bool_source
+
+    list_source = _source(module, "_portapy_list_begin_impl")
+    assert "_set_status(Status.OK)" in list_source
+    assert "_set_status(PORTAPY_OK)" not in list_source
 
     assert "instance._store(_DataBuilder(kind, size), kind)" in _source(
         module, "_portapy_value_from_data_begin_impl"

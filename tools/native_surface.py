@@ -23,10 +23,15 @@ ASSEMBLY_PUBLIC_EXPORTS = (
 )
 
 GLUE_EXPORTS = (
+    "portapy_set_global_utf8",
     "portapy_value_from_utf8",
     "portapy_value_from_bytes",
+    "portapy_value_from_host_object",
+    "portapy_value_get_host_id",
     "portapy_value_get_size",
     "portapy_value_copy_data",
+    "portapy_host_set_attr_utf8",
+    "portapy_host_get_attr_utf8",
     "portapy_error_get_info",
     "portapy_error_copy_type_utf8",
     "portapy_error_copy_message_utf8",
@@ -41,6 +46,11 @@ GLUE_INTERNALS = (
     "_portapy_value_get_size_impl",
     "_portapy_value_get_byte_impl",
     "_portapy_value_release_impl",
+    "_portapy_value_from_host_object_impl",
+    "_portapy_value_get_host_id_impl",
+    "_portapy_set_global_span_impl",
+    "_portapy_host_set_attr_span_impl",
+    "_portapy_host_get_attr_span_impl",
     "_portapy_error_status_impl",
     "_portapy_error_line_impl",
     "_portapy_error_column_impl",

@@ -71,6 +71,64 @@ _STATUS_CONSTANTS = {
     "PORTAPY_INTERRUPTED": "INTERRUPTED",
 }
 
+_NATIVE_ENUM_HELPERS_SOURCE = '''
+def _native_status_code(status: object) -> int:
+    if status is Status.OK:
+        return PORTAPY_OK
+    if status is Status.INVALID_ARGUMENT:
+        return PORTAPY_INVALID_ARGUMENT
+    if status is Status.COMPILE_ERROR:
+        return PORTAPY_COMPILE_ERROR
+    if status is Status.RUNTIME_ERROR:
+        return PORTAPY_RUNTIME_ERROR
+    if status is Status.TYPE_ERROR:
+        return PORTAPY_TYPE_ERROR
+    if status is Status.NOT_FOUND:
+        return PORTAPY_NOT_FOUND
+    if status is Status.CLOSED:
+        return PORTAPY_CLOSED
+    if status is Status.INVALID_HANDLE:
+        return PORTAPY_INVALID_HANDLE
+    if status is Status.INTERRUPTED:
+        return PORTAPY_INTERRUPTED
+    return PORTAPY_RUNTIME_ERROR
+
+
+def _native_value_kind_code(kind: object) -> int:
+    if kind is ValueKind.NONE:
+        return PORTAPY_VALUE_NONE
+    if kind is ValueKind.BOOL:
+        return PORTAPY_VALUE_BOOL
+    if kind is ValueKind.INT:
+        return PORTAPY_VALUE_INT
+    if kind is ValueKind.FLOAT:
+        return PORTAPY_VALUE_FLOAT
+    if kind is ValueKind.STRING:
+        return PORTAPY_VALUE_STRING
+    if kind is ValueKind.BYTES:
+        return PORTAPY_VALUE_BYTES
+    if kind is ValueKind.CALLABLE:
+        return PORTAPY_VALUE_CALLABLE
+    if kind is ValueKind.TUPLE:
+        return PORTAPY_VALUE_TUPLE
+    if kind is ValueKind.DICT:
+        return PORTAPY_VALUE_DICT
+    if kind is ValueKind.LIST:
+        return PORTAPY_VALUE_LIST
+    return PORTAPY_VALUE_OBJECT
+
+
+def _set_status_code(value: int) -> int:
+    _last_status[0] = value
+    return value
+'''
+
+_SET_STATUS_SOURCE = '''
+value = _native_status_code(status)
+_last_status[0] = value
+return value
+'''
+
 _IMPORT_LOADER_SOURCE = '''
 class _PortaPyImportLoader:
     def __init__(self, instance: Runtime) -> None:
@@ -106,10 +164,10 @@ _VALUE_GET_KIND_SOURCE = '''
 instance = _runtime(runtime)
 if instance is None:
     _set_status(Status.INVALID_HANDLE)
-    return ValueKind.OBJECT.value
+    return PORTAPY_VALUE_OBJECT
 status, kind = instance.value_kind(value)
 _set_status(status)
-return kind.value
+return _native_value_kind_code(kind)
 '''
 
 _VALUE_AS_BOOL_SOURCE = '''
@@ -157,14 +215,23 @@ def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
     )
 
 
-def _is_native_enum_expression(node: ast.AST) -> bool:
+def _native_enum_helper(node: ast.AST) -> str | None:
     if isinstance(node, ast.Name):
-        return node.id in {"status", "kind"}
+        if node.id == "kind":
+            return "_native_value_kind_code"
+        if node.id == "status":
+            return "_native_status_code"
+        return None
     if not isinstance(node, ast.Attribute):
-        return False
+        return None
     if node.attr == "status":
-        return True
-    return isinstance(node.value, ast.Name) and node.value.id in {"Status", "ValueKind"}
+        return "_native_status_code"
+    if isinstance(node.value, ast.Name):
+        if node.value.id == "Status":
+            return "_native_status_code"
+        if node.value.id == "ValueKind":
+            return "_native_value_kind_code"
+    return None
 
 
 def _contains_raw_status(node: ast.AST) -> bool:
@@ -174,19 +241,28 @@ def _contains_raw_status(node: ast.AST) -> bool:
     )
 
 
-class _StatusConstantRewriter(ast.NodeTransformer):
-    def visit_Name(self, node: ast.Name) -> ast.AST:
-        member = _STATUS_CONSTANTS.get(node.id)
-        if member is None:
-            return node
-        return ast.copy_location(
-            ast.Attribute(
-                value=ast.Name(id="Status", ctx=ast.Load()),
-                attr=member,
-                ctx=ast.Load(),
-            ),
-            node,
-        )
+def _contains_native_enum_value_access(node: ast.AST) -> bool:
+    return any(
+        isinstance(item, ast.Attribute)
+        and item.attr == "value"
+        and _native_enum_helper(item.value) is not None
+        for item in ast.walk(node)
+    )
+
+
+class _RawDispatchStatusRewriter(ast.NodeTransformer):
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "_set_status"
+            and len(node.args) == 1
+            and not node.keywords
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "status"
+        ):
+            node.func.id = "_set_status_code"
+        return node
 
 
 class _StoreTagger(ast.NodeTransformer):
@@ -215,12 +291,16 @@ class _Rewrite(ast.NodeTransformer):
             return None
         node.name = _RENAME.get(node.name, node.name)
         self.generic_visit(node)
-        if node.name == "_portapy_runtime_create_impl":
+        if node.name == "_set_status":
+            node.body = ast.parse(_SET_STATUS_SOURCE).body
+        elif node.name == "_portapy_runtime_create_impl":
             node.body = ast.parse(_RUNTIME_CREATE_SOURCE).body
         elif node.name == "_portapy_value_get_kind_impl":
             node.body = ast.parse(_VALUE_GET_KIND_SOURCE).body
         elif node.name == "_portapy_value_as_bool_impl":
             node.body = ast.parse(_VALUE_AS_BOOL_SOURCE).body
+        elif node.name == "_portapy_host_dispatch_complete_impl":
+            node = _RawDispatchStatusRewriter().visit(node)
 
         kind_source = _STORE_KIND_BY_FUNCTION.get(node.name)
         if kind_source is not None:
@@ -256,20 +336,26 @@ class _Rewrite(ast.NodeTransformer):
             and node.func.id == "_set_status"
             and len(node.args) == 1
             and not node.keywords
+            and _contains_raw_status(node.args[0])
         ):
-            node.args[0] = _StatusConstantRewriter().visit(node.args[0])
+            node.func.id = "_set_status_code"
             return node
         if (
             isinstance(node.func, ast.Name)
             and node.func.id == "int"
             and len(node.args) == 1
             and not node.keywords
-            and _is_native_enum_expression(node.args[0])
         ):
-            return ast.copy_location(
-                ast.Attribute(value=node.args[0], attr="value", ctx=ast.Load()),
-                node,
-            )
+            helper = _native_enum_helper(node.args[0])
+            if helper is not None:
+                return ast.copy_location(
+                    ast.Call(
+                        func=ast.Name(id=helper, ctx=ast.Load()),
+                        args=node.args,
+                        keywords=[],
+                    ),
+                    node,
+                )
         return node
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
@@ -304,6 +390,7 @@ def main() -> int:
         for node in module.body
     ):
         raise RuntimeError("full Runtime already contains the PortaPy import loader")
+    module.body.extend(ast.parse(_NATIVE_ENUM_HELPERS_SOURCE).body)
     module.body.extend(ast.parse(_IMPORT_LOADER_SOURCE).body)
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
@@ -334,7 +421,7 @@ def main() -> int:
         and isinstance(node.func, ast.Name)
         and node.func.id == "int"
         and len(node.args) == 1
-        and _is_native_enum_expression(node.args[0])
+        and _native_enum_helper(node.args[0]) is not None
     ]
     raw_status_calls = [
         node
@@ -345,10 +432,18 @@ def main() -> int:
         and len(node.args) == 1
         and _contains_raw_status(node.args[0])
     ]
+    enum_value_accesses = [
+        node
+        for node in ast.walk(verified)
+        if _contains_native_enum_value_access(node)
+    ]
     runtime_create_text = _function_text(verified, "_portapy_runtime_create_impl")
     set_status_text = _function_text(verified, "_set_status")
+    status_code_text = _function_text(verified, "_native_status_code")
+    kind_code_text = _function_text(verified, "_native_value_kind_code")
     value_get_kind_text = _function_text(verified, "_portapy_value_get_kind_impl")
     value_as_bool_text = _function_text(verified, "_portapy_value_as_bool_impl")
+    host_dispatch_text = _function_text(verified, "_portapy_host_dispatch_complete_impl")
     loader_ready = (
         "_PortaPyImportLoader" in classes
         and "__pyinbin_import__" in runtime_create_text
@@ -356,9 +451,16 @@ def main() -> int:
     builtins_ready = "_seed_builtins" in runtime_create_text
     enum_values_ready = (
         not enum_int_calls
-        and not raw_status_calls
-        and "status.value" in set_status_text
-        and "return kind.value" in value_get_kind_text
+        and not enum_value_accesses
+        and "_native_status_code(status)" in set_status_text
+        and "_native_value_kind_code(kind)" in value_get_kind_text
+        and "PORTAPY_OK" in status_code_text
+        and "PORTAPY_VALUE_NONE" in kind_code_text
+    )
+    status_paths_ready = (
+        not raw_status_calls
+        and "_set_status_code(status)" in host_dispatch_text
+        and "_set_status(status)" not in host_dispatch_text
     )
     tagged_kind_ready = (
         "instance.value_kind(value)" in value_get_kind_text
@@ -383,6 +485,7 @@ def main() -> int:
         or not loader_ready
         or not builtins_ready
         or not enum_values_ready
+        or not status_paths_ready
         or not tagged_kind_ready
         or not tagged_bool_ready
         or not tagged_stores_ready
@@ -392,9 +495,11 @@ def main() -> int:
             f"missing={missing}, stale={stale}, "
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
             f"enum_int_calls={len(enum_int_calls)}, "
+            f"enum_value_accesses={len(enum_value_accesses)}, "
             f"raw_status_calls={len(raw_status_calls)}, "
             f"loader_ready={loader_ready}, builtins_ready={builtins_ready}, "
             f"enum_values_ready={enum_values_ready}, "
+            f"status_paths_ready={status_paths_ready}, "
             f"tagged_kind_ready={tagged_kind_ready}, "
             f"tagged_bool_ready={tagged_bool_ready}, "
             f"tagged_stores_ready={tagged_stores_ready}"
@@ -405,8 +510,8 @@ def main() -> int:
         len(_DROP),
         "BUILTINS",
         "IMPORT_LOADER",
-        "ENUM_VALUES",
-        "STATUS_VALUES",
+        "ENUM_CODES",
+        "STATUS_CODES",
         "TAGGED_VALUES",
         "TAGGED_STORES",
     )

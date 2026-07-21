@@ -21,6 +21,7 @@ from tools.rewrite_generated_function_parameter_kinds_safe import (
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
 from tools.rewrite_generated_function_varargs_safe import rewrite_generated_function_varargs
 from tools.rewrite_generated_parser import _replace_function
+from tools.rewrite_generated_traceback import rewrite_generated_traceback
 
 
 def _parse_call_or_expression() -> str:
@@ -106,6 +107,7 @@ def rewrite_generated_function(path: Path) -> Path:
     rewrite_generated_function_varargs(path)
     rewrite_generated_function_kwargs(path)
     rewrite_generated_function_containers(path)
+    rewrite_generated_traceback(path)
     return path
 
 

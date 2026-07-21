@@ -38,6 +38,9 @@ from tools.native_surface import (
     windows_definition,
 )
 from tools.python_surface import PYTHON_MODULE_EXPORTS
+from tools.rewrite_generated_full_vm_environment import (
+    rewrite_generated_full_vm_environment,
+)
 from tools.rewrite_generated_function_stack import rewrite_generated_function
 from tools.rewrite_generated_host_calls import rewrite_generated_host_calls
 from tools.rewrite_generated_parser_safe import (
@@ -213,6 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", choices=("linux", "windows"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument(
+        "--standalone-vm",
+        action="store_true",
+        help="replace incremental execute/evaluate with the standalone frontend and VM",
+    )
     args = parser.parse_args(argv)
 
     package = REPOSITORY_ROOT / "src" / "portapy"
@@ -276,6 +284,11 @@ def main(argv: list[str] | None = None) -> int:
         rewrite_generated_public_tuple(call_source)
         rewrite_generated_public_dict(call_source)
         rewrite_generated_public_list(call_source)
+        if args.standalone_vm:
+            rewrite_generated_full_vm_environment(
+                call_source,
+                host_module=host_module,
+            )
 
         metadata = build_native(
             target=args.target,
@@ -308,6 +321,9 @@ def main(argv: list[str] | None = None) -> int:
     metadata["generated_host_call_entry"] = True
     metadata["native_safe_host_call_rewrite"] = True
     metadata["host_call_glue_reserves_rbx"] = True
+    metadata["standalone_frontend"] = args.standalone_vm
+    metadata["full_virtual_machine"] = args.standalone_vm
+    metadata["incremental_executor"] = not args.standalone_vm
     metadata["public_exports"] = list(
         public_exports(host_bridge=True, host_calls=True)
     )
@@ -339,6 +355,17 @@ def main(argv: list[str] | None = None) -> int:
         "tools/rewrite_generated_public_dict.py",
         "tools/rewrite_generated_public_list.py",
     ]
+    if args.standalone_vm:
+        metadata["semantic_sources"].extend(
+            [
+                "src/portapy/core/frontend.py",
+                "src/portapy/core/portable_frontend.py",
+                "src/portapy/core/portable_parser.py",
+                "src/portapy/core/vm.py",
+                "src/portapy/core/vm_impl.py",
+                "tools/rewrite_generated_full_vm_environment.py",
+            ]
+        )
     metadata_path = output.with_suffix(output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metadata, sort_keys=True))

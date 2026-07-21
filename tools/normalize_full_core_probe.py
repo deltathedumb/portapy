@@ -75,6 +75,22 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "    __globals__ = _FunctionGlobalsDescriptor()",
         ),
         (
+            "class SuperProxy:",
+            "def _full_core_probe_noop() -> None:\n"
+            "    return None\n"
+            "\n"
+            "\n"
+            "class SuperProxy:",
+        ),
+        (
+            "                    return lambda *args, **kwargs: None",
+            "                    return _full_core_probe_noop",
+        ),
+        (
+            "                    return lambda *args, **kwargs: value(container, *args, **kwargs)",
+            "                    return _full_core_probe_noop",
+        ),
+        (
             "                    right = frame.stack.pop(); left = frame.stack.pop()",
             "                    right = frame.stack.pop()\n"
             "                    left = frame.stack.pop()",

@@ -5,8 +5,18 @@ from pathlib import Path
 
 from tools.rewrite_generated_parser import (
     _replace_function,
-    rewrite_generated_scalar,
+    rewrite_generated_scalar as _rewrite_generated_scalar,
 )
+
+
+def rewrite_generated_scalar(path: Path) -> Path:
+    """Apply scalar rewrites and avoid pointer-truthiness string sentinels."""
+    _rewrite_generated_scalar(path)
+    source = path.read_text(encoding="utf-8")
+    source = source.replace("if not operator[0]:", 'if operator[0] == "":')
+    source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
+    path.write_text(source, encoding="utf-8")
+    return path
 
 
 def _word_operator() -> str:
@@ -57,6 +67,7 @@ def _word_operator() -> str:
 def rewrite_generated_expression(path: Path) -> Path:
     source = path.read_text(encoding="utf-8")
     source = _replace_function(source, "_find_word_operator", _word_operator())
+    source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
     path.write_text(source, encoding="utf-8")
     return path
 

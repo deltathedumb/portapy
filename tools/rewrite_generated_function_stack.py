@@ -1,4 +1,4 @@
-"""Stack-safe native function rewrite with control flow and argument binding."""
+"""Stack-safe native function rewrite with full argument semantics."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +8,9 @@ from tools.generated_function_control_source import (
     execute_function_body_source,
 )
 from tools.rewrite_generated_function_arguments_safe import rewrite_generated_function_arguments
+from tools.rewrite_generated_function_default_capture import (
+    rewrite_generated_function_default_capture,
+)
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
 from tools.rewrite_generated_parser import _replace_function
 
@@ -90,6 +93,7 @@ def rewrite_generated_function(path: Path) -> Path:
     )
     path.write_text(source, encoding="utf-8")
     rewrite_generated_function_arguments(path)
+    rewrite_generated_function_default_capture(path)
     return path
 
 

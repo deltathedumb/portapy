@@ -13,7 +13,6 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from tools.build_native import (
     BuildFailure,
-    _compile_glue,
     _run,
     _sha256,
     _tool,
@@ -49,6 +48,32 @@ from tools.rewrite_generated_parser_safe import (
 )
 
 
+def _compile_host_call_glue(
+    *,
+    gcc: str,
+    target: str,
+    output: Path,
+    log: Path,
+) -> None:
+    command = [
+        gcc,
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffixed-rbx",
+        "-I",
+        str(REPOSITORY_ROOT / "include"),
+        "-c",
+        str(REPOSITORY_ROOT / "native" / "host_call_glue.c"),
+        "-o",
+        str(output),
+    ]
+    if target == "linux":
+        command.insert(1, "-fPIC")
+    _run(command, log=log)
+
+
 def _upgrade_linked_artifact(
     *,
     target: str,
@@ -78,10 +103,9 @@ def _upgrade_linked_artifact(
         ],
         log=work_dir / f"{target}-host-call-nasm.log",
     )
-    _compile_glue(
+    _compile_host_call_glue(
         gcc=gcc,
         target=target,
-        source=REPOSITORY_ROOT / "native" / "host_call_glue.c",
         output=call_object,
         log=work_dir / f"{target}-host-call-glue.log",
     )
@@ -206,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["host_calls"] = True
     metadata["generated_host_call_entry"] = True
     metadata["native_safe_host_call_rewrite"] = True
+    metadata["host_call_glue_reserves_rbx"] = True
     metadata["public_exports"] = list(
         public_exports(host_bridge=True, host_calls=True)
     )

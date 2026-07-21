@@ -40,7 +40,7 @@ def _portapy_traceback_reset_impl(runtime: int) -> int:
             _traceback_function[index] = ""
             _traceback_source[index] = ""
         index += 1
-    return _set_status(PORTAPY_OK)
+    return PORTAPY_OK
 
 
 def _portapy_traceback_add_impl(
@@ -55,7 +55,7 @@ def _portapy_traceback_add_impl(
     _traceback_column.append(column)
     _traceback_function.append(function_name)
     _traceback_source.append(source_line)
-    return _set_status(PORTAPY_OK)
+    return PORTAPY_OK
 
 
 def _traceback_body_line(slot: int, absolute_line: int) -> str:
@@ -78,6 +78,7 @@ def _traceback_body_line(slot: int, absolute_line: int) -> str:
 
 
 def _portapy_traceback_add_function_impl(runtime: int, slot: int) -> int:
+    saved_status = _portapy_last_status_impl()
     line = _runtime_error_line[runtime]
     column = _portapy_error_column_impl(runtime)
     source_line = _traceback_body_line(slot, line)
@@ -85,13 +86,15 @@ def _portapy_traceback_add_function_impl(runtime: int, slot: int) -> int:
         line = _function_definition_line[slot]
         column = 1
         source_line = "def " + _function_name[slot] + "(" + _function_parameters[slot] + "):"
-    return _portapy_traceback_add_impl(
+    _portapy_traceback_add_impl(
         runtime,
         line,
         column,
         _function_name[slot],
         source_line,
     )
+    _set_status(saved_status)
+    return PORTAPY_OK
 
 
 def _portapy_traceback_count_impl(runtime: int) -> int:

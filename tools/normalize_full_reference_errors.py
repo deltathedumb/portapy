@@ -15,7 +15,7 @@ def _native_error_location(source: str) -> tuple[int, int]:
     size = len(source)
     while index < size:
         char = source[index]
-        if char == "\n":
+        if char == "\\n":
             line += 1
             column = 1
             index += 1
@@ -30,7 +30,7 @@ def _native_error_location(source: str) -> tuple[int, int]:
         if operator_size:
             lookahead = index + operator_size
             while lookahead < size and (
-                source[lookahead] == " " or source[lookahead] == "\t"
+                source[lookahead] == " " or source[lookahead] == "\\t"
             ):
                 lookahead += 1
             if lookahead < size and source[lookahead] == "0":

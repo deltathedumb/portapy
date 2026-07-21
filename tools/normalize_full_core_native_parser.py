@@ -6,30 +6,32 @@ from pathlib import Path
 from asmpython._compiler.lexer import Lexer
 from asmpython._compiler.parser import Parser
 
-from tools.normalize_full_core_probe import _expand_compact_statements
+from tools.vendor_full_core_native_parser import vendor_native_parser
 
 
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 NATIVE_AST_PATH = Path("src/portapy/core/native_ast.py")
+RUNTIME_PATH = Path("src/portapy/core/native_parser_runtime.py")
 
 
-def _normalize_native_ast() -> None:
-    source = NATIVE_AST_PATH.read_text(encoding="utf-8")
-    normalized = _expand_compact_statements(source)
-    if normalized == source:
-        raise RuntimeError("standalone AST source contained no compact statements")
-
-    parsed = Parser(Lexer(normalized).tokenize()).parse()
-    function_names = {function.name for function in parsed.funcs}
+def _validate_generated_parser() -> None:
+    runtime = Parser(Lexer(RUNTIME_PATH.read_text(encoding="utf-8")).tokenize()).parse()
+    bridge = Parser(Lexer(NATIVE_AST_PATH.read_text(encoding="utf-8")).tokenize()).parse()
+    bridge_functions = {function.name for function in bridge.funcs}
     required = {"parse", "walk", "unparse"}
-    missing = sorted(required - function_names)
+    missing = sorted(required - bridge_functions)
     if missing:
         raise RuntimeError(
             "standalone AST parser lost required functions: " + ", ".join(missing)
         )
-
-    NATIVE_AST_PATH.write_text(normalized, encoding="utf-8")
-    print("NORMALIZED STANDALONE NATIVE AST", len(function_names))
+    if not runtime.classes or not runtime.funcs:
+        raise RuntimeError("generated parser runtime has no definitions")
+    print(
+        "VALIDATED PRIVATE NATIVE PARSER",
+        len(runtime.funcs),
+        len(runtime.classes),
+        len(bridge_functions),
+    )
 
 
 def _select_native_ast() -> None:
@@ -60,7 +62,8 @@ def _select_native_ast() -> None:
 
 
 def main() -> int:
-    _normalize_native_ast()
+    vendor_native_parser()
+    _validate_generated_parser()
     _select_native_ast()
     return 0
 

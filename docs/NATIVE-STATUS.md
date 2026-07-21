@@ -7,7 +7,18 @@ PortaPy interpreter. A probe library is not a PortaPy release.
 
 - PortaPy owns Python-authored bytecode, frontend, VM, lexer, parser, AST-node,
   and diagnostic modules.
-- The portable frontend parses and lowers source without importing host `ast`.
+- The standalone frontend parses and lowers source without importing host `ast`.
+- Portable lowering now preserves module source order and covers:
+  - scalar and container expressions, slicing, mutation, deletion, and unpacking,
+  - functions, defaults, decorators, keyword calls, `*args`, and `**kwargs`,
+  - lexical closures, captured free variables, persistent `nonlocal` state, and
+    isolated closure instances,
+  - classes, class variables, inheritance, constructors, attributes, and methods,
+  - `if`, `while`, ordinary and unpacking `for`, loop `else`, break, and continue,
+  - imports supplied by the host, context managers, raised exceptions, typed
+    `try` handlers, `else`, and `finally`,
+  - generators, comprehensions, lambdas, f-strings, walrus expressions, and
+    structural pattern matching.
 - The full-core native transition probe compiles the mature
   `portapy.core.frontend` and `VirtualMachine` together on Windows and Linux.
 - The full-core probe generates its private parser runtime from
@@ -51,18 +62,20 @@ PortaPy interpreter. A probe library is not a PortaPy release.
 
 The remaining blockers for a final standalone `3.14` release are:
 
-1. Replace the incremental native parser/executor with the complete standalone
-   frontend and bytecode VM.
-2. Carry classes, descriptors, exceptions, generators, async execution, and the
-   broader object model through that final path.
-3. Prove the final libraries execute without CPython or a Python installation.
+1. Replace the incremental native parser/executor behind exported
+   `portapy_execute` and `portapy_evaluate` with the standalone frontend and VM.
+2. Complete the remaining semantic edges needed by the final path, especially
+   async/coroutines, descriptor-heavy class behavior, and unsupported parser
+   corner cases.
+3. Prove the final Windows and Linux libraries execute without CPython or a
+   Python installation.
 4. Run the final release matrix, verify exact export tables and no Linux
    `TEXTREL`, and attach checksums, headers, examples, and build metadata.
 
-Runtime handles, values, UTF-8 execution, functions, closures, imports, callbacks,
-containers, structured errors, traceback frames, and the language-neutral
-embedding API are implemented and must remain gated during the final architectural
-transition.
+Runtime handles, values, UTF-8 execution, functions, closures, classes, imports,
+callbacks, containers, structured errors, traceback frames, and the
+language-neutral embedding API are implemented and must remain gated during the
+final native architectural transition.
 
 ## Non-negotiable implementation rule
 

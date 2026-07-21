@@ -1,9 +1,9 @@
-"""Build PortaPy's current native interpreter entry.
+"""Build PortaPy's canonical native interpreter entry.
 
 The historical filename remains the stable CI/release command. Default builds
-now use the generated host-call entry, including scalar expressions, control
-flow, positional functions, opaque host graphs, and synchronous callbacks.
-Passing ``--source`` retains focused source-entry compiler probes.
+prepare and compile the generated language-neutral ABI over PortaPy's standalone
+portable frontend and full VM. Passing ``--source`` retains focused source-entry
+compiler probes and bypasses the final environment adapter.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from tools.build_native import BuildFailure, build_native
 from tools.build_native_host_calls import main as build_host_call_entry
+from tools.prepare_standalone_native_sources import prepare
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
@@ -57,6 +58,13 @@ def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if "--source" in arguments:
         return _build_explicit_source(arguments)
+    try:
+        prepare()
+    except RuntimeError as error:
+        print(f"portapy standalone source preparation failed: {error}", file=sys.stderr)
+        return 1
+    if "--standalone-vm" not in arguments:
+        arguments.insert(0, "--standalone-vm")
     return build_host_call_entry(arguments)
 
 

@@ -27,6 +27,13 @@ def test_normalizes_real_reference_runtime(
     assert '"PortaPyError"' in result
     assert result.count('"PortaPy operation failed"') == 2
 
+    assert "def _capture_native(" in result
+    assert "ErrorInfo(status, type_name, message, message)" in result
+    assert "self._error_line = line" in result
+    assert "self._error_column = column" in result
+    assert result.count("self._error_line = 0") >= 4
+    assert result.count("self._error_column = 0") >= 4
+
     assert "dict[str, _Slot]" in result
     assert "kind: ValueKind = ValueKind.INT" in result
     assert "self._values[str(handle)] = _Slot(value, kind)" in result

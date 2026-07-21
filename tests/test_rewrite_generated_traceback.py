@@ -20,7 +20,7 @@ def _trace_namespace() -> dict[str, object]:
         "_function_name": ["", "inner", "outer"],
         "_function_parameters": ["", "", ""],
         "_runtime_error_line": [0, 2],
-        "_runtime_error_column": [0, 12],
+        "_portapy_error_column_impl": lambda runtime: 12,
         "_set_status": lambda status: status,
         "_trim": lambda source, start, end: [
             len(source[:end]) - len(source[:end].lstrip()),

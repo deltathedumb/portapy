@@ -50,6 +50,45 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "                        frame.stack.pop()\n"
             "                        frame.ip = instr.arg",
         ),
+        (
+            "                    unpacked = [*values[:before], list(values[before:middle_end]), *values[middle_end:]]",
+            "                    unpacked = list(values[:before])\n"
+            "                    unpacked.append(list(values[before:middle_end]))\n"
+            "                    for trailing in values[middle_end:]:\n"
+            "                        unpacked.append(trailing)",
+        ),
+        (
+            "                    for item in reversed(unpacked): frame.stack.append(item)",
+            "                    for item in reversed(unpacked):\n"
+            "                        frame.stack.append(item)",
+        ),
+        (
+            "                    target = frame.stack.pop(); name = frame.code.names[instr.arg]",
+            "                    target = frame.stack.pop()\n"
+            "                    name = frame.code.names[instr.arg]",
+        ),
+        (
+            "                    value = frame.stack.pop(); target = frame.stack.pop()",
+            "                    value = frame.stack.pop()\n"
+            "                    target = frame.stack.pop()",
+        ),
+        (
+            "                    if name in frame.locals: del frame.locals[name]\n"
+            "                    elif name in frame.globals: del frame.globals[name]\n"
+            "                    else: _raise_typed(f\"NameError: name {name!r} is not defined\")",
+            "                    if name in frame.locals:\n"
+            "                        del frame.locals[name]\n"
+            "                    elif name in frame.globals:\n"
+            "                        del frame.globals[name]\n"
+            "                    else:\n"
+            "                        _raise_typed(f\"NameError: name {name!r} is not defined\")",
+        ),
+        (
+            "                    index = frame.stack.pop(); value = frame.stack.pop(); del value[index]",
+            "                    index = frame.stack.pop()\n"
+            "                    value = frame.stack.pop()\n"
+            "                    del value[index]",
+        ),
     ),
 }
 

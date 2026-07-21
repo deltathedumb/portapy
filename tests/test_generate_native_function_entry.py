@@ -104,6 +104,11 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "from .native_api import _last_status" not in function_source
     assert 'elif char == "\\\\":' in function_source
     assert "_call_argument_top: list[int] = [1]" in function_source
+    assert '_call_argument_names: list[str] = [""]' in function_source
+    assert "_call_bound_top: list[int] = [1]" in function_source
+    assert "def _parameter_default_bounds(" in function_source
+    assert "def _call_keyword_bounds(" in function_source
+    assert "def _parameter_index(" in function_source
     assert "_FUNCTION_FLOW_RETURN = 3" in function_source
     assert "def _execute_function_block(" in function_source
 
@@ -131,7 +136,11 @@ def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> N
         assert base._portapy_value_as_i64_impl(runtime, answer) == 42
         zero = api._portapy_eval_span_impl(runtime, "zero()", len("zero()"))
         assert base._portapy_value_as_i64_impl(runtime, zero) == 7
-        nested = api._portapy_eval_span_impl(runtime, "add(add(10, 11), 21)", len("add(add(10, 11), 21)"))
+        nested = api._portapy_eval_span_impl(
+            runtime,
+            "add(add(10, 11), 21)",
+            len("add(add(10, 11), 21)"),
+        )
         assert base._portapy_value_as_i64_impl(runtime, nested) == 42
     finally:
         for name in reversed(names):
@@ -174,6 +183,54 @@ def test_generated_function_entry_executes_nested_control_flow(tmp_path: Path) -
         assert base._portapy_value_as_i64_impl(runtime, zero) == 100
         assert base._portapy_value_as_i64_impl(runtime, small) == 4
         assert base._portapy_value_as_i64_impl(runtime, large) == 8
+    finally:
+        for name in reversed(names):
+            sys.modules.pop(f"portapy.{name}", None)
+
+
+def test_generated_function_entry_binds_defaults_and_keywords(tmp_path: Path) -> None:
+    generated = _generate(tmp_path)
+    names = generated[:4]
+    paths = generated[4:]
+    _load(paths[0], names[0])
+    _load(paths[1], names[1])
+    _load(paths[2], names[2])
+    api = _load(paths[3], names[3])
+    try:
+        runtime = api._portapy_runtime_create_impl()
+        source = (
+            "def combine(left, right=2, scale=3):\n"
+            "    return (left + right) * scale\n"
+            "defaulted = combine(12)\n"
+            "mixed = combine(10, scale=4)\n"
+            "reordered = combine(scale=2, left=18, right=3)\n"
+            "nested = combine(combine(1), scale=2)\n"
+        )
+        assert api._portapy_exec_span_impl(runtime, source, len(source)) == base.PORTAPY_OK
+        expected = {
+            "defaulted": 42,
+            "mixed": 48,
+            "reordered": 42,
+            "nested": 22,
+        }
+        for name, wanted in expected.items():
+            value = api._portapy_eval_span_impl(runtime, name, len(name))
+            assert base._portapy_value_as_i64_impl(runtime, value) == wanted
+
+        bad_calls = (
+            "combine()",
+            "combine(1, left=2)",
+            "combine(1, unknown=2)",
+        )
+        for expression in bad_calls:
+            value = api._portapy_eval_span_impl(runtime, expression, len(expression))
+            assert value == 0
+            assert api._portapy_last_status_impl() == base.PORTAPY_TYPE_ERROR
+
+        syntax = "combine(left=1, 2)"
+        value = api._portapy_eval_span_impl(runtime, syntax, len(syntax))
+        assert value == 0
+        assert api._portapy_last_status_impl() == base.PORTAPY_COMPILE_ERROR
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)

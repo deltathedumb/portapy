@@ -58,6 +58,16 @@ _ADAPTER_TARGETS = (
         "_portapy_cabi_dict_get_item_span_impl",
         "_portapy_dict_get_item_span_impl",
     ),
+    ("_portapy_cabi_list_begin_impl", "_portapy_list_begin_impl"),
+    (
+        "_portapy_cabi_list_initialize_item_impl",
+        "_portapy_list_initialize_item_impl",
+    ),
+    ("_portapy_cabi_list_finish_impl", "_portapy_list_finish_impl"),
+    ("_portapy_cabi_list_get_size_impl", "_portapy_list_get_size_impl"),
+    ("_portapy_cabi_list_get_item_impl", "_portapy_list_get_item_impl"),
+    ("_portapy_cabi_list_set_item_impl", "_portapy_list_set_item_impl"),
+    ("_portapy_cabi_list_append_impl", "_portapy_list_append_impl"),
 )
 
 

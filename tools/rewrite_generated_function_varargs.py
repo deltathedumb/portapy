@@ -121,11 +121,8 @@ def _parameter_at() -> str:
     return parameters[name_bounds[0]:name_bounds[1]]'''
 
 
-def _parameter_kinds_and_tuple_builder() -> str:
-    return r'''_PARAMETER_POSITIONAL_OR_KEYWORD = 0
-_PARAMETER_POSITIONAL_ONLY = 1
-_PARAMETER_KEYWORD_ONLY = 2
-_PARAMETER_VAR_POSITIONAL = 3
+def _parameter_kind() -> str:
+    return r'''_PARAMETER_VAR_POSITIONAL = 3
 
 
 def _parameter_kind(parameters: str, wanted: int) -> int:
@@ -155,10 +152,11 @@ def _parameter_kind(parameters: str, wanted: int) -> int:
         return _PARAMETER_POSITIONAL_ONLY
     if star_raw >= 0 and target_raw > star_raw:
         return _PARAMETER_KEYWORD_ONLY
-    return _PARAMETER_POSITIONAL_OR_KEYWORD
+    return _PARAMETER_POSITIONAL_OR_KEYWORD'''
 
 
-def _var_positional_index(parameters: str) -> int:
+def _positional_helpers_and_tuple_builder() -> str:
+    return r'''def _var_positional_index(parameters: str) -> int:
     count = _parameter_count(parameters)
     index = 0
     while index < count:
@@ -184,16 +182,6 @@ def _next_regular_positional_parameter(parameters: str, start: int) -> int:
 
 def _next_positional_parameter(parameters: str, start: int) -> int:
     return _next_regular_positional_parameter(parameters, start)
-
-
-def _parameter_index(parameters: str, name: str) -> int:
-    index = 0
-    count = _parameter_count(parameters)
-    while index < count:
-        if _parameter_at(parameters, index) == name:
-            return index
-        index += 1
-    return -1
 
 
 def _build_varargs_tuple(
@@ -346,10 +334,11 @@ def _varargs_invoke() -> str:
 def rewrite_generated_function_varargs(path: Path) -> Path:
     source = path.read_text(encoding="utf-8")
     source = _replace_function(source, "_parameter_at", _parameter_at())
+    source = _replace_function(source, "_parameter_kind", _parameter_kind())
     source = _replace_function(
         source,
-        "_parameter_kind",
-        _parameter_kinds_and_tuple_builder(),
+        "_next_positional_parameter",
+        _positional_helpers_and_tuple_builder(),
     )
     source = _replace_function(source, "_parse_parameters", _parse_parameters())
     source = _replace_function(source, "_invoke_function", _varargs_invoke())

@@ -20,6 +20,7 @@ from .native_binary import (
 # Install recursive container boxing before any native module instance is created.
 from . import native_tuple_binary as _native_tuple_binary
 from . import native_dict_binary as _native_dict_binary
+from . import native_list_binary as _native_list_binary
 from .reference_api import ErrorInfo, Runtime, Status, ValueKind
 
 Snapshot = EnvironmentSnapshot

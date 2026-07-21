@@ -49,6 +49,11 @@ def _strip_outer_parentheses() -> str:
     return [start, end, changed]'''
 
 
+def _value_equal() -> str:
+    return r'''def _value_equal(left: int, right: int) -> bool:
+    return _scalar_equal(left, right)'''
+
+
 def _truthy() -> str:
     return r'''def _truthy(runtime: int, value: int) -> list[int]:
     if not _value_is_valid(runtime, value):
@@ -77,7 +82,7 @@ def rewrite_generated_tuple_expression(path: Path) -> Path:
         raise ValueError("generated expression entry has an unexpected scalar import")
     source = source.replace(
         marker,
-        "    _scalar_retain_global,\n    _scalar_tuple_size_unchecked,\n)",
+        "    _scalar_retain_global,\n    _scalar_tuple_size_unchecked,\n    _scalar_equal,\n)",
         1,
     )
     source = _replace_function(
@@ -85,7 +90,24 @@ def rewrite_generated_tuple_expression(path: Path) -> Path:
         "_strip_outer_parentheses",
         _strip_outer_parentheses(),
     )
+    source = _replace_function(source, "_value_equal", _value_equal())
     source = _replace_function(source, "_truthy", _truthy())
+    source = source.replace(
+        "_value_refs[left] -= 1",
+        "_scalar_release(runtime, left)",
+    )
+    source = source.replace(
+        "_value_refs[right] -= 1",
+        "_scalar_release(runtime, right)",
+    )
+    source = source.replace(
+        "_value_refs[left[0]] -= 1",
+        "_scalar_release(runtime, left[0])",
+    )
+    source = source.replace(
+        "_value_refs[operand[0]] -= 1",
+        "_scalar_release(runtime, operand[0])",
+    )
     path.write_text(source, encoding="utf-8")
     return path
 

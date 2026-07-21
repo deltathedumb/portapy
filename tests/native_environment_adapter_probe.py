@@ -54,8 +54,11 @@ def main() -> int:
         )
         environment.set("values", [40, 2])
         environment.execute(
+            "import math\n"
+            "from math import floor as imported_floor\n"
+            "unicode_text = 'π'\n"
             "http_provider = game.provider.HttpProvider\n"
-            "floor_value = math.floor(input_value)\n"
+            "floor_value = imported_floor(input_value)\n"
             "answer = floor_value + 1\n"
             "nested = add(20, add(1, 21))\n"
             "tuple_first = input_tuple[0]\n"
@@ -96,6 +99,8 @@ def main() -> int:
         assert snapshot.var["answer"] == 42
         assert snapshot.var["nested"] == 42
         assert snapshot.var["math"] is math
+        assert snapshot.var["imported_floor"] is math.floor
+        assert snapshot.var["unicode_text"] == "π"
         assert snapshot.var["game"] is game
         assert snapshot.var["add"] is add
         assert snapshot.var["tuple_roundtrip"] is tuple_roundtrip
@@ -152,6 +157,24 @@ def main() -> int:
             pass
         else:
             raise AssertionError("remove did not delete answer")
+
+        try:
+            environment.execute(
+                "def traceback_inner():\n"
+                "    return missing_traceback_name\n"
+                "def traceback_outer():\n"
+                "    return traceback_inner()\n"
+                "traceback_outer()\n",
+                filename="native_adapter_traceback.py",
+            )
+        except ExecutionError as error:
+            frames = environment.traceback_frames
+            assert len(frames) >= 3
+            assert frames[0].filename == "native_adapter_traceback.py"
+            assert frames[-1].function in {"traceback_inner", "<module>"}
+            assert "missing_traceback_name" in error.error.message
+        else:
+            raise AssertionError("unhandled native error did not escape execution")
 
     print("native-environment-adapter: ok")
     return 0

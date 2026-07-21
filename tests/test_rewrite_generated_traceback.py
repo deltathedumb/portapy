@@ -11,6 +11,12 @@ from tools.rewrite_generated_traceback import (
 
 
 def _trace_namespace() -> dict[str, object]:
+    status = [3]
+
+    def set_status(value: int) -> int:
+        status[0] = value
+        return value
+
     namespace: dict[str, object] = {
         "PORTAPY_OK": 0,
         "PORTAPY_INVALID_ARGUMENT": 1,
@@ -20,12 +26,14 @@ def _trace_namespace() -> dict[str, object]:
         "_function_name": ["", "inner", "outer"],
         "_function_parameters": ["", "", ""],
         "_runtime_error_line": [0, 2],
-        "_portapy_error_column_impl": lambda runtime: 12,
-        "_set_status": lambda status: status,
+        "_portapy_error_column_impl": lambda runtime: set_status(0) or 12,
+        "_portapy_last_status_impl": lambda: status[0],
+        "_set_status": set_status,
         "_trim": lambda source, start, end: [
             len(source[:end]) - len(source[:end].lstrip()),
             len(source[:end].rstrip()),
         ],
+        "status": status,
     }
     exec(_state_and_api(), namespace)
     return namespace
@@ -51,6 +59,14 @@ def test_traceback_frames_are_returned_outermost_first() -> None:
     ]
     assert _text(namespace, "source", 1, 1) == "def outer():"
     assert _text(namespace, "source", 1, 2) == "return missing"
+
+
+def test_traceback_capture_preserves_failure_status() -> None:
+    namespace = _trace_namespace()
+    namespace["status"][0] = 3
+
+    assert namespace["_portapy_traceback_add_function_impl"](1, 1) == 0
+    assert namespace["status"][0] == 3
 
 
 def test_traceback_reset_is_per_runtime() -> None:

@@ -27,6 +27,15 @@ def test_full_reference_normalization_installs_runtime_support(
     }
     assert "_PortaPyImportLoader" in classes
     assert "source_size > len(source)" not in source
+    assert "traceback.format_exception" not in source
+
+    capture = next(
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.FunctionDef) and node.name == "_capture"
+    )
+    capture_source = ast.unparse(capture)
+    assert "str(error)" in capture_source
 
     runtime_create = next(
         node

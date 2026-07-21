@@ -22,7 +22,9 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Normalize probe source
-        run: python tools/normalize_full_core_probe.py
+        run: |
+          python tools/normalize_full_core_probe.py
+          python tools/normalize_full_core_lambdas.py
       - name: Audit full-core project import graph
         id: import_audit
         continue-on-error: true

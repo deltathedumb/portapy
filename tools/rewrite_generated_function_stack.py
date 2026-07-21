@@ -15,7 +15,7 @@ from tools.rewrite_generated_function_parameter_kinds_safe import (
     rewrite_generated_function_parameter_kinds,
 )
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
-from tools.rewrite_generated_function_varargs import rewrite_generated_function_varargs
+from tools.rewrite_generated_function_varargs_safe import rewrite_generated_function_varargs
 from tools.rewrite_generated_parser import _replace_function
 
 

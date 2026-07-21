@@ -1,10 +1,4 @@
-"""Run the pinned asmpython CLI with probe-only compatibility rewrites.
-
-The full-core transition reaches an asmpython whole-program path that retains
-bare ``ascii`` references even after source normalization. This wrapper patches
-the exact ``driver.load_program`` binding used by compilation, reports each
-reference's merged-AST path, and rewrites it before semantic analysis.
-"""
+"""Run the pinned asmpython CLI with full-core compatibility extensions."""
 from __future__ import annotations
 
 import dataclasses
@@ -12,7 +6,7 @@ import sys
 
 from asmpython._backends import host_cli
 from asmpython._compiler import ast_nodes as A
-from asmpython._compiler import driver, program, sema
+from asmpython._compiler import codegen, driver, program, sema
 
 
 def _source_position(node: object) -> str:
@@ -54,6 +48,46 @@ def _rewrite_ascii_references(
 
 def main() -> int:
     sema.BUILTINS["ascii"] = (1, 1)
+
+    missing_exceptions = (
+        "GeneratorExit",
+        "ModuleNotFoundError",
+        "StopAsyncIteration",
+        "SyntaxError",
+    )
+    exceptions = frozenset(tuple(sema.BUILTIN_EXCEPTIONS) + missing_exceptions)
+    sema.BUILTIN_EXCEPTIONS = exceptions
+    codegen.BUILTIN_EXCEPTIONS = exceptions
+
+    extra_types = (
+        "object",
+        "bytes",
+        "bytearray",
+        "frozenset",
+        "type",
+        "slice",
+        "property",
+        "classmethod",
+        "staticmethod",
+    )
+    sema.BUILTIN_TYPE_NAMES = frozenset(
+        tuple(sema.BUILTIN_TYPE_NAMES) + extra_types
+    )
+    next_type_id = min(codegen.BUILTIN_TYPE_IDS.values()) - 1
+    for name in extra_types:
+        if name not in codegen.BUILTIN_TYPE_IDS:
+            codegen.BUILTIN_TYPE_IDS[name] = next_type_id
+            next_type_id -= 1
+
+    missing_available = tuple(
+        name
+        for name in missing_exceptions + extra_types
+        if name not in program._ALWAYS_AVAILABLE
+    )
+    if missing_available:
+        program._ALWAYS_AVAILABLE = frozenset(
+            tuple(program._ALWAYS_AVAILABLE) + missing_available
+        )
     if "ascii" not in program._ALWAYS_AVAILABLE:
         program._ALWAYS_AVAILABLE = frozenset(
             tuple(program._ALWAYS_AVAILABLE) + ("ascii",)

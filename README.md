@@ -10,9 +10,9 @@ Native artifact names:
 - `libportapy.so` on Linux
 - `libportapy.dylib` on macOS when that asmpython target becomes available
 
-## Public embedding API
+## High-level API
 
-The hosted Python package and the future `import_binary` module-object bridge share one public shape:
+The intended binary-module interface is environment-oriented:
 
 ```python
 portapy = import_binary("portapy.dll")
@@ -24,17 +24,31 @@ environment = portapy.new()
 environment.add_modules(math)
 environment.expose(env)
 environment.execute("""
-http_service = game.provider.HttpProvider
-root = math.sqrt(81)
+http_provider = game.provider.HttpProvider
+answer = math.floor(41.9) + 1
 """)
+
 snapshot = environment.snapshot()
+http_provider = snapshot.var["http_provider"]
+answer = snapshot.var["answer"]
 ```
 
-`add_modules(...)` keeps each module under its normal module name. `expose(...)` flattens public members into the executed environment, which is how `env.game` becomes plain `game`. `add_builtin(...)` remains an alias for compatibility, but `expose(...)` is the preferred name.
+`add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
 
-Snapshots are shallow binding snapshots: restoring one restores the environment's global names and referenced objects, but it does not reverse mutations made inside arbitrary host objects, services, or native handles.
+Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment. Mutations inside referenced host objects are intentionally not deep-rolled back.
 
-The same API is available from the hosted package with `import portapy` while the native module-object bridge is completed.
+The same API is available from the hosted package today:
+
+```python
+import portapy
+
+environment = portapy.new()
+environment.expose({"seed": 41})
+environment.execute("answer = seed + 1")
+assert environment.snapshot().var["answer"] == 42
+```
+
+Artifact metadata records `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, and the public exception/status types as the stable Python-module surface. Native arbitrary-object injection still depends on the host-object bridge gate; scalar and control-flow execution use the existing opaque-handle C ABI.
 
 ## 3.14 Developer Preview 1
 
@@ -48,20 +62,22 @@ Implemented native ABI and source surface:
 - checked value-kind/conversion and buffer-copy operations
 - per-runtime structured error status, type, message, line, and column
 - retain/release and runtime-owned teardown
-- integer arithmetic expressions
+- precedence-aware integer arithmetic, powers, shifts, and bitwise expressions
+- string/bytes concatenation and repetition
 - native `None`, boolean, quoted string, and bytes literals
 - equality, ordering, `is`, and `is not` comparisons
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
-- typed global assignment, lookup, aliasing, and `eval`
-- newline/semicolon statement blocks with quote-aware comments and separators
-- indented `if`/`else` and nested blocks
-- `while`, `pass`, `break`, `continue`, and expression statements
+- typed global assignment, lookup, aliasing, augmented assignment, and `eval`
+- newline/semicolon statement blocks, bare expressions, and `pass`
+- indented `if`/`else`, nested blocks, and `while`
+- `break` and `continue`
+- quote-aware comments and separators
 - exact public export allowlists
 - Linux position-independent linking with no text relocations
 - independent Linux and Windows C conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on functions and calls in the standalone native parser, broader object/container syntax, full traceback-frame retrieval, the native host-object bridge, and module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on native functions/classes and calls, broader object/container syntax, full traceback-frame retrieval, the native host-object bridge, and module imports.
 
 ## Relationship to pyinbin
 

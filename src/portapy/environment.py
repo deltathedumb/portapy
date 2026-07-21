@@ -8,7 +8,7 @@ as its backend; an ``import_binary("portapy.dll")`` module can expose the same
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import ModuleType
+from types import MappingProxyType, ModuleType
 from typing import Mapping
 
 from .reference_api import ErrorInfo, Runtime, Status
@@ -54,6 +54,17 @@ class EnvironmentSnapshot:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(name for name, _ in self._bindings)
+
+    @property
+    def var(self) -> Mapping[str, object]:
+        """Read-only variable mapping captured by this snapshot."""
+        return MappingProxyType(dict(self._bindings))
+
+    def __getitem__(self, name: str) -> object:
+        return self.var[name]
+
+    def get(self, name: str, default: object = None) -> object:
+        return self.var.get(name, default)
 
     def bindings(self) -> dict[str, object]:
         """Return a mutable copy of the captured global mapping."""

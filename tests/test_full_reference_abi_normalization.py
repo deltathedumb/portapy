@@ -40,6 +40,8 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "_PortaPyImportLoader" in classes
     assert "source_size > len(source)" not in source
     assert "_set_status(PORTAPY_" not in source
+    assert "status.value" not in source
+    assert "kind.value" not in source
 
     runtime_source = _source(module, "_portapy_runtime_create_impl")
     assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
@@ -48,12 +50,22 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "_set_status(Status.OK)" in runtime_source
 
     set_status_source = _source(module, "_set_status")
-    assert "status.value" in set_status_source
+    assert "_native_status_code(status)" in set_status_source
     assert "int(status)" not in set_status_source
+
+    status_code_source = _source(module, "_native_status_code")
+    assert "status is Status.OK" in status_code_source
+    assert "return PORTAPY_OK" in status_code_source
+    assert "status.value" not in status_code_source
+
+    value_kind_code_source = _source(module, "_native_value_kind_code")
+    assert "kind is ValueKind.NONE" in value_kind_code_source
+    assert "return PORTAPY_VALUE_NONE" in value_kind_code_source
+    assert "kind.value" not in value_kind_code_source
 
     kind_source = _source(module, "_portapy_value_get_kind_impl")
     assert "instance.value_kind(value)" in kind_source
-    assert "return kind.value" in kind_source
+    assert "return _native_value_kind_code(kind)" in kind_source
     assert "int(kind)" not in kind_source
     assert "instance.unbox(value)" not in kind_source
     assert "_value_kind(" not in kind_source
@@ -66,8 +78,12 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "PORTAPY_" not in bool_source
 
     list_source = _source(module, "_portapy_list_begin_impl")
-    assert "_set_status(Status.OK)" in list_source
+    assert "_set_status_code(PORTAPY_OK)" in list_source
     assert "_set_status(PORTAPY_OK)" not in list_source
+
+    dispatch_source = _source(module, "_portapy_host_dispatch_complete_impl")
+    assert "_set_status_code(status)" in dispatch_source
+    assert "_set_status(status)" not in dispatch_source
 
     assert "instance._store(_DataBuilder(kind, size), kind)" in _source(
         module, "_portapy_value_from_data_begin_impl"

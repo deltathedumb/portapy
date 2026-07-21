@@ -65,30 +65,33 @@ int main(int argc, char **argv) {
     if (runtime_create(&config, &runtime) != PORTAPY_OK) return 12;
 
     const char first[] =
+        "def seven():\n"
+        "    return 7\n"
         "def add(left, right):\n"
         "    total = left + right\n"
         "    return total\n"
         "answer = add(20, 22)\n";
     if (!execute(exec_utf8, runtime, first)) return 13;
-    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "answer", 42)) return 14;
-    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "add(3, 4)", 7)) return 15;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "seven()", 7)) return 14;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "answer", 42)) return 15;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "add(3, 4)", 7)) return 16;
 
     portapy_value callable = PORTAPY_NULL_VALUE;
     portapy_value_kind kind = PORTAPY_VALUE_NONE;
-    if (get_global(runtime, (const uint8_t *)"add", 3, &callable) != PORTAPY_OK) return 16;
-    if (get_kind(runtime, callable, &kind) != PORTAPY_OK || kind != PORTAPY_VALUE_CALLABLE) return 17;
-    if (release(runtime, callable) != PORTAPY_OK) return 18;
+    if (get_global(runtime, (const uint8_t *)"add", 3, &callable) != PORTAPY_OK) return 17;
+    if (get_kind(runtime, callable, &kind) != PORTAPY_OK || kind != PORTAPY_VALUE_CALLABLE) return 18;
+    if (release(runtime, callable) != PORTAPY_OK) return 19;
 
     const char nested[] =
         "def double(value):\n"
         "    return value * 2\n"
         "nested_answer = add(double(10), double(11))\n";
-    if (!execute(exec_utf8, runtime, nested)) return 19;
-    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested_answer", 42)) return 20;
+    if (!execute(exec_utf8, runtime, nested)) return 20;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested_answer", 42)) return 21;
 
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 21;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 22;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 22;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 23;
     puts("native-functions: ok");
     return 0;
 }

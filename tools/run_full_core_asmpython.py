@@ -1,17 +1,39 @@
-"""Run the pinned asmpython CLI with probe-only compatibility builtins.
+"""Run the pinned asmpython CLI with probe-only compatibility rewrites.
 
-The full-core transition exercises Python syntax that can lower to ``ascii``
-inside asmpython.  The pinned compiler recognizes ``repr`` but its semantic and
-whole-program availability tables omit ``ascii``.  Run the CLI in this process
-so both live tables are patched before the compiler imports and analyzes the
-PortaPy program.
+The full-core transition reaches an asmpython f-string lowering path that can
+synthesize an ``ascii(...)`` call even after the source has been normalized.
+The pinned compiler does not expose ``ascii`` consistently across its
+whole-program and semantic passes.  This wrapper patches the exact
+``driver.load_program`` binding used by compilation and rewrites synthesized
+``ascii`` calls to the already-supported ``repr`` builtin before sema runs.
 """
 from __future__ import annotations
 
-import runpy
+import dataclasses
 import sys
 
-from asmpython._compiler import program, sema
+from asmpython._backends import host_cli
+from asmpython._compiler import ast_nodes as A
+from asmpython._compiler import driver, program, sema
+
+
+def _rewrite_ascii_calls(node: object) -> int:
+    changed = 0
+    if isinstance(node, A.Call) and node.func == "ascii":
+        node.func = "repr"
+        changed += 1
+
+    if dataclasses.is_dataclass(node) and not isinstance(node, type):
+        for field in dataclasses.fields(node):
+            changed += _rewrite_ascii_calls(getattr(node, field.name))
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            changed += _rewrite_ascii_calls(key)
+            changed += _rewrite_ascii_calls(value)
+    elif isinstance(node, (list, tuple, set, frozenset)):
+        for item in node:
+            changed += _rewrite_ascii_calls(item)
+    return changed
 
 
 def main() -> int:
@@ -20,14 +42,25 @@ def main() -> int:
         program._ALWAYS_AVAILABLE = frozenset(
             tuple(program._ALWAYS_AVAILABLE) + ("ascii",)
         )
-    if "ascii" not in sema.BUILTINS:
-        raise RuntimeError("failed to enable ascii in asmpython semantic builtins")
-    if "ascii" not in program._ALWAYS_AVAILABLE:
-        raise RuntimeError("failed to enable ascii in whole-program builtins")
 
-    sys.argv = ["asmpython", *sys.argv[1:]]
-    runpy.run_module("asmpython", run_name="__main__")
-    return 0
+    original_load_program = driver.load_program
+
+    def load_program_with_probe_rewrites(*args: object, **kwargs: object):
+        module = original_load_program(*args, **kwargs)
+        changed = _rewrite_ascii_calls(module)
+        print("REWROTE SYNTHESIZED ASCII CALLS", changed)
+        return module
+
+    # driver._compile_program resolves this module-global binding directly.
+    driver.load_program = load_program_with_probe_rewrites
+    # Keep the source module aligned for any indirect callers.
+    program.load_program = load_program_with_probe_rewrites
+
+    try:
+        return int(host_cli.main(sys.argv[1:]))
+    finally:
+        driver.load_program = original_load_program
+        program.load_program = original_load_program
 
 
 if __name__ == "__main__":

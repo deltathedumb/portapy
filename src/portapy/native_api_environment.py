@@ -107,9 +107,9 @@ def _portapy_global_name_byte_impl(
     if slot == 0:
         _set_status(PORTAPY_NOT_FOUND)
         return 0
-    encoded = _global_name[slot].encode("utf-8")
-    if byte_index < 0 or byte_index >= len(encoded):
+    name = _global_name[slot]
+    if byte_index < 0 or byte_index >= len(name):
         _set_status(PORTAPY_INVALID_ARGUMENT)
         return 0
     _set_status(PORTAPY_OK)
-    return encoded[byte_index]
+    return ord(name[byte_index])

@@ -11,7 +11,7 @@ from tools.rewrite_generated_function_arguments_safe import rewrite_generated_fu
 from tools.rewrite_generated_function_default_capture import (
     rewrite_generated_function_default_capture,
 )
-from tools.rewrite_generated_function_parameter_kinds import (
+from tools.rewrite_generated_function_parameter_kinds_safe import (
     rewrite_generated_function_parameter_kinds,
 )
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite

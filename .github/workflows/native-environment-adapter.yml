@@ -1,0 +1,78 @@
+name: Native environment adapter
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package, toolchain, and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build native library
+        run: |
+          python tools/build_native_typed.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-linux
+      - name: Run Python facade against native library
+        run: |
+          python tests/native_environment_adapter_probe.py dist/libportapy.so \
+            | tee dist/environment-adapter-output.txt
+          grep -qx 'native-environment-adapter: ok' dist/environment-adapter-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-native-environment-adapter
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package, toolchain, and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build native library
+        shell: powershell
+        run: |
+          python tools/build_native_typed.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run Python facade against native library
+        shell: powershell
+        run: |
+          $output = python tests/native_environment_adapter_probe.py dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output | Out-File -Encoding utf8 dist/environment-adapter-output.txt
+          if ($output -ne 'native-environment-adapter: ok') {
+            throw "unexpected adapter output: $output"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-native-environment-adapter
+          path: dist

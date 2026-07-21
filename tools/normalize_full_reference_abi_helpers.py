@@ -106,32 +106,7 @@ def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
     )
 
 
-def _is_traceback_format_join(node: ast.AST) -> bool:
-    """Return True for ``"".join(traceback.format_exception(error))``."""
-    if not isinstance(node, ast.Call) or len(node.args) != 1 or node.keywords:
-        return False
-    if not isinstance(node.func, ast.Attribute) or node.func.attr != "join":
-        return False
-    if not isinstance(node.func.value, ast.Constant) or node.func.value.value != "":
-        return False
-    inner = node.args[0]
-    return (
-        isinstance(inner, ast.Call)
-        and len(inner.args) == 1
-        and not inner.keywords
-        and isinstance(inner.func, ast.Attribute)
-        and inner.func.attr == "format_exception"
-        and isinstance(inner.func.value, ast.Name)
-        and inner.func.value.id == "traceback"
-        and isinstance(inner.args[0], ast.Name)
-        and inner.args[0].id == "error"
-    )
-
-
 class _Rewrite(ast.NodeTransformer):
-    def __init__(self) -> None:
-        self.traceback_rewrites = 0
-
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST | None:
         if node.name in _DROP:
             return None
@@ -168,29 +143,10 @@ class _Rewrite(ast.NodeTransformer):
             return ast.copy_location(values[0], node)
         return ast.copy_location(ast.BoolOp(op=node.op, values=values), node)
 
-    def visit_Call(self, node: ast.Call) -> ast.AST:
-        if _is_traceback_format_join(node):
-            self.traceback_rewrites += 1
-            return ast.copy_location(
-                ast.Call(
-                    func=ast.Name(id="str", ctx=ast.Load()),
-                    args=[ast.Name(id="error", ctx=ast.Load())],
-                    keywords=[],
-                ),
-                node,
-            )
-        return self.generic_visit(node)
-
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
-    rewrite = _Rewrite()
-    module = rewrite.visit(module)
-    if rewrite.traceback_rewrites != 1:
-        raise RuntimeError(
-            "full Runtime traceback normalization failed: "
-            f"expected 1 call, found {rewrite.traceback_rewrites}"
-        )
+    module = _Rewrite().visit(module)
     if any(
         isinstance(node, ast.ClassDef) and node.name == "_PortaPyImportLoader"
         for node in module.body
@@ -219,9 +175,6 @@ def main() -> int:
         for node in ast.walk(verified)
         if _is_utf8_source_upper_bound(node)
     ]
-    stale_tracebacks = [
-        node for node in ast.walk(verified) if _is_traceback_format_join(node)
-    ]
     runtime_create = next(
         (
             node
@@ -237,19 +190,11 @@ def main() -> int:
         and "__pyinbin_import__" in runtime_create_text
     )
     builtins_ready = "_seed_builtins" in runtime_create_text
-    if (
-        missing
-        or stale
-        or unsafe_spans
-        or stale_tracebacks
-        or not loader_ready
-        or not builtins_ready
-    ):
+    if missing or stale or unsafe_spans or not loader_ready or not builtins_ready:
         raise RuntimeError(
             "full Runtime ABI helper normalization failed; "
             f"missing={missing}, stale={stale}, "
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
-            f"stale_tracebacks={len(stale_tracebacks)}, "
             f"loader_ready={loader_ready}, builtins_ready={builtins_ready}"
         )
     print(
@@ -258,7 +203,6 @@ def main() -> int:
         len(_DROP),
         "BUILTINS",
         "IMPORT_LOADER",
-        "TRACEBACK",
     )
     return 0
 

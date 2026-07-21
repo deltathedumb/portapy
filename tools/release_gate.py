@@ -41,11 +41,7 @@ def _read_json(path: Path) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist", type=Path)
-    parser.add_argument(
-        "--status",
-        type=Path,
-        default=Path("RELEASE_STATUS.json"),
-    )
+    parser.add_argument("--status", type=Path, default=Path("RELEASE_STATUS.json"))
     parser.add_argument("--expected-tag", required=True)
     args = parser.parse_args(argv)
 
@@ -67,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args.dist.mkdir(parents=True, exist_ok=True)
     records: dict[str, dict[str, object]] = {}
-    expected_exports = list(public_exports(host_bridge=True))
+    expected_exports = list(public_exports(host_bridge=True, host_calls=True))
     expected_python_exports = list(PYTHON_MODULE_EXPORTS)
     for target, name in REQUIRED.items():
         path = args.dist / name
@@ -88,8 +84,10 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
         if metadata.get("host_bridge") is not True:
             raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
-        if metadata.get("generated_host_entry") is not True:
-            raise SystemExit(f"artifact is not host-entry generated: {metadata_path}")
+        if metadata.get("host_calls") is not True:
+            raise SystemExit(f"artifact does not include host-call dispatch: {metadata_path}")
+        if metadata.get("generated_host_call_entry") is not True:
+            raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
             raise SystemExit(f"public export surface mismatch in {metadata_path}")
         if metadata.get("python_module_exports") != expected_python_exports:
@@ -138,14 +136,15 @@ def main(argv: list[str] | None = None) -> int:
             "",
             "The artifact metadata declares the environment-oriented binary-module "
             "surface: `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, "
-            "and structured public errors. The C ABI now includes opaque host "
-            "objects, global injection, attribute graphs, and host-ID recovery.",
+            "and structured public errors. The C ABI includes opaque host objects, "
+            "global injection, attribute graphs, host-ID recovery, and synchronous "
+            "host callable dispatch with borrowed arguments and owned results.",
             "",
             "## Not yet included",
             "",
             "This is not the final Python 3.14 interpreter release. Remaining "
-            "gates include synchronous host callable dispatch, native module "
-            "registration/imports, broader object/container syntax, compound "
+            "gates include automatic binary-module `add_modules`/`expose` mapping, "
+            "native module imports, broader object/container syntax, compound "
             "statements inside functions, and full traceback-frame retrieval.",
             "",
         ]

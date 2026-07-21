@@ -83,23 +83,11 @@ jobs:
       - name: Install package and native toolchain
         shell: powershell
         run: |
-          $PSNativeCommandUseErrorActionPreference = $false
           & .\tools\install_windows_toolchain.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -e '.[test]'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $compiler = 'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-          $compilerInstalled = $false
-          for ($attempt = 1; $attempt -le 3; $attempt += 1) {
-            Write-Host "Installing pinned asmpython (attempt $attempt/3)"
-            python -m pip install --no-cache-dir --force-reinstall $compiler
-            if ($LASTEXITCODE -eq 0) {
-              $compilerInstalled = $true
-              break
-            }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if (-not $compilerInstalled) { exit 1 }
+          & .\tools\install_pinned_asmpython.ps1
       - name: Build full portapy.dll
         shell: powershell
         run: |

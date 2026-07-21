@@ -68,7 +68,7 @@ The native C ABI underneath the facade provides:
 
 ## 3.14 Developer Preview 1
 
-`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, positional functions, host-object graph, host-call parser, and namespace management are Python-authored and compiled by asmpython. Linux and Windows artifacts are exercised from independent C hosts and from the high-level Python binary facade before publication.
+`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, functions, host-object graph, host-call parser, and namespace management are Python-authored and compiled by asmpython. Linux and Windows artifacts are exercised from independent C hosts and from the high-level Python binary facade before publication.
 
 Implemented native ABI and source surface:
 
@@ -98,6 +98,9 @@ Implemented native ABI and source surface:
 - positional `def` functions, zero/multi-argument calls, nested calls, and `return`
 - recursive `if`/`else` and `while` blocks inside native functions
 - nested `break`, `continue`, and early `return` propagation inside functions
+- trailing scalar defaults and positional/keyword argument binding
+- mixed positional-then-keyword and reordered keyword calls
+- missing, duplicate, unexpected, and positional-after-keyword argument errors
 - callable value handles and cross-`exec` function persistence
 - local call-frame save/restore without leaking local bindings
 - quote-aware comments and separators
@@ -106,7 +109,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include defaults/keyword arguments, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include definition-time default capture, variadics and parameter-kind markers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

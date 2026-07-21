@@ -86,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
         if metadata.get("host_calls") is not True:
             raise SystemExit(f"artifact does not include host-call dispatch: {metadata_path}")
+        if metadata.get("native_environment_adapter") is not True:
+            raise SystemExit(f"artifact does not include environment management: {metadata_path}")
         if metadata.get("generated_host_call_entry") is not True:
             raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
@@ -134,18 +136,16 @@ def main(argv: list[str] | None = None) -> int:
             "",
             "## High-level Python surface",
             "",
-            "The artifact metadata declares the environment-oriented binary-module "
-            "surface: `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, "
-            "and structured public errors. The C ABI includes opaque host objects, "
-            "global injection, attribute graphs, host-ID recovery, and synchronous "
-            "host callable dispatch with borrowed arguments and owned results.",
+            "The package now exposes `import_binary()` / `load_native()` as a real "
+            "module facade over the DLL/SO. Its `new()` environments automatically "
+            "map `add_modules()` and `expose()` onto opaque objects and synchronous "
+            "host callables, while snapshots enumerate and restore native globals.",
             "",
             "## Not yet included",
             "",
             "This is not the final Python 3.14 interpreter release. Remaining "
-            "gates include automatic binary-module `add_modules`/`expose` mapping, "
-            "native module imports, broader object/container syntax, compound "
-            "statements inside functions, and full traceback-frame retrieval.",
+            "gates include native module imports, broader object/container syntax, "
+            "compound statements inside functions, and full traceback-frame retrieval.",
             "",
         ]
     )

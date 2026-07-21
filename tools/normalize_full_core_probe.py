@@ -38,6 +38,12 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "                    value = frame.stack.pop()\n"
             "                    value[index] = item",
         ),
+        (
+            "                    except StopIteration: frame.stack.pop(); frame.ip = instr.arg",
+            "                    except StopIteration:\n"
+            "                        frame.stack.pop()\n"
+            "                        frame.ip = instr.arg",
+        ),
     ),
 }
 

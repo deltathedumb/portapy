@@ -18,6 +18,7 @@ from tools.elf_runtime_abi import fix_linux_runtime_abi
 from tools.nasm_direct_float_abi import append_direct_float_abi
 from tools.native_surface import public_exports
 from tools.normalize_full_core_validation import main as normalize_full_runtime
+from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
 SOURCE = REPOSITORY_ROOT / "src" / "portapy" / "native_full_reference_entry.py"
@@ -103,6 +104,8 @@ def build_full_runtime(
     metadata["public_exports"] = list(
         public_exports(host_bridge=True, host_calls=True)
     )
+    metadata["python_module_exports"] = list(PYTHON_MODULE_EXPORTS)
+    metadata["python_module_entry"] = "portapy"
     metadata_path = output.with_suffix(output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return metadata

@@ -36,6 +36,9 @@ def test_installs_sequential_native_data_builders(
     assert builder_normalizer.main() == 0
 
     module = ast.parse(output.read_text(encoding="utf-8"))
+    text = ast.unparse(module)
+    assert "_native_byte_data: list[int] = [0]" in text
+
     builder = next(
         node
         for node in module.body
@@ -43,16 +46,23 @@ def test_installs_sequential_native_data_builders(
     )
     builder_text = ast.unparse(builder)
     assert "self.size = size" in builder_text
-    assert "self.data: list[int] = []" in builder_text
-    assert "while index < size" not in builder_text
+    assert "self.start = len(_native_byte_data)" in builder_text
+    assert "self.written = 0" in builder_text
+    assert "self.data" not in builder_text
+
+    materialize = _function(module, "_data_bytes")
+    assert "value.written != value.size" in materialize
+    assert "data: list[int] = [_native_byte_data[value.start]]" in materialize
+    assert "data.append(_native_byte_data[value.start + index])" in materialize
 
     begin = _function(module, "_portapy_value_from_data_begin_impl")
     assert "instance._store(_DataBuilder(kind, size), _native_kind_member(kind))" in begin
 
     setter = _function(module, "_portapy_value_set_data_byte_impl")
-    assert "index != len(target.data)" in setter
-    assert "target.data.append(byte)" in setter
-    assert "target.data[index] = byte" not in setter
+    assert "index != target.written" in setter
+    assert "_native_byte_data.append(byte)" in setter
+    assert "target.written += 1" in setter
+    assert "target.data" not in setter
 
     validator = _function(module, "_portapy_value_validate_utf8_impl")
     assert "_data_bytes(raw).decode('utf-8')" in validator

@@ -19,6 +19,12 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "                    else:\n"
             "                        self.expr(bound)",
         ),
+        (
+            "            operands = [node.left, *node.comparators]",
+            "            operands = [node.left]\n"
+            "            for comparator in node.comparators:\n"
+            "                operands.append(comparator)",
+        ),
     ),
     "src/portapy/core/vm.py": (
         (

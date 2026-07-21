@@ -140,7 +140,7 @@ def test_list_storage_supports_replacement_and_append(tmp_path: Path) -> None:
             assert scalar._scalar_list_set(runtime, value, 1, replacement) == base.PORTAPY_OK
             assert scalar._scalar_list_append(runtime, value, appended) == base.PORTAPY_OK
             name = "values"
-            assert api._portapy_set_global_span_impl(runtime, name, len(name), value) == base.PORTAPY_OK
+            assert base._portapy_set_global_span_impl(runtime, name, len(name), value) == base.PORTAPY_OK
             assert _eval_int(api, runtime, "values[0] + values[1] + values[2]") == 60
             assert _eval_int(api, runtime, "len(values)") == 3
         finally:

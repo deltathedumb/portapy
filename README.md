@@ -78,7 +78,7 @@ The native C ABI underneath the facade provides:
 Implemented native ABI and source surface:
 
 - isolated runtime handles
-- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, callable, and opaque object handles
+- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, dictionary, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
 - retained native global injection, enumeration, replacement, and deletion
 - host attribute graph registration, replacement, lookup, and dotted traversal
@@ -99,8 +99,10 @@ Implemented native ABI and source surface:
 - empty, single-item, multi-item, and nested tuples
 - positive, negative, and chained tuple indexing
 - tuple-aware `len()`, truthiness, and recursive structural equality
+- owned string-key dictionaries with `len()`, truthiness, equality, and indexing
+- recursive dictionary child ownership
 - UTF-8 source literals across hosted Unicode and native byte-oriented source boundaries
-- tuple values passed through native functions and control flow
+- tuple and dictionary values passed through native functions and control flow
 - tuple globals, snapshots, and host callback round-trips
 - equality, ordering, `is`, and `is not` comparisons
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
@@ -116,17 +118,19 @@ Implemented native ABI and source surface:
 - positional/keyword, mixed, reordered, and nested default calls
 - `/` positional-only and bare `*` keyword-only parameter markers
 - named `*args` parameters packed into real immutable tuple values
-- empty, mixed, and nested positional variadic calls with local-frame restoration
+- named `**kwargs` parameters packed into owned string-key dictionaries
+- mixed fixed, positional-only, keyword-only, positional-variadic, and keyword-variadic binding
+- positional-only names captured by `**kwargs`, matching Python behavior
+- local call-frame save/restore without leaking variadic bindings
 - missing, duplicate, unexpected, parameter-kind, and positional-after-keyword argument errors
 - callable value handles and cross-`exec` function persistence
-- local call-frame save/restore without leaking local bindings
 - quote-aware comments and separators
 - exact public export allowlists
 - Linux position-independent linking with no text relocations
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include `**kwargs`, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include public dictionary boxing/extraction, native list containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

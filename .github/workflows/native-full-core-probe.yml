@@ -25,6 +25,7 @@ jobs:
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Normalize probe source
         run: |
+          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
           python tools/normalize_full_core_probe.py
           python tools/normalize_full_core_lambdas.py
           python tools/normalize_full_core_native_semantics.py
@@ -134,6 +135,7 @@ jobs:
       - name: Normalize probe source
         shell: powershell
         run: |
+          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
           python tools/normalize_full_core_probe.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_lambdas.py

@@ -10,7 +10,9 @@ import asmpython
 VM_PATH = Path("src/portapy/core/vm.py")
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
-ASMPYTHON_STDLIB = Path(asmpython.__file__).resolve().parent / "stdlib"
+ASMPYTHON_ROOT = Path(asmpython.__file__).resolve().parent
+ASMPYTHON_STDLIB = ASMPYTHON_ROOT / "stdlib"
+ASMPYTHON_SEMA = ASMPYTHON_ROOT / "_compiler" / "sema.py"
 
 
 def _normalize_ascii(source: str) -> tuple[str, int, int]:
@@ -27,6 +29,17 @@ def _normalize_ascii_file(path: Path, label: str) -> None:
     path.write_text(source, encoding="utf-8")
     print(f"REPLACED {label} ASCII CALLS", call_count)
     print(f"REPLACED {label} ASCII CONVERSIONS", conversion_count)
+
+
+def _enable_compiler_ascii() -> None:
+    source = ASMPYTHON_SEMA.read_text(encoding="utf-8")
+    marker = '    "repr": (1, 1),\n'
+    if marker not in source:
+        raise RuntimeError("asmpython semantic builtin table is missing repr")
+    if '    "ascii": (1, 1),\n' not in source:
+        source = source.replace(marker, marker + '    "ascii": (1, 1),\n', 1)
+    ASMPYTHON_SEMA.write_text(source, encoding="utf-8")
+    print("ENABLED ASMPYTHON ASCII BUILTIN")
 
 
 def main() -> int:
@@ -75,6 +88,7 @@ def main() -> int:
         if not path.is_file():
             raise RuntimeError(f"missing asmpython stdlib source: {path}")
         _normalize_ascii_file(path, f"ASMPYTHON {name}")
+    _enable_compiler_ascii()
     return 0
 
 

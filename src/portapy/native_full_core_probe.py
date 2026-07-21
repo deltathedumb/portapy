@@ -29,6 +29,16 @@ def portapy_abi_version() -> int:
     return 1
 
 
+def portapy_full_core_parse_probe() -> int:
+    runtime = _portapy_runtime_create_impl()
+    source = "answer = 1\n"
+    status = _portapy_exec_span_impl(runtime, source, len(source))
+    _portapy_runtime_destroy_impl(runtime)
+    if status != PORTAPY_OK:
+        return -1
+    return 1
+
+
 def portapy_full_core_probe() -> int:
     runtime = _portapy_runtime_create_impl()
     forty = _portapy_value_from_i64_impl(runtime, 40)
@@ -46,7 +56,7 @@ def portapy_full_core_probe() -> int:
 class Box:
     def __init__(self, value):
         self.value = value
-answer = Box(total(values)).value
+answer = Box(value=total(items=values)).value
 """
     status = _portapy_exec_span_impl(runtime, source, len(source))
     if status != PORTAPY_OK:

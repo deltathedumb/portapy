@@ -1,124 +1,167 @@
-"""Comprehension layer for the CPython-independent PortaPy frontend."""
+"""Variadic and unpacking layer for the standalone PortaPy frontend."""
 from __future__ import annotations
 
 from portapy.parser import ast_nodes as A
 
-from . import portable_frontend_control as _control
-from .bytecode import Op
+from . import portable_frontend_comprehensions as _comprehensions
+from .bytecode import CodeObject, Op
 
 
-PortableFrontendError = _control.PortableFrontendError
+PortableFrontendError = _comprehensions.PortableFrontendError
 
 
-class _PortableLowerer(_control._PortableLowerer):
-    """Add eager portable comprehension lowering."""
+class _PortableLowerer(_comprehensions._PortableLowerer):
+    """Add PEP 448 unpacking and variadic function signatures."""
 
-    def store_comprehension_target(self, var: str, targets: list) -> None:
-        if not targets:
-            self.store_name(var)
-            return
-        self.emit(Op.UNPACK_SEQUENCE, len(targets))
-        for target in targets:
-            if isinstance(target, str):
-                self.store_name(target)
-            elif isinstance(target, list):
-                self.store_comprehension_target("", target)
-            else:
-                self.unsupported(target, "comprehension target")
+    def fixed_signature(self, node: A.FuncDef) -> tuple[list[str], list]:
+        params = list(node.params)
+        defaults = list(node.defaults)
+        if len(defaults) < len(params):
+            defaults += [None] * (len(params) - len(defaults))
+        dynamic = {name for name in (node.vararg, node.kwarg) if name is not None}
+        fixed_params: list[str] = []
+        fixed_defaults: list = []
+        for name, default in zip(params, defaults):
+            if name in dynamic:
+                continue
+            fixed_params.append(name)
+            fixed_defaults.append(default)
+        return fixed_params, fixed_defaults
 
-    def comprehension_clauses(self, node: A.Comprehension) -> list[tuple]:
-        clauses = [(node.var, node.targets, node.iter, node.cond)]
-        for var, targets, iterable, condition in zip(
-            node.extra_for_vars,
-            node.extra_for_targets,
-            node.extra_for_iters,
-            node.extra_for_conds,
-        ):
-            clauses.append((var, targets, iterable, condition))
-        return clauses
+    def compile_function_code(self, node: A.FuncDef) -> CodeObject:
+        cache_key = id(node)
+        cached = self.function_code_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        fixed_params, _defaults = self.fixed_signature(node)
+        nested = _PortableLowerer(node.name, fixed_params)
+        nested.vararg_name = node.vararg
+        nested.kwarg_name = node.kwarg
+        nested.free_names = set(getattr(node, "free_vars", []) or [])
+        for statement in node.body:
+            nested.statement(statement)
+        nested.emit(Op.RETURN)
+        code = nested.finish()
+        self.function_code_cache[cache_key] = code
+        return code
 
-    def lower_comprehension_clauses(
-        self,
-        clauses: list[tuple],
-        index: int,
-        emit_value,
-    ) -> None:
-        var, targets, iterable, condition = clauses[index]
-        self.expression(iterable)
-        self.emit(Op.GET_ITER)
-        start = len(self.instructions)
-        exit_jump = self.emit(Op.FOR_ITER)
-        self.store_comprehension_target(var, targets)
-        condition_jump: int | None = None
-        if condition is not None:
-            self.expression(condition)
-            condition_jump = self.emit(Op.JUMP_IF_FALSE)
-        if index + 1 < len(clauses):
-            self.lower_comprehension_clauses(clauses, index + 1, emit_value)
-        else:
-            emit_value()
-        loop_back = self.emit(Op.JUMP, start)
-        if condition_jump is not None:
-            self.patch(condition_jump, loop_back)
-        self.patch(exit_jump, len(self.instructions))
-
-    def lower_list_comprehension(self, node: A.Comprehension) -> None:
-        result_name = f"__portapy_list_comp_{len(self.instructions)}"
-        self.emit(Op.BUILD_LIST, 0)
-        self.emit(Op.STORE_NAME, self.name_index(result_name))
-
-        def emit_value() -> None:
-            self.emit(Op.LOAD_NAME, self.name_index(result_name))
-            self.expression(node.elt)
-            self.emit(Op.LIST_APPEND)
-            self.emit(Op.STORE_NAME, self.name_index(result_name))
-
-        self.lower_comprehension_clauses(
-            self.comprehension_clauses(node), 0, emit_value
+    def emit_function(self, node: A.FuncDef, store_as: str | None = None) -> None:
+        function_code = self.compile_function_code(node)
+        _fixed_params, defaults = self.fixed_signature(node)
+        first_default = len(defaults)
+        for index, default in enumerate(defaults):
+            if default is not None:
+                first_default = index
+                break
+        if any(default is None for default in defaults[first_default:]):
+            self.unsupported(node, "non-trailing default arguments")
+        default_count = len(defaults) - first_default
+        for default in defaults[first_default:]:
+            assert default is not None
+            self.expression(default)
+        self.emit(
+            Op.MAKE_FUNCTION,
+            self.constant((function_code, default_count, 0, {})),
         )
-        self.emit(Op.LOAD_NAME, self.name_index(result_name))
+        for decorator in reversed(node.decorators):
+            self.load_dotted_name(decorator)
+            self.emit(Op.SWAP)
+            self.emit(Op.CALL, 1)
+        self.store_name(store_as or node.name)
 
-    def lower_dict_comprehension(self, node: A.DictComprehension) -> None:
-        result_name = f"__portapy_dict_comp_{len(self.instructions)}"
-        self.emit(Op.BUILD_DICT, 0)
-        self.emit(Op.STORE_NAME, self.name_index(result_name))
+    def call(
+        self,
+        args: list[A.Expr],
+        kwargs: list,
+        dstar: A.Expr | None = None,
+    ) -> None:
+        has_starred = any(isinstance(argument, A.Starred) for argument in args)
+        if not has_starred and not kwargs and dstar is None:
+            for argument in args:
+                self.expression(argument)
+            self.emit(Op.CALL, len(args))
+            return
 
-        self.expression(node.iter)
-        self.emit(Op.GET_ITER)
-        start = len(self.instructions)
-        exit_jump = self.emit(Op.FOR_ITER)
-        self.store_comprehension_target(node.var, node.targets)
-        condition_jump: int | None = None
-        if node.cond is not None:
-            self.expression(node.cond)
-            condition_jump = self.emit(Op.JUMP_IF_FALSE)
-        self.emit(Op.LOAD_NAME, self.name_index(result_name))
-        self.expression(node.key)
-        self.expression(node.value)
-        self.emit(Op.SET_ITEM)
-        loop_back = self.emit(Op.JUMP, start)
-        if condition_jump is not None:
-            self.patch(condition_jump, loop_back)
-        self.patch(exit_jump, len(self.instructions))
-        self.emit(Op.LOAD_NAME, self.name_index(result_name))
+        positional_spec: list[bool] = []
+        for argument in args:
+            if isinstance(argument, A.Starred):
+                self.expression(argument.value)
+                positional_spec.append(True)
+            else:
+                self.expression(argument)
+                positional_spec.append(False)
+        keyword_names: list[str | None] = []
+        for item in kwargs:
+            if not isinstance(item, tuple) or len(item) != 2:
+                self.unsupported(item, "malformed keyword argument")
+            name, value = item
+            self.expression(value)
+            keyword_names.append(name)
+        if dstar is not None:
+            self.expression(dstar)
+            keyword_names.append(None)
+        self.emit(
+            Op.CALL_KW,
+            self.constant((tuple(positional_spec), tuple(keyword_names))),
+        )
 
     def expression(self, node: A.Expr) -> None:
-        if isinstance(node, A.Comprehension):
-            self.lower_list_comprehension(node)
+        if isinstance(node, (A.ListLit, A.TupleLit, A.SetLit)) and any(
+            isinstance(element, A.Starred) for element in node.elems
+        ):
+            flags = 0
+            for index, element in enumerate(node.elems):
+                if isinstance(element, A.Starred):
+                    flags |= 1 << index
+                    self.expression(element.value)
+                else:
+                    self.expression(element)
+            opcode = (
+                Op.BUILD_LIST_UNPACK
+                if isinstance(node, A.ListLit)
+                else Op.BUILD_TUPLE_UNPACK
+                if isinstance(node, A.TupleLit)
+                else Op.BUILD_SET_UNPACK
+            )
+            self.emit(opcode, len(node.elems) | (flags << 16))
             return
-        if isinstance(node, A.DictComprehension):
-            self.lower_dict_comprehension(node)
+        if isinstance(node, A.DictLit) and any(key is None for key in node.keys):
+            flags = 0
+            for index, (key, value) in enumerate(zip(node.keys, node.values)):
+                if key is None:
+                    flags |= 1 << index
+                    self.expression(value)
+                else:
+                    self.expression(key)
+                    self.expression(value)
+                    self.emit(Op.BUILD_TUPLE, 2)
+            self.emit(Op.BUILD_DICT_UNPACK, len(node.keys) | (flags << 16))
             return
         super().expression(node)
 
+    def finish(self) -> CodeObject:
+        code = CodeObject(
+            name=self.name,
+            instructions=self.instructions,
+            constants=self.constants,
+            names=self.names,
+            arg_names=self.arg_names,
+            vararg_name=getattr(self, "vararg_name", None),
+            kwarg_name=getattr(self, "kwarg_name", None),
+            is_generator=getattr(self, "is_generator", False),
+            free_names=sorted(getattr(self, "free_names", set())),
+        )
+        code.validate()
+        return code
 
-# Every older layer resolves nested lowerers through these module globals.
-_control._PortableLowerer = _PortableLowerer
-_control._base._PortableLowerer = _PortableLowerer
+
+_comprehensions._PortableLowerer = _PortableLowerer
+_comprehensions._control._PortableLowerer = _PortableLowerer
+_comprehensions._control._base._PortableLowerer = _PortableLowerer
 
 
 def compile_portable_source(source: str, filename: str = "<portapy>"):
-    return _control.compile_portable_source(source, filename)
+    return _comprehensions.compile_portable_source(source, filename)
 
 
 __all__ = ["PortableFrontendError", "compile_portable_source"]

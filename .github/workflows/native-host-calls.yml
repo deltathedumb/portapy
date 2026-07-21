@@ -104,13 +104,18 @@ jobs:
         shell: powershell
         run: |
           $project = 'tests/csharp/PortaPy.ManagedSmoke/PortaPy.ManagedSmoke.csproj'
-          dotnet build $project -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Release *>&1 `
+            | Tee-Object -FilePath dist/csharp-managed-build.log
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) { exit $buildExit }
           $outputDirectory = 'tests/csharp/PortaPy.ManagedSmoke/bin/Release/net8.0'
           Copy-Item dist/portapy.dll "$outputDirectory/portapy.dll"
-          $output = & dotnet "$outputDirectory/PortaPy.ManagedSmoke.dll"
+          & dotnet "$outputDirectory/PortaPy.ManagedSmoke.dll" *>&1 `
+            | Tee-Object -FilePath dist/csharp-managed-run.log
+          $runExit = $LASTEXITCODE
+          if ($runExit -ne 0) { exit $runExit }
+          $output = Get-Content dist/csharp-managed-run.log
           $output | Out-File -Encoding utf8 dist/csharp-managed-environment-output.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($output[-1] -ne 'csharp-managed-environment: ok') { throw "unexpected C# output: $output" }
       - name: Execute public tuple ABI from C
         shell: powershell

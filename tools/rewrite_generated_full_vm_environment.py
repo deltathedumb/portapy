@@ -74,16 +74,44 @@ _TYPED_REPLACEMENTS = (
     ("        _full_runtime_reserved[slot] = None", "        _full_runtime_reserved[slot] = {}"),
     ("        _full_runtime_users[slot] = None", "        _full_runtime_users[slot] = []"),
 )
+_SOURCE_SIZE_REPLACEMENTS = (
+    (
+        "def _portapy_exec_span_impl(runtime: int, source: str, source_size: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        return _set_status(PORTAPY_INVALID_HANDLE)\n"
+        "    if source_size < 0 or source_size > len(source):",
+        "def _portapy_exec_span_impl(runtime: int, source: str, source_size: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        return _set_status(PORTAPY_INVALID_HANDLE)\n"
+        "    if source_size < 0:",
+    ),
+    (
+        "def _portapy_eval_span_impl(runtime: int, source: str, source_size: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        _set_status(PORTAPY_INVALID_HANDLE)\n"
+        "        return 0\n"
+        "    if source_size < 0 or source_size > len(source):",
+        "def _portapy_eval_span_impl(runtime: int, source: str, source_size: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        _set_status(PORTAPY_INVALID_HANDLE)\n"
+        "        return 0\n"
+        "    if source_size < 0:",
+    ),
+)
 
 
-def _apply_typed_replacements(source: str) -> str:
+def _replace_exactly_once(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
+    if count != 1:
+        raise ValueError(f"generated full runtime {label} has {count} matches: {old!r}")
+    return source.replace(old, new, 1)
+
+
+def _apply_replacements(source: str) -> str:
     for old, new in _TYPED_REPLACEMENTS:
-        count = source.count(old)
-        if count != 1:
-            raise ValueError(
-                f"generated full runtime typing target has {count} matches: {old!r}"
-            )
-        source = source.replace(old, new, 1)
+        source = _replace_exactly_once(source, old, new, "typing target")
+    for old, new in _SOURCE_SIZE_REPLACEMENTS:
+        source = _replace_exactly_once(source, old, new, "source-size target")
     return source
 
 
@@ -100,7 +128,7 @@ def rewrite_generated_full_vm_environment(
         selected = "windows" if host_module.endswith("_windows") else "linux"
     rewrite_generated_full_runtime(path, target=selected)
     source = path.read_text(encoding="utf-8")
-    source = _apply_typed_replacements(source)
+    source = _apply_replacements(source)
     if source.count(_SEED_MARKER) != 1:
         raise ValueError("generated full runtime has an unexpected VM seed point")
     source = source.replace(_SEED_MARKER, _SEED_REPLACEMENT, 1)

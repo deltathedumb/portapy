@@ -1,10 +1,12 @@
 """Normalize unsupported syntax shims in the full-core CI probe source."""
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 import re
 
 import asmpython
+import asmpython._compiler.sema as asmpython_sema
 
 
 VM_PATH = Path("src/portapy/core/vm.py")
@@ -12,7 +14,7 @@ FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
 ASMPYTHON_ROOT = Path(asmpython.__file__).resolve().parent
 ASMPYTHON_STDLIB = ASMPYTHON_ROOT / "stdlib"
-ASMPYTHON_SEMA = ASMPYTHON_ROOT / "_compiler" / "sema.py"
+ASMPYTHON_SEMA = Path(asmpython_sema.__file__).resolve()
 
 
 def _normalize_ascii(source: str) -> tuple[str, int, int]:
@@ -39,7 +41,12 @@ def _enable_compiler_ascii() -> None:
     if '    "ascii": (1, 1),\n' not in source:
         source = source.replace(marker, marker + '    "ascii": (1, 1),\n', 1)
     ASMPYTHON_SEMA.write_text(source, encoding="utf-8")
-    print("ENABLED ASMPYTHON ASCII BUILTIN")
+    importlib.invalidate_caches()
+    reloaded = importlib.reload(asmpython_sema)
+    if "ascii" not in reloaded.BUILTINS:
+        raise RuntimeError(f"ascii was not enabled in active sema module: {ASMPYTHON_SEMA}")
+    print("ASMPYTHON SEMA PATH", ASMPYTHON_SEMA)
+    print("ENABLED ASMPYTHON ASCII BUILTIN", reloaded.BUILTINS["ascii"])
 
 
 def main() -> int:

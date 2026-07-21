@@ -95,6 +95,9 @@ def generate_native_function_entry(
     _scalar_find_assignment,
     _scalar_release,
     _scalar_retain_global,
+    _scalar_tuple_item_owner,
+    _scalar_tuple_item_index,
+    _scalar_tuple_item_value,
 )"""
 
     for old, new, label in (

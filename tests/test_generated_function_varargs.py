@@ -36,10 +36,10 @@ def _load(path: Path, name: str):
 
 def _api(tmp_path: Path):
     names = (
-        "_parameter_kind_scalar_test",
-        "_parameter_kind_expression_test",
-        "_parameter_kind_control_test",
-        "_parameter_kind_function_test",
+        "_varargs_scalar_test",
+        "_varargs_expression_test",
+        "_varargs_control_test",
+        "_varargs_function_test",
     )
     paths = tuple(tmp_path / f"{name}.py" for name in names)
     rewrite_generated_scalar(generate_namespaced_scalar_entry(paths[0]))
@@ -80,100 +80,107 @@ def _eval_int(api, runtime: int, source: str) -> int:
     return base._portapy_value_as_i64_impl(runtime, value)
 
 
-def test_generated_source_contains_parameter_kind_helpers(tmp_path: Path) -> None:
+def test_generated_source_contains_varargs_tuple_packing(tmp_path: Path) -> None:
     _, names, paths = _api(tmp_path)
     try:
         source = paths[3].read_text(encoding="utf-8")
-        assert "_PARAMETER_POSITIONAL_ONLY = 1" in source
-        assert "_PARAMETER_KEYWORD_ONLY = 2" in source
         assert "_PARAMETER_VAR_POSITIONAL = 3" in source
-        assert "def _parameter_kind(" in source
-        assert "def _next_positional_parameter(" in source
-        assert "positional-only argument passed as keyword" in source
+        assert "def _var_positional_index(" in source
+        assert "def _build_varargs_tuple(" in source
+        assert "_scalar_tuple_item_owner.append(value)" in source
+        assert "vararg_positions: list[int] = []" in source
+        assert "rewrite_generated_function_varargs" not in source
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)
 
 
-def test_positional_only_and_keyword_only_calls(tmp_path: Path) -> None:
+def test_empty_and_nonempty_varargs_are_real_tuples(tmp_path: Path) -> None:
     api, names, _ = _api(tmp_path)
     try:
         runtime = api._portapy_runtime_create_impl()
         source = (
-            "def route(left, /, right=2, *, scale=3):\n"
-            "    return (left + right) * scale\n"
-            "def required(value, *, offset):\n"
-            "    return value + offset\n"
-            "qualified = route(10, scale=4)\n"
-            "mixed = route(18, right=3, scale=2)\n"
-            "required_result = required(40, offset=2)\n"
+            "def summarize(*values):\n"
+            "    if values:\n"
+            "        return len(values) + values[0] + values[-1]\n"
+            "    return 0\n"
+            "empty = summarize()\n"
+            "filled = summarize(18, 1, 20)\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK
-        assert _eval_int(api, runtime, "qualified") == 48
-        assert _eval_int(api, runtime, "mixed") == 42
-        assert _eval_int(api, runtime, "required_result") == 42
-
-        type_errors = (
-            "route(left=10)",
-            "route(10, 2, 4)",
-            "required(40)",
-            "required(40, 2)",
-        )
-        for expression in type_errors:
-            result = api._portapy_eval_span_impl(runtime, expression, len(expression))
-            assert result == 0
-            assert api._portapy_last_status_impl() == base.PORTAPY_TYPE_ERROR
+        assert _eval_int(api, runtime, "empty") == 0
+        assert _eval_int(api, runtime, "filled") == 41
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)
 
 
-def test_marker_defaults_are_captured_at_definition(tmp_path: Path) -> None:
+def test_varargs_mix_with_fixed_defaults_and_keyword_only_parameters(tmp_path: Path) -> None:
     api, names, _ = _api(tmp_path)
     try:
         runtime = api._portapy_runtime_create_impl()
         source = (
-            "seed = 3\n"
-            "def captured(value=seed, /, *, offset=2):\n"
-            "    return value + offset\n"
-            "seed = 100\n"
-            "answer = captured()\n"
+            "def combine(head, /, middle=2, *tail, scale=1):\n"
+            "    total = head + middle + len(tail)\n"
+            "    if tail:\n"
+            "        total += tail[0] + tail[-1]\n"
+            "    return total * scale\n"
+            "defaulted = combine(10)\n"
+            "positional = combine(10, 3, 4, 5)\n"
+            "mixed = combine(10, 3, 4, 5, scale=2)\n"
+            "keyword_middle = combine(10, middle=4, scale=3)\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK
-        assert _eval_int(api, runtime, "answer") == 5
+        assert _eval_int(api, runtime, "defaulted") == 12
+        assert _eval_int(api, runtime, "positional") == 24
+        assert _eval_int(api, runtime, "mixed") == 48
+        assert _eval_int(api, runtime, "keyword_middle") == 42
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)
 
 
-def test_named_varargs_are_valid_parameter_markers(tmp_path: Path) -> None:
+def test_varargs_survive_nested_calls_and_local_restore(tmp_path: Path) -> None:
     api, names, _ = _api(tmp_path)
     try:
         runtime = api._portapy_runtime_create_impl()
         source = (
-            "def collect(*args):\n"
-            "    return len(args)\n"
-            "answer = collect(1, 2, 3)\n"
+            "values = 100\n"
+            "def pick(*values):\n"
+            "    return values[0] + values[-1]\n"
+            "def outer(value, *rest):\n"
+            "    return pick(value, rest[0], rest[-1])\n"
+            "answer = outer(20, 1, 22)\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK
-        assert _eval_int(api, runtime, "answer") == 3
+        assert _eval_int(api, runtime, "answer") == 42
+        assert _eval_int(api, runtime, "values") == 100
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)
 
 
-def test_invalid_parameter_markers_report_compile_error(tmp_path: Path) -> None:
+def test_varargs_call_and_definition_errors_are_structured(tmp_path: Path) -> None:
     api, names, _ = _api(tmp_path)
     try:
         runtime = api._portapy_runtime_create_impl()
-        invalid_definitions = (
-            "def bad(*):\n    return 1\n",
-            "def bad(/, value):\n    return value\n",
-            "def bad(value, /, /):\n    return value\n",
-            "def bad(value=1, /, other):\n    return other\n",
-            "def bad(**kwargs):\n    return 1\n",
+        assert _exec(api, runtime, "def collect(*items):\n    return len(items)\n") == base.PORTAPY_OK
+
+        result = api._portapy_eval_span_impl(
+            runtime,
+            "collect(items=1)",
+            len("collect(items=1)"),
         )
-        for source in invalid_definitions:
+        assert result == 0
+        assert api._portapy_last_status_impl() == base.PORTAPY_TYPE_ERROR
+
+        invalid = (
+            "def bad(*left, *right):\n    return 1\n",
+            "def bad(value, *):\n    return value\n",
+            "def bad(**values):\n    return 1\n",
+            "def bad(*items=1):\n    return 1\n",
+        )
+        for source in invalid:
             assert _exec(api, runtime, source) == base.PORTAPY_COMPILE_ERROR
     finally:
         for name in reversed(names):

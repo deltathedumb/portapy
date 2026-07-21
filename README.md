@@ -115,6 +115,8 @@ Implemented native ABI and source surface:
 - transactional capture replacement on successful function redefinition
 - positional/keyword, mixed, reordered, and nested default calls
 - `/` positional-only and bare `*` keyword-only parameter markers
+- named `*args` parameters packed into real immutable tuple values
+- empty, mixed, and nested positional variadic calls with local-frame restoration
 - missing, duplicate, unexpected, parameter-kind, and positional-after-keyword argument errors
 - callable value handles and cross-`exec` function persistence
 - local call-frame save/restore without leaking local bindings
@@ -124,7 +126,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include variadic parameters, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include `**kwargs`, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

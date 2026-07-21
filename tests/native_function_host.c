@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
     if (!evaluate_status(eval_utf8, runtime, "route(10, 2, 4)", PORTAPY_TYPE_ERROR)) return 48;
     if (!evaluate_status(eval_utf8, runtime, "required(40)", PORTAPY_TYPE_ERROR)) return 49;
     if (!evaluate_status(eval_utf8, runtime, "required(40, 2)", PORTAPY_TYPE_ERROR)) return 50;
-    if (!execute_status(exec_utf8, runtime, "def bad(*args):\n    return 1\n", PORTAPY_COMPILE_ERROR)) return 51;
+    if (!execute_status(exec_utf8, runtime, "def bad(**kwargs):\n    return 1\n", PORTAPY_COMPILE_ERROR)) return 51;
 
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "(1, 2, 3)[0]", 1)) return 52;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "(1, 2, 3)[-1]", 3)) return 53;

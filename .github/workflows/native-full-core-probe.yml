@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: native-full-core-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -41,7 +45,7 @@ jobs:
           shutil.copytree(Path('src').resolve(), root / 'src')
           shutil.copy2('tools/run_full_core_asmpython.py', root / 'run_full_core_asmpython.py')
           PY
-      - name: Compile full frontend and VM
+      - name: Compile full frontend and VM probe
         shell: bash
         run: |
           mkdir -p dist
@@ -96,6 +100,27 @@ jobs:
             ./dist/libportapy_full_core_probe.so \
             | tee dist/linux-full-core-output.txt
           grep -qx 'full-core=42' dist/linux-full-core-output.txt
+      - name: Build production full Runtime library
+        run: |
+          python tools/build_native_full_runtime.py \
+            --target linux \
+            --already-normalized \
+            --output dist/libportapy.so \
+            --work-dir dist/build-full-runtime-linux
+      - name: Execute production universal ABI
+        run: |
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
+            echo 'production text relocations are forbidden'
+            exit 1
+          fi
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_environment_api_host.c -ldl \
+            -o dist/native_environment_api_host
+          ./dist/native_environment_api_host ./dist/libportapy.so \
+            | tee dist/linux-full-runtime-output.txt
+          grep -qx 'Hello, world!' dist/linux-full-runtime-output.txt
+          tail -n 1 dist/linux-full-runtime-output.txt \
+            | grep -qx 'universal-environment-api: ok'
       - name: Report Linux full-core failure
         if: failure() && github.event_name == 'pull_request'
         env:
@@ -147,7 +172,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_validation.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Compile full frontend and VM
+      - name: Compile full frontend and VM probe
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
@@ -195,6 +220,31 @@ jobs:
           $output | Out-File -Encoding utf8 dist/windows-full-core-output.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($output -ne 'full-core=42') { throw "unexpected full-core output: $output" }
+      - name: Build production full Runtime library
+        shell: powershell
+        run: |
+          python tools/build_native_full_runtime.py `
+            --target windows `
+            --already-normalized `
+            --output dist/portapy.dll `
+            --work-dir dist/build-full-runtime-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute production universal ABI
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_environment_api_host.c `
+            -o dist/native_environment_api_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = @(& dist/native_environment_api_host.exe dist/portapy.dll)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output | Out-File -Encoding utf8 dist/windows-full-runtime-output.txt
+          if ($output[0] -ne 'Hello, world!') {
+            throw "unexpected callback output: $($output -join [Environment]::NewLine)"
+          }
+          if ($output[-1] -ne 'universal-environment-api: ok') {
+            throw "unexpected final output: $($output -join [Environment]::NewLine)"
+          }
       - name: Report Windows full-core failure
         if: failure() && github.event_name == 'pull_request'
         shell: powershell

@@ -31,8 +31,12 @@ jobs:
             --work-dir dist/build-linux
       - name: Run Python facade against native library
         run: |
+          set +e
           python tests/native_environment_adapter_probe.py dist/libportapy.so \
-            | tee dist/environment-adapter-output.txt
+            2>&1 | tee dist/environment-adapter-output.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -eq 0
           grep -qx 'native-environment-adapter: ok' dist/environment-adapter-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -65,10 +69,11 @@ jobs:
       - name: Run Python facade against native library
         shell: powershell
         run: |
-          $output = python tests/native_environment_adapter_probe.py dist/portapy.dll
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $output | Out-File -Encoding utf8 dist/environment-adapter-output.txt
-          if ($output -ne 'native-environment-adapter: ok') {
+          $output = & python tests/native_environment_adapter_probe.py dist/portapy.dll 2>&1
+          $status = $LASTEXITCODE
+          $output | Tee-Object -FilePath dist/environment-adapter-output.txt
+          if ($status -ne 0) { exit $status }
+          if (($output -join "`n") -ne 'native-environment-adapter: ok') {
             throw "unexpected adapter output: $output"
           }
       - uses: actions/upload-artifact@v4

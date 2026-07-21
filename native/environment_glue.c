@@ -123,3 +123,6 @@ portapy_status PORTAPY_CALL portapy_global_name_copy_utf8(
     }
     return PORTAPY_OK;
 }
+
+#include "portapy_managed.h"
+#include "managed_environment_glue.c"

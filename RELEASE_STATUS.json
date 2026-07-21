@@ -8,6 +8,14 @@
   "source_execution_ready": false,
   "completed_surface": [
     "runtime handles",
+    "environment handles aliasing runtime handles",
+    "first-class native new and new_with_config helpers",
+    "first-class native add and add_all binding helpers",
+    "first-class native add_value_utf8 and add_callable_utf8 helpers",
+    "first-class native execute evaluate and destroy helpers",
+    "helper and low-level callback dispatch coexistence",
+    "language-neutral C ABI usable from foreign-function interfaces",
+    "host-owned module loading without a PortaPy import_module API",
     "None values",
     "bool values",
     "signed 64-bit integer values",
@@ -71,8 +79,8 @@
     "nested host calls",
     "structured host callback failures",
     "native global enumeration and deletion",
-    "native import_binary and load_native module facades",
-    "automatic native add_modules and expose adaptation",
+    "native import_binary and load_native Python facades",
+    "automatic native add add_all add_modules and expose adaptation",
     "automatic Python scalar module object callable tuple list and mapping boxing",
     "native snapshot.var enumeration and shallow restore",
     "native environment remove and exact post-snapshot cleanup",
@@ -107,6 +115,7 @@
     "runtime-global typed value lookup",
     "per-runtime structured error status type message line and column",
     "high-level new Environment and EnvironmentSnapshot API",
+    "high-level Environment add and add_all API",
     "read-only snapshot.var access and shallow snapshot restore",
     "module injection and flattened expose API in the hosted runtime",
     "declared Python binary-module export metadata",
@@ -116,6 +125,6 @@
     "closures classes and complete frontend bytecode VM execution",
     "broader object syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
-    "native module import registration and loading"
+    "native import statements and module registration inside executed PortaPy source"
   ]
 }

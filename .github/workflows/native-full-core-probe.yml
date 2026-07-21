@@ -33,7 +33,7 @@ jobs:
           mkdir -p dist
           set +e
           set -o pipefail
-          python -m asmpython build src/portapy/native_full_core_probe.py \
+          python tools/run_full_core_asmpython.py build src/portapy/native_full_core_probe.py \
             --target linux --type library --backend legacy \
             --no-pyinbin-fallback --keep-assembly \
             -o dist/libportapy_full_core_probe.so \
@@ -127,7 +127,7 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          python -m asmpython build src/portapy/native_full_core_probe.py `
+          python tools/run_full_core_asmpython.py build src/portapy/native_full_core_probe.py `
             --target windows --type library --backend legacy `
             --no-pyinbin-fallback --keep-assembly `
             -o dist/portapy_full_core_probe.dll `

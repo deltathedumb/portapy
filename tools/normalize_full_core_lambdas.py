@@ -5,18 +5,10 @@ import importlib
 from pathlib import Path
 import re
 
-import asmpython
-import asmpython._compiler.codegen as asmpython_codegen
-import asmpython._compiler.sema as asmpython_sema
-
 
 VM_PATH = Path("src/portapy/core/vm.py")
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
-ASMPYTHON_ROOT = Path(asmpython.__file__).resolve().parent
-ASMPYTHON_STDLIB = ASMPYTHON_ROOT / "stdlib"
-ASMPYTHON_SEMA = Path(asmpython_sema.__file__).resolve()
-ASMPYTHON_CODEGEN = Path(asmpython_codegen.__file__).resolve()
 
 
 _FSTRING_CONVERTER_ASSIGN = (
@@ -51,6 +43,16 @@ _PORTAPY_TYPE_IDS = {
     "classmethod": -16,
     "property": -17,
 }
+
+
+def _load_compiler_modules():
+    """Import asmpython only for a native build, never during hosted test collection."""
+    import asmpython
+    import asmpython._compiler.codegen as asmpython_codegen
+    import asmpython._compiler.sema as asmpython_sema
+
+    root = Path(asmpython.__file__).resolve().parent
+    return asmpython_sema, asmpython_codegen, root / "stdlib"
 
 
 def _normalize_ascii(source: str) -> tuple[str, int, int]:
@@ -146,8 +148,12 @@ def _patch_compiler_runtime_symbols(
     return sema_source, codegen_source
 
 
-def _enable_compiler_builtins() -> None:
-    sema_source = ASMPYTHON_SEMA.read_text(encoding="utf-8")
+def _enable_compiler_builtins() -> Path:
+    asmpython_sema, asmpython_codegen, stdlib = _load_compiler_modules()
+    sema_path = Path(asmpython_sema.__file__).resolve()
+    codegen_path = Path(asmpython_codegen.__file__).resolve()
+
+    sema_source = sema_path.read_text(encoding="utf-8")
     ascii_marker = '    "repr": (1, 1),\n'
     if ascii_marker not in sema_source:
         raise RuntimeError("asmpython semantic builtin table is missing repr")
@@ -158,19 +164,19 @@ def _enable_compiler_builtins() -> None:
             1,
         )
 
-    codegen_source = ASMPYTHON_CODEGEN.read_text(encoding="utf-8")
+    codegen_source = codegen_path.read_text(encoding="utf-8")
     sema_source, codegen_source = _patch_compiler_runtime_symbols(
         sema_source,
         codegen_source,
     )
-    ASMPYTHON_SEMA.write_text(sema_source, encoding="utf-8")
-    ASMPYTHON_CODEGEN.write_text(codegen_source, encoding="utf-8")
+    sema_path.write_text(sema_source, encoding="utf-8")
+    codegen_path.write_text(codegen_source, encoding="utf-8")
 
     importlib.invalidate_caches()
     reloaded_sema = importlib.reload(asmpython_sema)
     reloaded_codegen = importlib.reload(asmpython_codegen)
     if "ascii" not in reloaded_sema.BUILTINS:
-        raise RuntimeError(f"ascii was not enabled in active sema module: {ASMPYTHON_SEMA}")
+        raise RuntimeError(f"ascii was not enabled in active sema module: {sema_path}")
     missing_exceptions = sorted(
         set(_PORTAPY_EXCEPTION_PARENTS) - set(reloaded_sema.BUILTIN_EXCEPTIONS)
     )
@@ -195,14 +201,15 @@ def _enable_compiler_builtins() -> None:
             f"codegen_exceptions={missing_codegen_exceptions}, "
             f"codegen_types={missing_codegen_types}"
         )
-    print("ASMPYTHON SEMA PATH", ASMPYTHON_SEMA)
-    print("ASMPYTHON CODEGEN PATH", ASMPYTHON_CODEGEN)
+    print("ASMPYTHON SEMA PATH", sema_path)
+    print("ASMPYTHON CODEGEN PATH", codegen_path)
     print("ENABLED ASMPYTHON ASCII BUILTIN", reloaded_sema.BUILTINS["ascii"])
     print(
         "ENABLED PORTAPY COMPILER SYMBOLS",
         len(_PORTAPY_EXCEPTION_IDS),
         len(_PORTAPY_TYPE_IDS),
     )
+    return stdlib
 
 
 def main() -> int:
@@ -259,12 +266,12 @@ def main() -> int:
     print("REPLACED FRONTEND ASCII CONVERSIONS", frontend_ascii_conversion_count)
 
     _normalize_ascii_file(BYTECODE_PATH, "BYTECODE")
+    stdlib = _enable_compiler_builtins()
     for name in ("dataclasses.py", "enum.py", "types.py"):
-        path = ASMPYTHON_STDLIB / name
+        path = stdlib / name
         if not path.is_file():
             raise RuntimeError(f"missing asmpython stdlib source: {path}")
         _normalize_ascii_file(path, f"ASMPYTHON {name}")
-    _enable_compiler_builtins()
     return 0
 
 

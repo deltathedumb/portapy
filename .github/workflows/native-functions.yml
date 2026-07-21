@@ -40,3 +40,42 @@ jobs:
         with:
           name: linux-native-functions
           path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Compile generated native function entry
+        shell: powershell
+        run: |
+          python tools/build_native_functions.py `
+            --target windows `
+            --output dist/portapy-functions.dll `
+            --work-dir dist/build-functions-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute function entry from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_function_host.c -o dist/native_function_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_function_host.exe dist/portapy-functions.dll
+          $output | Out-File -Encoding utf8 dist/native-function-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-functions: ok') {
+            throw "unexpected native function output: $output"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-native-functions
+          path: dist

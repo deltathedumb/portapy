@@ -1,6 +1,8 @@
 name: Build and release PortaPy 3.14.0
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       publish:
@@ -11,6 +13,10 @@ on:
   push:
     branches:
       - release/3.14.0
+
+concurrency:
+  group: portapy-3.14.0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -38,6 +44,13 @@ jobs:
             --work-dir dist/build-linux
       - name: Validate Linux stable artifact
         run: |
+          readelf -dW dist/libportapy.so | tee dist/linux-dynamic-section.txt
+          ldd dist/libportapy.so | tee dist/linux-dependencies.txt
+          if grep -Eiq 'NEEDED.*(lib)?python|(^|[[:space:]/])libpython[0-9]' \
+              dist/linux-dynamic-section.txt dist/linux-dependencies.txt; then
+            echo 'standalone library must not load or link libpython'
+            exit 1
+          fi
           if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
             echo 'text relocations are forbidden'
             exit 1
@@ -46,11 +59,14 @@ jobs:
             dist/libportapy.so \
             --output-dir dist/conformance-linux
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portapy-linux-3.14.0
           path: |
             dist/libportapy.so
             dist/libportapy.so.json
+            dist/linux-dynamic-section.txt
+            dist/linux-dependencies.txt
             dist/conformance-linux
 
   windows:
@@ -78,17 +94,25 @@ jobs:
       - name: Validate Windows stable artifact
         shell: powershell
         run: |
+          $imports = & objdump -p dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $imports | Out-File -Encoding utf8 dist/windows-imports.txt
+          if ($imports -match 'DLL Name:\s*(python|libpython)[^\s]*\.dll') {
+            throw 'standalone library must not load or link a Python DLL'
+          }
           python tools/run_native_release_conformance.py `
             dist/portapy.dll `
             --compiler gcc `
             --output-dir dist/conformance-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portapy-windows-3.14.0
           path: |
             dist/portapy.dll
             dist/portapy.dll.json
+            dist/windows-imports.txt
             dist/conformance-windows
 
   publish:

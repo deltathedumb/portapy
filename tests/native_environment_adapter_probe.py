@@ -21,6 +21,11 @@ def add(left: int, right: int) -> int:
     return left + right
 
 
+def tuple_roundtrip(value: tuple[object, ...]) -> tuple[object, ...]:
+    assert value == (18, (1, 2), "é")
+    return (value[-1], value[1], value[0] + 24)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: native_environment_adapter_probe.py <library>")
@@ -29,13 +34,23 @@ def main() -> int:
     with module.new() as environment:
         game = Game()
         environment.add_modules(math)
-        environment.expose({"game": game, "add": add})
+        environment.expose(
+            {
+                "game": game,
+                "add": add,
+                "tuple_roundtrip": tuple_roundtrip,
+            }
+        )
         environment.set("input_value", 41.9)
+        environment.set("input_tuple", (18, (1, 2), "é"))
         environment.execute(
             "http_provider = game.provider.HttpProvider\n"
             "floor_value = math.floor(input_value)\n"
             "answer = floor_value + 1\n"
             "nested = add(20, add(1, 21))\n"
+            "tuple_first = input_tuple[0]\n"
+            "tuple_size = len(input_tuple)\n"
+            "tuple_result = tuple_roundtrip(input_tuple)\n"
         )
 
         snapshot = environment.snapshot()
@@ -47,12 +62,23 @@ def main() -> int:
         assert snapshot.var["math"] is math
         assert snapshot.var["game"] is game
         assert snapshot.var["add"] is add
+        assert snapshot.var["tuple_roundtrip"] is tuple_roundtrip
+        assert snapshot.var["input_tuple"] == (18, (1, 2), "é")
+        assert snapshot.var["tuple_first"] == 18
+        assert snapshot.var["tuple_size"] == 3
+        assert snapshot.var["tuple_result"] == ("é", (1, 2), 42)
 
-        environment.execute("answer = 7\nextra = 99\n")
+        environment.execute(
+            "answer = 7\n"
+            "input_tuple = (99,)\n"
+            "extra = 99\n"
+        )
         assert environment.get("answer") == 7
+        assert environment.get("input_tuple") == (99,)
         assert environment.get("extra") == 99
         snapshot.restore()
         assert environment.get("answer") == 42
+        assert environment.get("input_tuple") == (18, (1, 2), "é")
         try:
             environment.get("extra")
         except ExecutionError:

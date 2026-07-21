@@ -83,20 +83,24 @@ jobs:
       - name: Install package and native toolchain
         shell: powershell
         run: |
-          choco install nasm mingw -y --no-progress
+          & .\tools\install_windows_toolchain.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -e '.[test]'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build full portapy.dll
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          python tools/build_native_typed.py `
+          $output = & python tools/build_native_typed.py `
             --target windows `
             --output dist/portapy.dll `
             --work-dir dist/build-windows `
-            2>&1 | Tee-Object -FilePath dist/build-windows.log
+            2>&1
           $buildStatus = $LASTEXITCODE
+          $output | Tee-Object -FilePath dist/build-windows.log
           if ($buildStatus -ne 0) { exit $buildStatus }
       - name: Validate Windows stable artifact
         shell: powershell

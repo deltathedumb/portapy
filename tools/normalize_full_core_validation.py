@@ -1,4 +1,4 @@
-"""Apply final validation-oriented rewrites to the native full-core probe."""
+"""Apply the complete native full-core normalization pipeline."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,8 +17,12 @@ from tools.normalize_full_core_extended_semantics_compat import (
 from tools.normalize_full_core_keyword_calls import (
     main as normalize_keyword_calls,
 )
+from tools.normalize_full_core_lambdas import main as normalize_lambdas
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
+from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
+from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
+from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_reference_abi_helpers import (
     main as normalize_reference_abi_helpers,
 )
@@ -60,6 +64,14 @@ def _normalize_opcode_validation() -> None:
 
 
 def main() -> int:
+    # These four passes were historically run only by the probe workflow.
+    # Keeping them here makes clean production builds use the same proven
+    # compiler-safe source preparation as the full-core transition probe.
+    normalize_probe()
+    normalize_lambdas()
+    normalize_native_semantics()
+    normalize_opcode_maps()
+
     materialize_reference_entry()
     normalize_reference_abi_helpers()
     normalize_native_parser()

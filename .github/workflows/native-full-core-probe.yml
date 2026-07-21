@@ -27,6 +27,17 @@ jobs:
         run: |
           python tools/normalize_full_core_probe.py
           python tools/normalize_full_core_lambdas.py
+          mkdir -p dist/debug-tree
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          import asmpython
+
+          root = Path('dist/debug-tree')
+          shutil.copytree(Path(asmpython.__file__).resolve().parent, root / 'asmpython')
+          shutil.copytree(Path('src').resolve(), root / 'src')
+          shutil.copy2('tools/run_full_core_asmpython.py', root / 'run_full_core_asmpython.py')
+          PY
       - name: Compile full frontend and VM
         shell: bash
         run: |

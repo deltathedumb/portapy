@@ -49,6 +49,15 @@ jobs:
             echo 'text relocations are forbidden'
             exit 1
           fi
+      - name: Prove Linux artifact has no Python runtime dependency
+        run: |
+          readelf -dW dist/libportapy.so | tee dist/linux-dynamic-section.txt
+          ldd dist/libportapy.so | tee dist/linux-dependencies.txt
+          if grep -Eiq 'NEEDED.*(lib)?python|(^|[[:space:]/])libpython[0-9]' \
+              dist/linux-dynamic-section.txt dist/linux-dependencies.txt; then
+            echo 'standalone library must not load or link libpython'
+            exit 1
+          fi
       - name: Execute host calls from C
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
@@ -146,6 +155,15 @@ jobs:
             --output dist/portapy.dll `
             --work-dir dist/build-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prove Windows artifact has no Python runtime dependency
+        shell: powershell
+        run: |
+          $imports = & objdump -p dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $imports | Out-File -Encoding utf8 dist/windows-imports.txt
+          if ($imports -match 'DLL Name:\s*(python|libpython)[^\s]*\.dll') {
+            throw 'standalone library must not load or link a Python DLL'
+          }
       - name: Execute host calls from C
         shell: powershell
         run: |

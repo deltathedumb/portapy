@@ -1,0 +1,43 @@
+name: Native function probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Compile native function entry
+        run: |
+          python tools/build_native_typed.py \
+            --target linux \
+            --source src/portapy/native_api_functions.py \
+            --output dist/libportapy-functions.so \
+            --work-dir dist/build-functions-linux
+      - name: Execute function entry from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_function_host.c -ldl -o dist/native_function_host
+          ./dist/native_function_host ./dist/libportapy-functions.so \
+            | tee dist/native-function-output.txt
+          grep -qx 'native-functions: ok' dist/native-function-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-native-functions
+          path: dist

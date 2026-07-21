@@ -3,8 +3,9 @@
 The verified source payload originally named several Python-authored functions
 with the ``_portapy_cabi_`` prefix. PortaPy's linker layer reserves those names
 for register-preserving assembly adapters. This pass renames the underlying
-implementations, removes redundant forwarding wrappers, and preserves UTF-8 C
-span semantics at the Python-authored ABI boundary.
+implementations, removes redundant forwarding wrappers, installs host-owned
+module resolution for every runtime, and preserves UTF-8 C span semantics at
+the Python-authored ABI boundary.
 """
 from __future__ import annotations
 
@@ -49,6 +50,36 @@ _RENAME = {
     "_portapy_cabi_list_append_impl": "_portapy_list_append_impl",
 }
 
+_IMPORT_LOADER_SOURCE = '''
+class _PortaPyImportLoader:
+    def __init__(self, instance: Runtime) -> None:
+        self.instance = instance
+
+    def __call__(self, name: str) -> object:
+        parts = name.split(".")
+        if len(parts) == 0 or parts[0] == "":
+            raise ModuleNotFoundError(name)
+        status, value = self.instance.read_global(parts[0])
+        if status is not Status.OK:
+            raise ModuleNotFoundError(name)
+        index = 1
+        while index < len(parts):
+            try:
+                value = getattr(value, parts[index])
+            except AttributeError:
+                raise ModuleNotFoundError(name)
+            index += 1
+        return value
+'''
+
+_RUNTIME_CREATE_SOURCE = '''
+instance = Runtime()
+instance.set_global("__pyinbin_import__", _PortaPyImportLoader(instance))
+_runtimes.append(instance)
+_set_status(PORTAPY_OK)
+return len(_runtimes) - 1
+'''
+
 
 def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
     """Return True for ``source_size > len(source)``.
@@ -80,6 +111,8 @@ class _Rewrite(ast.NodeTransformer):
             return None
         node.name = _RENAME.get(node.name, node.name)
         self.generic_visit(node)
+        if node.name == "_portapy_runtime_create_impl":
+            node.body = ast.parse(_RUNTIME_CREATE_SOURCE).body
         return node
 
     def visit_AsyncFunctionDef(
@@ -113,6 +146,12 @@ class _Rewrite(ast.NodeTransformer):
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     module = _Rewrite().visit(module)
+    if any(
+        isinstance(node, ast.ClassDef) and node.name == "_PortaPyImportLoader"
+        for node in module.body
+    ):
+        raise RuntimeError("full Runtime already contains the PortaPy import loader")
+    module.body.extend(ast.parse(_IMPORT_LOADER_SOURCE).body)
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
@@ -123,6 +162,11 @@ def main() -> int:
         for node in verified.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
+    classes = {
+        node.name
+        for node in verified.body
+        if isinstance(node, ast.ClassDef)
+    }
     missing = sorted(set(_RENAME.values()) - definitions)
     stale = sorted((set(_RENAME) | _DROP) & definitions)
     unsafe_spans = [
@@ -130,12 +174,32 @@ def main() -> int:
         for node in ast.walk(verified)
         if _is_utf8_source_upper_bound(node)
     ]
-    if missing or stale or unsafe_spans:
+    runtime_create = next(
+        (
+            node
+            for node in verified.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_portapy_runtime_create_impl"
+        ),
+        None,
+    )
+    runtime_create_text = ast.unparse(runtime_create) if runtime_create is not None else ""
+    loader_ready = (
+        "_PortaPyImportLoader" in classes
+        and "__pyinbin_import__" in runtime_create_text
+    )
+    if missing or stale or unsafe_spans or not loader_ready:
         raise RuntimeError(
             "full Runtime ABI helper normalization failed; "
-            f"missing={missing}, stale={stale}, unsafe_utf8_spans={len(unsafe_spans)}"
+            f"missing={missing}, stale={stale}, "
+            f"unsafe_utf8_spans={len(unsafe_spans)}, loader_ready={loader_ready}"
         )
-    print("NORMALIZED FULL RUNTIME ABI HELPERS", len(_RENAME), len(_DROP))
+    print(
+        "NORMALIZED FULL RUNTIME ABI HELPERS",
+        len(_RENAME),
+        len(_DROP),
+        "IMPORT_LOADER",
+    )
     return 0
 
 

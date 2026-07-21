@@ -31,6 +31,13 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
             "                    index = frame.stack.pop()\n"
             "                    value = frame.stack.pop()",
         ),
+        (
+            "                    item = frame.stack.pop(); index = frame.stack.pop(); value = frame.stack.pop(); value[index] = item",
+            "                    item = frame.stack.pop()\n"
+            "                    index = frame.stack.pop()\n"
+            "                    value = frame.stack.pop()\n"
+            "                    value[index] = item",
+        ),
     ),
 }
 

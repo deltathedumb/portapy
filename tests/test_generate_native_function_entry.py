@@ -15,7 +15,7 @@ from tools.generate_native_function_entry import (
     rewrite_control_expression_imports,
 )
 from tools.namespace_generated_module import namespace_generated_module
-from tools.rewrite_generated_function import rewrite_generated_function
+from tools.rewrite_generated_function_safe import rewrite_generated_function
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,
@@ -101,6 +101,7 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "str(call[0])" not in function_source
     assert "str(assignment[0])" not in function_source
     assert "from .native_api import _last_status" not in function_source
+    assert 'elif char == "\\\\":' in function_source
 
 
 def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> None:

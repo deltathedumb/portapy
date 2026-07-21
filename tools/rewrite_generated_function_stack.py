@@ -15,6 +15,7 @@ from tools.rewrite_generated_function_parameter_kinds_safe import (
     rewrite_generated_function_parameter_kinds,
 )
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
+from tools.rewrite_generated_function_varargs import rewrite_generated_function_varargs
 from tools.rewrite_generated_parser import _replace_function
 
 
@@ -98,6 +99,7 @@ def rewrite_generated_function(path: Path) -> Path:
     rewrite_generated_function_arguments(path)
     rewrite_generated_function_default_capture(path)
     rewrite_generated_function_parameter_kinds(path)
+    rewrite_generated_function_varargs(path)
     return path
 
 

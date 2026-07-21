@@ -26,7 +26,6 @@ from .native_api import (
     _runtime_is_valid,
     _set_status,
     _skip_space,
-    _value_i64,
     _value_is_valid,
     _value_kind,
     _value_refs,
@@ -71,23 +70,17 @@ from .native_api_host import (
     _portapy_exec_span_impl as _host_exec_span,
     _resolve_host_path as _host_resolve_path,
 )
-from .native_api_scalar import (
-    _find_assignment,
-    _release,
-    _retain_global,
-)
+from .native_api_scalar import _find_assignment, _release, _retain_global
 
 
 _host_callable_runtime: list[int] = [0]
 _host_callable_value: list[int] = [0]
 _host_callable_id: list[int] = [0]
-
 _pending_runtime: list[int] = [0]
 _pending_callable_id: list[int] = [0]
 _pending_argument_start: list[int] = [0]
 _pending_argument_count: list[int] = [0]
 _pending_arguments: list[int] = [0]
-
 _HOST_NOT_CALL = -1
 
 
@@ -101,9 +94,7 @@ def _trim(source: str, start: int, end: int) -> list[int]:
 
 def _valid_direct_name(source: str, start: int, end: int) -> bool:
     bounds = _parse_identifier_bounds(source, end, start)
-    if bounds[2] != PORTAPY_OK:
-        return False
-    return _skip_space(source, end, bounds[1]) == end
+    return bounds[2] == PORTAPY_OK and _skip_space(source, end, bounds[1]) == end
 
 
 def _host_call_bounds(source: str, start: int, end: int) -> list[int]:
@@ -205,16 +196,11 @@ def _argument_spans(source: str, start: int, end: int) -> list[int]:
 
 
 def _find_host_callable(runtime: int, value: int) -> int:
-    if not _value_is_valid(runtime, value):
-        return 0
-    if _value_kind[value] != PORTAPY_VALUE_CALLABLE:
+    if not _value_is_valid(runtime, value) or _value_kind[value] != PORTAPY_VALUE_CALLABLE:
         return 0
     index = 1
     while index < len(_host_callable_runtime):
-        if (
-            _host_callable_runtime[index] == runtime
-            and _host_callable_value[index] == value
-        ):
+        if _host_callable_runtime[index] == runtime and _host_callable_value[index] == value:
             return index
         index += 1
     return 0
@@ -257,8 +243,7 @@ def _resolve_call_target(runtime: int, source: str, start: int, end: int) -> lis
     if not _valid_direct_name(source, start, end):
         return [0, start, PORTAPY_COMPILE_ERROR]
     bounds = _parse_identifier_bounds(source, end, start)
-    name = source[bounds[0]:bounds[1]]
-    return _retain_global(runtime, name, bounds[1])
+    return _retain_global(runtime, source[bounds[0]:bounds[1]], bounds[1])
 
 
 def _begin_pending_call(runtime: int, callable_id: int, handles: list[int]) -> int:
@@ -290,9 +275,9 @@ def _clear_pending_frame(runtime: int, frame: int) -> None:
     count = _pending_argument_count[frame]
     index = 0
     while index < count:
-        handle = _pending_arguments[start + index]
-        if _value_is_valid(runtime, handle):
-            _release(runtime, handle)
+        value = _pending_arguments[start + index]
+        if _value_is_valid(runtime, value):
+            _release(runtime, value)
         index += 1
     _pending_runtime[frame] = 0
     _pending_callable_id[frame] = 0
@@ -332,21 +317,11 @@ def _portapy_host_dispatch_complete_impl(runtime: int, status: int, result: int)
         return 0
     if status != PORTAPY_OK:
         _clear_pending_frame(runtime, frame)
-        _fail(
-            runtime,
-            status,
-            "HostCallError",
-            "native host callable returned a failure status",
-        )
+        _fail(runtime, status, "HostCallError", "native host callable returned a failure status")
         return 0
     if not _value_is_valid(runtime, result):
         _clear_pending_frame(runtime, frame)
-        _fail(
-            runtime,
-            PORTAPY_INVALID_HANDLE,
-            "HostCallError",
-            "native host callable returned an invalid value handle",
-        )
+        _fail(runtime, PORTAPY_INVALID_HANDLE, "HostCallError", "native host callable returned an invalid value handle")
         return 0
     _clear_pending_frame(runtime, frame)
     _set_status(PORTAPY_OK)
@@ -354,26 +329,12 @@ def _portapy_host_dispatch_complete_impl(runtime: int, status: int, result: int)
 
 
 def _portapy_host_dispatch_impl(runtime: int, callable_id: int) -> int:
-    """Build-time patched callback boundary.
-
-    Hosted tests replace this function directly. Native builds replace its NASM
-    body with a call into the host callback glue.
-    """
-    _fail(
-        runtime,
-        PORTAPY_INTERRUPTED,
-        "HostDispatchUnavailable",
-        "native host-call dispatch boundary was not installed",
-    )
+    """Build-time patched callback boundary."""
+    _fail(runtime, PORTAPY_INTERRUPTED, "HostDispatchUnavailable", "native host-call dispatch boundary was not installed")
     return 0
 
 
-def _dispatch_host_call(
-    runtime: int,
-    callable_id: int,
-    handles: list[int],
-    position: int,
-) -> list[int]:
+def _dispatch_host_call(runtime: int, callable_id: int, handles: list[int], position: int) -> list[int]:
     _begin_pending_call(runtime, callable_id, handles)
     result = _portapy_host_dispatch_impl(runtime, callable_id)
     if result == 0:
@@ -387,18 +348,12 @@ def _dispatch_host_call(
     return [result, position, PORTAPY_OK]
 
 
-def _parse_host_call_or_expression(
-    runtime: int,
-    source: str,
-    start: int,
-    end: int,
-) -> list[int]:
+def _parse_host_call_or_expression(runtime: int, source: str, start: int, end: int) -> list[int]:
     call = _host_call_bounds(source, start, end)
     if call[5] == _HOST_NOT_CALL:
         return _host_parse_expression(runtime, source, start, end)
     if call[5] != PORTAPY_OK:
         return [0, call[4], call[5]]
-
     target = _resolve_call_target(runtime, source, call[0], call[1])
     if target[2] != PORTAPY_OK:
         return _host_parse_expression(runtime, source, start, end)
@@ -411,19 +366,13 @@ def _parse_host_call_or_expression(
             return [0, call[0], PORTAPY_TYPE_ERROR]
         return _host_parse_expression(runtime, source, start, end)
     _release(runtime, target[0])
-
     spans = _argument_spans(source, call[2], call[3])
     if spans[0] != PORTAPY_OK:
         return [0, spans[1], spans[0]]
     handles: list[int] = []
     index = 2
     while index < len(spans):
-        parsed = _parse_host_call_or_expression(
-            runtime,
-            source,
-            spans[index],
-            spans[index + 1],
-        )
+        parsed = _parse_host_call_or_expression(runtime, source, spans[index], spans[index + 1])
         if parsed[2] != PORTAPY_OK:
             release = 0
             while release < len(handles):
@@ -437,6 +386,26 @@ def _parse_host_call_or_expression(
     return dispatched
 
 
+def _source_has_definition_or_compound(source: str, source_size: int) -> bool:
+    position = 0
+    while position < source_size:
+        end = position
+        while end < source_size and source[end] != "\n":
+            end += 1
+        line = source[position:end]
+        bounds = _trim(line, 0, len(line))
+        if bounds[0] > 0 and bounds[0] < bounds[1]:
+            return True
+        if bounds[0] < bounds[1]:
+            text = line[bounds[0]:bounds[1]]
+            if text.startswith("def ") or text.startswith("if ") or text.startswith("while "):
+                return True
+            if text == "else:" or text.startswith("elif "):
+                return True
+        position = end + 1
+    return False
+
+
 def _source_has_host_call(source: str, source_size: int) -> bool:
     position = 0
     while position < source_size:
@@ -445,9 +414,7 @@ def _source_has_host_call(source: str, source_size: int) -> bool:
             end += 1
         statement = source[position:end]
         assignment = _find_assignment(statement, len(statement))
-        expression_start = 0
-        if assignment[0] != "":
-            expression_start = int(assignment[2])
+        expression_start = int(assignment[2]) if assignment[0] != "" else 0
         call = _host_call_bounds(statement, expression_start, len(statement))
         if call[5] == PORTAPY_OK:
             return True
@@ -461,9 +428,7 @@ def _execute_call_statement(runtime: int, statement: str, line: int) -> int:
     if statement == "" or statement == "pass":
         return _set_status(PORTAPY_OK)
     assignment = _find_assignment(statement, len(statement))
-    expression_start = 0
-    if assignment[0] != "":
-        expression_start = int(assignment[2])
+    expression_start = int(assignment[2]) if assignment[0] != "" else 0
     parsed = _parse_host_call_or_expression(runtime, statement, expression_start, len(statement))
     if parsed[2] != PORTAPY_OK:
         _runtime_error_line[runtime] = line
@@ -473,28 +438,13 @@ def _execute_call_statement(runtime: int, statement: str, line: int) -> int:
         return _set_status(PORTAPY_OK)
     if assignment[0] != "=":
         _release(runtime, parsed[0])
-        return _fail(
-            runtime,
-            PORTAPY_COMPILE_ERROR,
-            "SyntaxError",
-            "augmented assignment from a host call is not available",
-            line,
-            1,
-        )
+        return _fail(runtime, PORTAPY_COMPILE_ERROR, "SyntaxError", "augmented assignment from a host call is not available", line, 1)
     left = statement[0:int(assignment[1])]
     bounds = _parse_identifier_bounds(left, len(left), 0)
     if bounds[2] != PORTAPY_OK or _skip_space(left, len(left), bounds[1]) != len(left):
         _release(runtime, parsed[0])
-        return _fail(
-            runtime,
-            PORTAPY_COMPILE_ERROR,
-            "SyntaxError",
-            "invalid assignment target",
-            line,
-            1,
-        )
-    name = left[bounds[0]:bounds[1]]
-    return _bind_global(runtime, name, parsed[0])
+        return _fail(runtime, PORTAPY_COMPILE_ERROR, "SyntaxError", "invalid assignment target", line, 1)
+    return _bind_global(runtime, left[bounds[0]:bounds[1]], parsed[0])
 
 
 def _exec_host_call_source(runtime: int, source: str, source_size: int) -> int:
@@ -537,6 +487,8 @@ def _portapy_exec_span_impl(runtime: int, source: str, source_size: int) -> int:
     _clear_runtime_error(runtime)
     if source_size < 0:
         return _fail(runtime, PORTAPY_INVALID_ARGUMENT, "ValueError", "source size cannot be negative")
+    if _source_has_definition_or_compound(source, source_size):
+        return _host_exec_span(runtime, source, source_size)
     if not _source_has_host_call(source, source_size):
         return _host_exec_span(runtime, source, source_size)
     return _exec_host_call_source(runtime, source, source_size)
@@ -555,20 +507,9 @@ def _portapy_set_global_span_impl(runtime: int, name: str, name_size: int, value
     return _host_set_global_span(runtime, name, name_size, value)
 
 
-def _portapy_host_set_attr_span_impl(
-    runtime: int,
-    owner: int,
-    name: str,
-    name_size: int,
-    value: int,
-) -> int:
+def _portapy_host_set_attr_span_impl(runtime: int, owner: int, name: str, name_size: int, value: int) -> int:
     return _host_set_attr_span(runtime, owner, name, name_size, value)
 
 
-def _portapy_host_get_attr_span_impl(
-    runtime: int,
-    owner: int,
-    name: str,
-    name_size: int,
-) -> int:
+def _portapy_host_get_attr_span_impl(runtime: int, owner: int, name: str, name_size: int) -> int:
     return _host_get_attr_span(runtime, owner, name, name_size)

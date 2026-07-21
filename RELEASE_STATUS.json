@@ -51,6 +51,10 @@
     "positional function definitions and return statements",
     "zero-argument and multi-argument function calls",
     "nested direct function calls",
+    "recursive if and else blocks inside native functions",
+    "while loops inside native functions",
+    "break and continue propagation inside native functions",
+    "early return propagation through nested function blocks",
     "callable value handles",
     "cross-exec function persistence",
     "local function binding save and restore",
@@ -64,7 +68,6 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "compound statements inside native functions",
     "default and keyword arguments, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",

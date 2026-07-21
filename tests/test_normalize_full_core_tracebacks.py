@@ -16,14 +16,15 @@ _SOURCE = '''class VirtualMachine:
         return value
 
     def write(self, frame, exc):
-        try:
-            pass
-        except BaseException as exc:
-            if isinstance(exc, BaseException) and not isinstance(exc, PyException):
-                tb_frame = _PyTBFrameProxy(frame.code, frame.globals, None)
-                prior = self._synthetic_tracebacks.get(id(exc))
-                self._synthetic_tracebacks[id(exc)] = _PyTBProxy(tb_frame, prior)
-            return exc
+        if True:
+            try:
+                pass
+            except BaseException as exc:
+                if isinstance(exc, BaseException) and not isinstance(exc, PyException):
+                    tb_frame = _PyTBFrameProxy(frame.code, frame.globals, None)
+                    prior = self._synthetic_tracebacks.get(id(exc))
+                    self._synthetic_tracebacks[id(exc)] = _PyTBProxy(tb_frame, prior)
+                return exc
 '''
 
 

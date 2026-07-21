@@ -6,6 +6,7 @@ from tools import normalize_full_core_lambdas as normalizer
 def _sema_source() -> str:
     return '''BUILTINS = {
     "repr": (1, 1),
+    "type": (1, 1),
 }
 BUILTIN_EXCEPTIONS = frozenset({
     "FileNotFoundError",
@@ -34,9 +35,11 @@ def test_enables_all_portapy_compiler_symbols() -> None:
     sema, codegen = normalizer._patch_compiler_runtime_symbols(
         _sema_source(), _codegen_source()
     )
-    for name in normalizer._PORTAPY_EXCEPTION_IDS:
+    for name, parent in normalizer._PORTAPY_EXCEPTION_PARENTS.items():
         assert f'    "{name}",' in sema
-        assert f'    "{name}":' in codegen
+        assert f'    "{name}": {parent!r},' in codegen
+    for name, identifier in normalizer._PORTAPY_EXCEPTION_IDS.items():
+        assert f'    "{name}": {identifier},' in codegen
     for name, identifier in normalizer._PORTAPY_TYPE_IDS.items():
         assert f'    "{name}",' in sema
         assert f'    "{name}": {identifier},' in codegen

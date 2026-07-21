@@ -98,6 +98,12 @@ def _native_expand_runtime_source(source: str) -> str:
             result += "\n" + _native_spaces(indent)
             line_prefix = ""
             line_start = False
+            index += 1
+            while index < len(source) and (
+                source[index] == " " or source[index] == "\t"
+            ):
+                index += 1
+            continue
         elif char == "\n":
             result += char
             line_indent = 0

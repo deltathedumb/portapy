@@ -1,4 +1,9 @@
 """PortaPy public embedding API."""
+
+# Install the function-body control-flow overlay before any hosted/native facade
+# is imported. Direct imports such as ``from portapy import native_api_functions``
+# also pass through package initialization, so they receive the same semantics.
+from . import native_api_function_control as _native_api_function_control
 from .environment import (
     BindingError,
     Environment,

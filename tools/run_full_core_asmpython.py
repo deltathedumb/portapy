@@ -1,11 +1,11 @@
 """Run the pinned asmpython CLI with probe-only compatibility rewrites.
 
 The full-core transition reaches an asmpython f-string lowering path that can
-synthesize an ``ascii(...)`` call even after the source has been normalized.
+synthesize an ``ascii`` reference even after the source has been normalized.
 The pinned compiler does not expose ``ascii`` consistently across its
-whole-program and semantic passes.  This wrapper patches the exact
+whole-program and semantic passes. This wrapper patches the exact
 ``driver.load_program`` binding used by compilation and rewrites synthesized
-``ascii`` calls to the already-supported ``repr`` builtin before sema runs.
+``ascii`` references to the already-supported ``repr`` builtin before sema.
 """
 from __future__ import annotations
 
@@ -17,23 +17,24 @@ from asmpython._compiler import ast_nodes as A
 from asmpython._compiler import driver, program, sema
 
 
-def _rewrite_ascii_calls(node: object) -> int:
-    changed = 0
+def _rewrite_ascii_references(node: object, counts: dict[str, int]) -> None:
     if isinstance(node, A.Call) and node.func == "ascii":
         node.func = "repr"
-        changed += 1
+        counts["call"] += 1
+    elif isinstance(node, A.Name) and node.name == "ascii":
+        node.name = "repr"
+        counts["name"] += 1
 
     if dataclasses.is_dataclass(node) and not isinstance(node, type):
         for field in dataclasses.fields(node):
-            changed += _rewrite_ascii_calls(getattr(node, field.name))
+            _rewrite_ascii_references(getattr(node, field.name), counts)
     elif isinstance(node, dict):
         for key, value in node.items():
-            changed += _rewrite_ascii_calls(key)
-            changed += _rewrite_ascii_calls(value)
+            _rewrite_ascii_references(key, counts)
+            _rewrite_ascii_references(value, counts)
     elif isinstance(node, (list, tuple, set, frozenset)):
         for item in node:
-            changed += _rewrite_ascii_calls(item)
-    return changed
+            _rewrite_ascii_references(item, counts)
 
 
 def main() -> int:
@@ -47,8 +48,10 @@ def main() -> int:
 
     def load_program_with_probe_rewrites(*args: object, **kwargs: object):
         module = original_load_program(*args, **kwargs)
-        changed = _rewrite_ascii_calls(module)
-        print("REWROTE SYNTHESIZED ASCII CALLS", changed)
+        counts = {"call": 0, "name": 0}
+        _rewrite_ascii_references(module, counts)
+        print("REWROTE ASCII CALLS", counts["call"])
+        print("REWROTE ASCII NAMES", counts["name"])
         return module
 
     # driver._compile_program resolves this module-global binding directly.

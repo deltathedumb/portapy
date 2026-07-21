@@ -10,6 +10,7 @@ PYTHON_MODULE_EXPORTS = (
     "NativeEnvironment",
     "NativeEnvironmentSnapshot",
     "NativePortaPyModule",
+    "NativeTracebackFrame",
     "import_binary",
     "load_native",
     "BindingError",

@@ -25,6 +25,7 @@ def _helpers() -> str:
 
 
 def _traceback_record_root(runtime: int, source: str) -> int:
+    saved_status = _portapy_last_status_impl()
     line = _runtime_error_line[runtime]
     if line <= 0:
         line = 1
@@ -32,13 +33,15 @@ def _traceback_record_root(runtime: int, source: str) -> int:
     if column <= 0:
         column = 1
     source_line = _traceback_source_line(source, line)
-    return _portapy_traceback_add_impl(
+    _portapy_traceback_add_impl(
         runtime,
         line,
         column,
         "<module>",
         source_line,
-    )'''
+    )
+    _set_status(saved_status)
+    return PORTAPY_OK'''
 
 
 def _eval_entry() -> str:

@@ -72,6 +72,7 @@ def generate_namespaced_scalar_entry(output: Path) -> Path:
         "_find_assignment",
         "_parse_comparison",
         "_record_failure",
+        "_release",
     }
     missing = sorted(required.difference(mapping))
     if missing:
@@ -79,10 +80,17 @@ def generate_namespaced_scalar_entry(output: Path) -> Path:
 
     source = _rename_identifiers(source, mapping)
     source = source.replace(
-        '"""Precedence-aware scalar expression entry for PortaPy.',
+        '"""General scalar-expression native source entry for PortaPy.',
         '"""Generated namespace-safe scalar expression entry for PortaPy.',
         1,
     )
+    source += '''
+
+
+def _scalar_retain_global(runtime: int, name: str, position: int) -> list[int]:
+    """Namespace-safe forwarding wrapper for the typed global lookup helper."""
+    return _retain_global(runtime, name, position)
+'''
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(source, encoding="utf-8")
     return output
@@ -94,8 +102,9 @@ def _static_imports(scalar_module: str) -> str:
     _scalar_find_assignment,
     _scalar_parse_comparison,
     _scalar_record_failure,
-)
-from .native_api import _release, _retain_global"""
+    _scalar_release,
+    _scalar_retain_global,
+)"""
 
 
 def _find_comparison() -> str:
@@ -170,7 +179,7 @@ def _parse_scalar_complete() -> str:
         return parsed
     final = _skip_space(source, end, parsed[1])
     if final != end:
-        _release(runtime, parsed[0])
+        _scalar_release(runtime, parsed[0])
         return [0, final, PORTAPY_COMPILE_ERROR]
     return [parsed[0], end, PORTAPY_OK]'''
 
@@ -203,9 +212,9 @@ def _exec_statement() -> str:
             return _record_expression_failure(runtime, right[2], right[1])
 
         if assignment[0] != "=":
-            current = _retain_global(runtime, name, 0)
+            current = _scalar_retain_global(runtime, name, 0)
             if current[2] != PORTAPY_OK:
-                _release(runtime, right[0])
+                _scalar_release(runtime, right[0])
                 return _record_expression_failure(runtime, current[2], 0)
             operator = str(assignment[0])[:-1]
             combined = _scalar_binary(
@@ -223,7 +232,7 @@ def _exec_statement() -> str:
     value = _parse_boolean_expression(runtime, source, 0, source_size)
     if value[2] != PORTAPY_OK:
         return _record_expression_failure(runtime, value[2], value[1])
-    _release(runtime, value[0])
+    _scalar_release(runtime, value[0])
     return _set_status(PORTAPY_OK)'''
 
 

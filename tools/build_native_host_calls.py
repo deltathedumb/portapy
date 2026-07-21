@@ -30,6 +30,7 @@ from tools.native_surface import (
     DICT_GLUE_INTERNALS,
     ENVIRONMENT_GLUE_INTERNALS,
     HOST_CALL_GLUE_INTERNALS,
+    LIST_GLUE_INTERNALS,
     TUPLE_GLUE_INTERNALS,
     linux_version_script,
     public_exports,
@@ -44,6 +45,7 @@ from tools.rewrite_generated_parser_safe import (
     rewrite_generated_scalar,
 )
 from tools.rewrite_generated_public_dict import rewrite_generated_public_dict
+from tools.rewrite_generated_public_list import rewrite_generated_public_list
 from tools.rewrite_generated_public_tuple import rewrite_generated_public_tuple
 
 
@@ -90,6 +92,7 @@ def _upgrade_linked_artifact(
             + ENVIRONMENT_GLUE_INTERNALS
             + TUPLE_GLUE_INTERNALS
             + DICT_GLUE_INTERNALS
+            + LIST_GLUE_INTERNALS
         ),
     )
     assembly.write_text(source, encoding="utf-8")
@@ -102,6 +105,7 @@ def _upgrade_linked_artifact(
     environment_object = work_dir / f"portapy-environment-glue{suffix}"
     tuple_object = work_dir / f"portapy-tuple-glue{suffix}"
     dict_object = work_dir / f"portapy-dict-glue{suffix}"
+    list_object = work_dir / f"portapy-list-glue{suffix}"
     _run(
         [
             nasm,
@@ -142,6 +146,13 @@ def _upgrade_linked_artifact(
         output=dict_object,
         log=work_dir / f"{target}-dict-glue.log",
     )
+    _compile_bridge_glue(
+        gcc=gcc,
+        target=target,
+        source=REPOSITORY_ROOT / "native" / "list_glue.c",
+        output=list_object,
+        log=work_dir / f"{target}-list-glue.log",
+    )
 
     objects = [
         str(python_object),
@@ -151,6 +162,7 @@ def _upgrade_linked_artifact(
         str(environment_object),
         str(tuple_object),
         str(dict_object),
+        str(list_object),
     ]
     if target == "linux":
         version_script = work_dir / "portapy-host-calls.map"
@@ -243,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         rewrite_generated_host_calls(call_source)
         rewrite_generated_public_tuple(call_source)
         rewrite_generated_public_dict(call_source)
+        rewrite_generated_public_list(call_source)
 
         metadata = build_native(
             target=args.target,
@@ -269,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["native_environment_adapter"] = True
     metadata["public_tuple_abi"] = True
     metadata["public_dict_abi"] = True
+    metadata["public_list_abi"] = True
     metadata["generated_host_call_entry"] = True
     metadata["native_safe_host_call_rewrite"] = True
     metadata["host_call_glue_reserves_rbx"] = True
@@ -289,8 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         "src/portapy/native_api_environment.py",
         "tools/rewrite_generated_tuple.py",
         "tools/rewrite_generated_dict.py",
+        "tools/rewrite_generated_list.py",
         "tools/rewrite_generated_public_tuple.py",
         "tools/rewrite_generated_public_dict.py",
+        "tools/rewrite_generated_public_list.py",
     ]
     metadata_path = output.with_suffix(output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

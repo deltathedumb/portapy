@@ -50,6 +50,15 @@ _RENAME = {
     "_portapy_cabi_list_append_impl": "_portapy_list_append_impl",
 }
 
+_STORE_KIND_BY_FUNCTION = {
+    "_portapy_value_from_data_begin_impl": "kind",
+    "_portapy_value_from_host_object_impl": "ValueKind.OBJECT",
+    "_portapy_value_from_host_callable_impl": "ValueKind.CALLABLE",
+    "_portapy_tuple_begin_impl": "ValueKind.TUPLE",
+    "_portapy_dict_begin_impl": "ValueKind.DICT",
+    "_portapy_list_begin_impl": "ValueKind.LIST",
+}
+
 _IMPORT_LOADER_SOURCE = '''
 class _PortaPyImportLoader:
     def __init__(self, instance: Runtime) -> None:
@@ -136,6 +145,26 @@ def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
     )
 
 
+class _StoreTagger(ast.NodeTransformer):
+    def __init__(self, kind_source: str) -> None:
+        self.kind = ast.parse(kind_source, mode="eval").body
+        self.count = 0
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "_store"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "instance"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            node.args.append(ast.copy_location(self.kind, node.args[0]))
+            self.count += 1
+        return node
+
+
 class _Rewrite(ast.NodeTransformer):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST | None:
         if node.name in _DROP:
@@ -148,6 +177,16 @@ class _Rewrite(ast.NodeTransformer):
             node.body = ast.parse(_VALUE_GET_KIND_SOURCE).body
         elif node.name == "_portapy_value_as_bool_impl":
             node.body = ast.parse(_VALUE_AS_BOOL_SOURCE).body
+
+        kind_source = _STORE_KIND_BY_FUNCTION.get(node.name)
+        if kind_source is not None:
+            tagger = _StoreTagger(kind_source)
+            node = tagger.visit(node)
+            if tagger.count != 1:
+                raise RuntimeError(
+                    f"native store tagging for {node.name}: expected one call, "
+                    f"found {tagger.count}"
+                )
         return node
 
     def visit_AsyncFunctionDef(
@@ -176,6 +215,18 @@ class _Rewrite(ast.NodeTransformer):
         if len(values) == 1:
             return ast.copy_location(values[0], node)
         return ast.copy_location(ast.BoolOp(op=node.op, values=values), node)
+
+
+def _function_text(module: ast.Module, name: str) -> str:
+    function = next(
+        (
+            node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef) and node.name == name
+        ),
+        None,
+    )
+    return ast.unparse(function) if function is not None else ""
 
 
 def main() -> int:
@@ -209,36 +260,9 @@ def main() -> int:
         for node in ast.walk(verified)
         if _is_utf8_source_upper_bound(node)
     ]
-    runtime_create = next(
-        (
-            node
-            for node in verified.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_portapy_runtime_create_impl"
-        ),
-        None,
-    )
-    value_get_kind = next(
-        (
-            node
-            for node in verified.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_portapy_value_get_kind_impl"
-        ),
-        None,
-    )
-    value_as_bool = next(
-        (
-            node
-            for node in verified.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_portapy_value_as_bool_impl"
-        ),
-        None,
-    )
-    runtime_create_text = ast.unparse(runtime_create) if runtime_create is not None else ""
-    value_get_kind_text = ast.unparse(value_get_kind) if value_get_kind is not None else ""
-    value_as_bool_text = ast.unparse(value_as_bool) if value_as_bool is not None else ""
+    runtime_create_text = _function_text(verified, "_portapy_runtime_create_impl")
+    value_get_kind_text = _function_text(verified, "_portapy_value_get_kind_impl")
+    value_as_bool_text = _function_text(verified, "_portapy_value_as_bool_impl")
     loader_ready = (
         "_PortaPyImportLoader" in classes
         and "__pyinbin_import__" in runtime_create_text
@@ -252,6 +276,14 @@ def main() -> int:
         "instance.value_kind(value)" in value_as_bool_text
         and "type(target)" not in value_as_bool_text
     )
+    tagged_stores_ready = all(
+        _function_text(verified, name).count("instance._store(") == 1
+        and _function_text(verified, name).count(", ValueKind.") == 1
+        for name in _STORE_KIND_BY_FUNCTION
+        if name != "_portapy_value_from_data_begin_impl"
+    ) and "instance._store(_DataBuilder(kind, size), kind)" in _function_text(
+        verified, "_portapy_value_from_data_begin_impl"
+    )
     if (
         missing
         or stale
@@ -260,6 +292,7 @@ def main() -> int:
         or not builtins_ready
         or not tagged_kind_ready
         or not tagged_bool_ready
+        or not tagged_stores_ready
     ):
         raise RuntimeError(
             "full Runtime ABI helper normalization failed; "
@@ -267,7 +300,8 @@ def main() -> int:
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
             f"loader_ready={loader_ready}, builtins_ready={builtins_ready}, "
             f"tagged_kind_ready={tagged_kind_ready}, "
-            f"tagged_bool_ready={tagged_bool_ready}"
+            f"tagged_bool_ready={tagged_bool_ready}, "
+            f"tagged_stores_ready={tagged_stores_ready}"
         )
     print(
         "NORMALIZED FULL RUNTIME ABI HELPERS",
@@ -276,6 +310,7 @@ def main() -> int:
         "BUILTINS",
         "IMPORT_LOADER",
         "TAGGED_VALUES",
+        "TAGGED_STORES",
     )
     return 0
 

@@ -34,13 +34,29 @@ def _normalize_native_ast() -> None:
 
 def _select_native_ast() -> None:
     source = FRONTEND_PATH.read_text(encoding="utf-8")
-    old = "import ast\n"
-    new = "from . import native_ast as ast\n"
-    count = source.count(old)
-    if count != 1:
-        raise RuntimeError(f"expected one frontend ast import, found {count}")
-    FRONTEND_PATH.write_text(source.replace(old, new, 1), encoding="utf-8")
-    print("ENABLED SELF-HOSTED NATIVE PARSER", count)
+    import_old = "import ast\n"
+    import_new = (
+        "from . import native_ast as ast\n"
+        "from .native_ast import parse as _native_ast_parse\n"
+    )
+    import_count = source.count(import_old)
+    if import_count != 1:
+        raise RuntimeError(
+            f"expected one frontend ast import, found {import_count}"
+        )
+    source = source.replace(import_old, import_new, 1)
+
+    call_old = "module = ast.parse(source, filename=filename, mode=mode)"
+    call_new = "module = _native_ast_parse(source, filename, mode)"
+    call_count = source.count(call_old)
+    if call_count != 1:
+        raise RuntimeError(
+            f"expected one frontend ast.parse call, found {call_count}"
+        )
+    source = source.replace(call_old, call_new, 1)
+
+    FRONTEND_PATH.write_text(source, encoding="utf-8")
+    print("ENABLED DIRECT SELF-HOSTED PARSER CALL", call_count)
 
 
 def main() -> int:

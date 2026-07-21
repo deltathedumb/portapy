@@ -41,6 +41,7 @@ from tools.native_surface import (
 )
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 from tools.rewrite_generated_function_stack import rewrite_generated_function
+from tools.rewrite_generated_host_calls import rewrite_generated_host_calls
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,
@@ -179,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             host_module=host_module,
             scalar_module=scalar_module,
         )
+        rewrite_generated_host_calls(call_source)
 
         metadata = build_native(
             target=args.target,
@@ -203,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["sha256"] = _sha256(output)
     metadata["host_calls"] = True
     metadata["generated_host_call_entry"] = True
+    metadata["native_safe_host_call_rewrite"] = True
     metadata["public_exports"] = list(
         public_exports(host_bridge=True, host_calls=True)
     )

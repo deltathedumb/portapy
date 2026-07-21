@@ -1,12 +1,12 @@
-"""Remove host-only assumptions from the native full-core probe."""
+"""Apply final validation-oriented rewrites to the native full-core probe."""
 from __future__ import annotations
 
 from pathlib import Path
 
+from tools.normalize_full_core_native_parser import main as normalize_native_parser
+
 
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
-FRONTEND_PATH = Path("src/portapy/core/frontend.py")
-NATIVE_AST_PATH = Path("src/portapy/core/native_ast.py")
 
 
 def _normalize_opcode_validation() -> None:
@@ -20,22 +20,9 @@ def _normalize_opcode_validation() -> None:
     print("REMOVED HOST OPCODE TYPE IDENTITY", count)
 
 
-def _select_standalone_parser() -> None:
-    if not NATIVE_AST_PATH.is_file():
-        raise RuntimeError(f"missing standalone AST parser: {NATIVE_AST_PATH}")
-    source = FRONTEND_PATH.read_text(encoding="utf-8")
-    old = "import ast\n"
-    new = "from . import native_ast as ast\n"
-    count = source.count(old)
-    if count != 1:
-        raise RuntimeError(f"expected one CPython ast import, found {count}")
-    FRONTEND_PATH.write_text(source.replace(old, new, 1), encoding="utf-8")
-    print("SELECTED STANDALONE NATIVE AST", count)
-
-
 def main() -> int:
+    normalize_native_parser()
     _normalize_opcode_validation()
-    _select_standalone_parser()
     return 0
 
 

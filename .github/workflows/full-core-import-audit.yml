@@ -33,12 +33,21 @@ jobs:
           python -m asmpython._compiler.import_audit \
             src/portapy/native_full_core_probe.py \
             > dist/full-core-import-audit.txt 2>&1
-      - name: Audit source positions
+      - name: Audit standalone source positions
         id: parse_audit
         continue-on-error: true
         run: |
           python tools/asmpython_parse_audit.py \
-            src/portapy/core/frontend.py \
+            src/portapy/core/portable_parser.py \
+            src/portapy/core/portable_frontend.py \
+            src/portapy/core/portable_frontend_unpacking.py \
+            src/portapy/core/portable_frontend_comprehensions.py \
+            src/portapy/core/portable_frontend_control.py \
+            src/portapy/core/portable_frontend_base.py \
+            src/portapy/parser/lexer.py \
+            src/portapy/parser/parser.py \
+            src/portapy/parser/ast_nodes.py \
+            src/portapy/core/bytecode.py \
             src/portapy/core/vm.py \
             > dist/full-core-parse-audit.txt 2>&1
       - name: Show audits

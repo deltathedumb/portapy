@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from io import StringIO
 from pathlib import Path
+import token
+import tokenize
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +27,21 @@ _SCALAR_IMPORT = """from .native_api_scalar import (
     _release,
     _retain_global,
 )"""
+
+
+def _rename_identifiers(source: str, mapping: dict[str, str]) -> str:
+    rewritten: list[tokenize.TokenInfo] = []
+    for item in tokenize.generate_tokens(StringIO(source).readline):
+        if item.type == token.NAME and item.string in mapping:
+            item = tokenize.TokenInfo(
+                item.type,
+                mapping[item.string],
+                item.start,
+                item.end,
+                item.line,
+            )
+        rewritten.append(item)
+    return tokenize.untokenize(rewritten)
 
 
 def rewrite_control_expression_imports(path: Path, expression_module: str) -> Path:
@@ -64,19 +82,19 @@ def generate_native_function_entry(
 
     source = FUNCTION_SOURCE.read_text(encoding="utf-8")
     control_import = f"""from .{control_module} import (
-    _ctrl_line_info as _line_info,
-    _ctrl_portapy_exec_span_impl as _control_exec_span,
-    _ctrl_syntax_error as _syntax_error,
+    _ctrl_line_info,
+    _ctrl_portapy_exec_span_impl,
+    _ctrl_syntax_error,
 )"""
     expression_import = f"""from .{expression_module} import (
-    _expr_parse_boolean_expression as _parse_boolean_expression,
-    _expr_record_expression_failure as _record_expression_failure,
+    _expr_parse_boolean_expression,
+    _expr_record_expression_failure,
 )"""
     scalar_import = f"""from .{scalar_module} import (
-    _scalar_binary as _binary,
-    _scalar_find_assignment as _find_assignment,
-    _scalar_release as _release,
-    _scalar_retain_global as _retain_global,
+    _scalar_binary,
+    _scalar_find_assignment,
+    _scalar_release,
+    _scalar_retain_global,
 )"""
 
     for old, new, label in (
@@ -88,6 +106,20 @@ def generate_native_function_entry(
             raise ValueError(f"native function source has an unexpected {label} import")
         source = source.replace(old, new, 1)
 
+    source = _rename_identifiers(
+        source,
+        {
+            "_line_info": "_ctrl_line_info",
+            "_control_exec_span": "_ctrl_portapy_exec_span_impl",
+            "_syntax_error": "_ctrl_syntax_error",
+            "_parse_boolean_expression": "_expr_parse_boolean_expression",
+            "_record_expression_failure": "_expr_record_expression_failure",
+            "_binary": "_scalar_binary",
+            "_find_assignment": "_scalar_find_assignment",
+            "_release": "_scalar_release",
+            "_retain_global": "_scalar_retain_global",
+        },
+    )
     source = source.replace(
         '"""Positional function definitions and calls for PortaPy\'s native runtime.',
         '"""Generated positional function entry for PortaPy\'s native runtime.',

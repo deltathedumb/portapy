@@ -72,8 +72,16 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_call_host.c -ldl -o dist/native_host_call_host
           ./dist/native_host_call_host ./dist/libportapy.so | tee dist/linux-host-call-output.txt
           grep -qx 'native-host-calls: ok' dist/linux-host-call-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_import_host.c -ldl -o dist/native_import_host
+          ./dist/native_import_host ./dist/libportapy.so | tee dist/linux-import-output.txt
+          grep -qx 'native-host-imports: ok' dist/linux-import-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_traceback_host.c -ldl -o dist/native_traceback_host
+          ./dist/native_traceback_host ./dist/libportapy.so | tee dist/linux-traceback-output.txt
+          grep -qx 'native-traceback-frames: ok' dist/linux-traceback-output.txt
           python tests/native_environment_adapter_probe.py dist/libportapy.so | tee dist/linux-environment-adapter-output.txt
           grep -qx 'native-environment-adapter: ok' dist/linux-environment-adapter-output.txt
+          python tests/native_traceback_adapter_probe.py dist/libportapy.so | tee dist/linux-traceback-adapter-output.txt
+          grep -qx 'native-traceback-adapter: ok' dist/linux-traceback-adapter-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
@@ -157,10 +165,24 @@ jobs:
           $hostCallOutput = & dist/native_host_call_host.exe dist/portapy.dll
           $hostCallOutput | Out-File -Encoding utf8 dist/windows-host-call-output.txt
           if ($hostCallOutput -ne 'native-host-calls: ok') { throw "unexpected host-call output: $hostCallOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_import_host.c -o dist/native_import_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $importOutput = & dist/native_import_host.exe dist/portapy.dll
+          $importOutput | Out-File -Encoding utf8 dist/windows-import-output.txt
+          if ($importOutput -ne 'native-host-imports: ok') { throw "unexpected import output: $importOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_traceback_host.c -o dist/native_traceback_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tracebackOutput = & dist/native_traceback_host.exe dist/portapy.dll
+          $tracebackOutput | Out-File -Encoding utf8 dist/windows-traceback-output.txt
+          if ($tracebackOutput -ne 'native-traceback-frames: ok') { throw "unexpected traceback output: $tracebackOutput" }
           $adapterOutput = python tests/native_environment_adapter_probe.py dist/portapy.dll
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $adapterOutput | Out-File -Encoding utf8 dist/windows-environment-adapter-output.txt
           if ($adapterOutput -ne 'native-environment-adapter: ok') { throw "unexpected adapter output: $adapterOutput" }
+          $tracebackAdapterOutput = python tests/native_traceback_adapter_probe.py dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tracebackAdapterOutput | Out-File -Encoding utf8 dist/windows-traceback-adapter-output.txt
+          if ($tracebackAdapterOutput -ne 'native-traceback-adapter: ok') { throw "unexpected traceback adapter output: $tracebackAdapterOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
@@ -184,6 +206,7 @@ jobs:
           PYTHONPATH="$PWD" python tools/release_gate.py dist \
             --expected-tag 3.14-dev.1
           cp include/portapy.h dist/portapy.h
+          cp include/portapy_traceback.h dist/portapy_traceback.h
           cp LICENSE dist/LICENSE.txt
           cp RELEASE_STATUS.json dist/RELEASE_STATUS.json
       - name: Publish PortaPy 3.14 Developer Preview 1
@@ -200,6 +223,7 @@ jobs:
             dist/portapy.dll \
             dist/portapy.dll.json \
             dist/portapy.h \
+            dist/portapy_traceback.h \
             dist/LICENSE.txt \
             dist/RELEASE_STATUS.json \
             dist/checksums.json \

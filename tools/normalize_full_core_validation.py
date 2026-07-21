@@ -6,6 +6,9 @@ from pathlib import Path
 from tools.normalize_full_core_calls_closures import (
     main as normalize_calls_closures,
 )
+from tools.normalize_full_core_collections import (
+    main as normalize_collections,
+)
 from tools.normalize_full_core_extended_semantics import (
     main as normalize_extended_semantics,
 )
@@ -32,6 +35,7 @@ def main() -> int:
     normalize_pattern_slices()
     normalize_extended_semantics()
     normalize_calls_closures()
+    normalize_collections()
     _normalize_opcode_validation()
     return 0
 

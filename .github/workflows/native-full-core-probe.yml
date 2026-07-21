@@ -26,6 +26,7 @@ jobs:
       - name: Normalize probe source
         run: |
           cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
+          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
           python tools/normalize_full_core_probe.py
           python tools/normalize_full_core_lambdas.py
           python tools/normalize_full_core_native_semantics.py
@@ -136,6 +137,7 @@ jobs:
         shell: powershell
         run: |
           Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
+          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
           python tools/normalize_full_core_probe.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_lambdas.py

@@ -127,9 +127,8 @@ def _find_comparison(source: str, start: int, end: int) -> list[int]:
     return [-1, -1, 0]
 
 
-# The boolean parser intentionally resolves these helpers dynamically. Replacing
-# them composes the two Python-authored parser layers without copying semantics
-# into C or generated assembly.
+# Hosted composition uses local compatibility exports. Native builds use the
+# statically generated source entry and therefore do not execute this mutation.
 _boolean._parse_typed_complete = _parse_scalar_complete
 _boolean._find_comparison = _find_comparison
 
@@ -140,6 +139,16 @@ def _parse_expression(runtime: int, source: str, start: int, end: int) -> list[i
 
 def _record_failure(runtime: int, status: int, position: int) -> int:
     return _boolean._record_expression_failure(runtime, status, position)
+
+
+_parse_boolean_expression = _parse_expression
+_record_expression_failure = _record_failure
+_truthy = _boolean._truthy
+_word_at = _boolean._word_at
+_binary = _scalar._binary
+_find_assignment = _scalar._find_assignment
+_release = _scalar._release
+_retain_global = _scalar._retain_global
 
 
 def _exec_statement(runtime: int, source: str, source_size: int) -> int:

@@ -20,12 +20,20 @@ _TEMPORARY_MODULES = (
 )
 
 
+def _unload_temporary_modules() -> None:
+    for name in _TEMPORARY_MODULES:
+        sys.modules.pop(name, None)
+    importlib.invalidate_caches()
+
+
 def test_full_core_probe_executes_reference_abi_path() -> None:
     original_reference_runtime = REFERENCE_RUNTIME_PATH.read_text(encoding="utf-8")
     try:
+        _unload_temporary_modules()
         normalize_reference_runtime()
         materialize_reference_entry()
         normalize_reference_abi_helpers()
+        _unload_temporary_modules()
         from portapy.native_full_core_probe import portapy_full_core_probe
         from portapy.native_full_reference_entry import _runtimes
 
@@ -41,6 +49,4 @@ def test_full_core_probe_executes_reference_abi_path() -> None:
             original_reference_runtime,
             encoding="utf-8",
         )
-        for name in _TEMPORARY_MODULES:
-            sys.modules.pop(name, None)
-        importlib.invalidate_caches()
+        _unload_temporary_modules()

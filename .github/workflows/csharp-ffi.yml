@@ -1,0 +1,56 @@
+name: CSharp direct FFI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build portapy.dll
+        shell: powershell
+        run: |
+          python tools/build_native_typed.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-csharp-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run direct PInvoke example
+        shell: powershell
+        run: |
+          dotnet build examples/csharp/PortaPyExample.csproj `
+            --configuration Release `
+            --output dist/csharp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/portapy.dll dist/csharp/portapy.dll
+          Push-Location dist/csharp
+          try {
+            $output = @(dotnet PortaPyExample.dll)
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $output | Out-File -Encoding utf8 dist/csharp-output.txt
+          if ($output[-1] -ne 'Hello, world!') {
+            throw "unexpected C# output: $($output -join [Environment]::NewLine)"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: csharp-direct-ffi
+          path: dist

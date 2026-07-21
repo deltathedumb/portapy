@@ -16,6 +16,9 @@
     "helper and low-level callback dispatch coexistence",
     "language-neutral C ABI usable from foreign-function interfaces",
     "host-owned module loading without a PortaPy import_module API",
+    "host-registered import and from-import statements with aliases",
+    "dotted import resolution through host object graphs",
+    "ModuleNotFoundError and ImportError reporting for native imports",
     "None values",
     "bool values",
     "signed 64-bit integer values",
@@ -114,6 +117,10 @@
     "quote-aware statement separators and comments",
     "runtime-global typed value lookup",
     "per-runtime structured error status type message line and column",
+    "indexed native traceback frames with filename function line column and source",
+    "UTF-8 traceback frame copies through the public C ABI",
+    "traceback lifecycle cleanup on error clear execution and runtime destruction",
+    "NativeTracebackFrame objects and formatted tracebacks in the native Python facade",
     "high-level new Environment and EnvironmentSnapshot API",
     "high-level Environment add and add_all API",
     "read-only snapshot.var access and shallow snapshot restore",
@@ -122,9 +129,7 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "closures classes and complete frontend bytecode VM execution",
-    "broader object syntax in the standalone native source parser",
-    "full traceback frame retrieval beyond structured error location",
-    "native import statements and module registration inside executed PortaPy source"
+    "closures classes and complete standalone frontend bytecode VM execution",
+    "broader object syntax in the standalone native source parser"
   ]
 }

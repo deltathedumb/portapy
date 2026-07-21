@@ -23,10 +23,10 @@ def _probe_source() -> str:
         "class Box:\n"
         "    def __init__(self, value):\n"
         "        self.value = value\n"
-        "    def get(self):\n"
-        "        return self.value\n"
-        "fn = outer(19)\n"
-        "box = Box(fn(23))\n"
+        "    def add(self, other):\n"
+        "        return self.value + other\n"
+        "fn = outer(base=19)\n"
+        "box = Box(value=fn(value=23))\n"
         "import probe\n"
         "def fail():\n"
         "    return 1 // 0\n"
@@ -34,7 +34,7 @@ def _probe_source() -> str:
         "    fail()\n"
         "except Exception as exc:\n"
         "    traced = exc.__traceback__ is not None\n"
-        "answer = box.get() + probe.value - 42 if traced else -1\n"
+        "answer = box.add(other=0) + probe.value - 42 if traced else -1\n"
     )
 
 

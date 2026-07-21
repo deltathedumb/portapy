@@ -12,6 +12,9 @@ from tools.normalize_full_core_collections import (
 from tools.normalize_full_core_extended_semantics import (
     main as normalize_extended_semantics,
 )
+from tools.normalize_full_core_keyword_calls import (
+    main as normalize_keyword_calls,
+)
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 
@@ -35,6 +38,7 @@ def main() -> int:
     normalize_pattern_slices()
     normalize_extended_semantics()
     normalize_calls_closures()
+    normalize_keyword_calls()
     normalize_collections()
     _normalize_opcode_validation()
     return 0

@@ -1,9 +1,10 @@
 """Normalize full Runtime helpers to the established adapter contract.
 
 The verified source payload originally named several Python-authored functions
-with the ``_portapy_cabi_`` prefix.  PortaPy's linker layer reserves those names
-for register-preserving assembly adapters.  This pass renames the underlying
-implementations and removes redundant forwarding wrappers before compilation.
+with the ``_portapy_cabi_`` prefix. PortaPy's linker layer reserves those names
+for register-preserving assembly adapters. This pass renames the underlying
+implementations, removes redundant forwarding wrappers, and preserves UTF-8 C
+span semantics at the Python-authored ABI boundary.
 """
 from __future__ import annotations
 
@@ -49,6 +50,30 @@ _RENAME = {
 }
 
 
+def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
+    """Return True for ``source_size > len(source)``.
+
+    C passes UTF-8 byte lengths, while the compiled Python function receives a
+    decoded string. For non-ASCII source the byte count can legitimately exceed
+    ``len(source)``. Slicing with that larger bound already returns the complete
+    string, so only negative sizes are invalid here.
+    """
+    return (
+        isinstance(node, ast.Compare)
+        and isinstance(node.left, ast.Name)
+        and node.left.id == "source_size"
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.Gt)
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Call)
+        and isinstance(node.comparators[0].func, ast.Name)
+        and node.comparators[0].func.id == "len"
+        and len(node.comparators[0].args) == 1
+        and isinstance(node.comparators[0].args[0], ast.Name)
+        and node.comparators[0].args[0].id == "source"
+    )
+
+
 class _Rewrite(ast.NodeTransformer):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST | None:
         if node.name in _DROP:
@@ -73,6 +98,17 @@ class _Rewrite(ast.NodeTransformer):
             return node
         return ast.copy_location(ast.Name(id=renamed, ctx=node.ctx), node)
 
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        self.generic_visit(node)
+        if not isinstance(node.op, ast.Or):
+            return node
+        values = [value for value in node.values if not _is_utf8_source_upper_bound(value)]
+        if len(values) == len(node.values):
+            return node
+        if len(values) == 1:
+            return ast.copy_location(values[0], node)
+        return ast.copy_location(ast.BoolOp(op=node.op, values=values), node)
+
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
@@ -89,9 +125,15 @@ def main() -> int:
     }
     missing = sorted(set(_RENAME.values()) - definitions)
     stale = sorted((set(_RENAME) | _DROP) & definitions)
-    if missing or stale:
+    unsafe_spans = [
+        node
+        for node in ast.walk(verified)
+        if _is_utf8_source_upper_bound(node)
+    ]
+    if missing or stale or unsafe_spans:
         raise RuntimeError(
-            f"full Runtime ABI helper normalization failed; missing={missing}, stale={stale}"
+            "full Runtime ABI helper normalization failed; "
+            f"missing={missing}, stale={stale}, unsafe_utf8_spans={len(unsafe_spans)}"
         )
     print("NORMALIZED FULL RUNTIME ABI HELPERS", len(_RENAME), len(_DROP))
     return 0

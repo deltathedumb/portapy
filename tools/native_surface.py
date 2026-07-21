@@ -53,6 +53,12 @@ ENVIRONMENT_GLUE_EXPORTS = (
     "portapy_global_name_copy_utf8",
 )
 
+TUPLE_GLUE_EXPORTS = (
+    "portapy_value_from_tuple",
+    "portapy_tuple_get_size",
+    "portapy_tuple_get_item",
+)
+
 BASE_GLUE_INTERNALS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_data_begin_impl",
@@ -97,6 +103,15 @@ ENVIRONMENT_GLUE_INTERNALS = (
     "_portapy_cabi_global_name_byte_impl",
 )
 
+TUPLE_GLUE_INTERNALS = (
+    "_portapy_cabi_tuple_begin_impl",
+    "_portapy_cabi_tuple_set_item_impl",
+    "_portapy_cabi_tuple_finish_impl",
+    "_portapy_cabi_tuple_get_size_impl",
+    "_portapy_cabi_tuple_get_item_impl",
+    "_portapy_cabi_tuple_release_impl",
+)
+
 # Compatibility constants used by older tooling and tests.
 GLUE_EXPORTS = BASE_GLUE_EXPORTS
 GLUE_INTERNALS = BASE_GLUE_INTERNALS
@@ -115,6 +130,7 @@ def assembly_exports(
     if host_calls:
         result += HOST_CALL_GLUE_INTERNALS
         result += ENVIRONMENT_GLUE_INTERNALS
+        result += TUPLE_GLUE_INTERNALS
     return result
 
 
@@ -129,6 +145,7 @@ def public_exports(
     if host_calls:
         result += HOST_CALL_GLUE_EXPORTS
         result += ENVIRONMENT_GLUE_EXPORTS
+        result += TUPLE_GLUE_EXPORTS
     return result
 
 

@@ -1,10 +1,9 @@
 """Run extended-semantics normalization across current pass ordering.
 
-Several earlier native-bootstrap passes now produce the exact target form that
-``normalize_full_core_extended_semantics`` historically created itself. This
-wrapper skips only those stale textual rewrites whose replacement semantics are
-already present, while retaining the original fail-closed behavior everywhere
-else.
+Several earlier native-bootstrap passes now produce either the exact target form
+or a compact equivalent of source that ``normalize_full_core_extended_semantics``
+historically rewrote. This wrapper recognizes only those verified shapes while
+retaining the original fail-closed behavior everywhere else.
 """
 from __future__ import annotations
 
@@ -17,10 +16,18 @@ _CALL_PARSER_MARKERS = {
 }
 
 _ALREADY_NORMALIZED_MARKERS = {
-    "dynamic exception reraising": "RuntimeError: exception did not match handler",
     "exception stack extension": "frame.stack.append(matched)",
     "context-manager exception forwarding": "exit_args.append(exc_type)",
 }
+
+_DYNAMIC_EXCEPTION_COMPACT = '''                    if not self._exception_matches(value, expected):
+                        if isinstance(value, (BaseException, PyException)): raise value
+                        _raise_typed("RuntimeError: invalid exception value")'''
+
+_DYNAMIC_EXCEPTION_TARGET = '''                    if not self._exception_matches(value, expected):
+                        if isinstance(value, (BaseException, PyException)):
+                            _raise_typed("RuntimeError: exception did not match handler")
+                        _raise_typed("RuntimeError: invalid exception value")'''
 
 
 def _call_argument_method(source: str) -> str:
@@ -53,6 +60,20 @@ def _compatible_replace(
             )
         print("SKIPPED", label, "call parser already normalized")
         return source
+
+    if label == "dynamic exception reraising" and count == 0:
+        compact_count = source.count(_DYNAMIC_EXCEPTION_COMPACT)
+        if compact_count != 1:
+            raise RuntimeError(
+                "dynamic exception reraising: neither canonical nor compact "
+                f"source form is unique; compact matches={compact_count}"
+            )
+        print("REPLACED", label, compact_count, "compact form")
+        return source.replace(
+            _DYNAMIC_EXCEPTION_COMPACT,
+            _DYNAMIC_EXCEPTION_TARGET,
+            1,
+        )
 
     target_marker = _ALREADY_NORMALIZED_MARKERS.get(label)
     if target_marker is not None and count == 0:

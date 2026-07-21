@@ -81,6 +81,36 @@ _set_status(PORTAPY_OK)
 return len(_runtimes) - 1
 '''
 
+_VALUE_GET_KIND_SOURCE = '''
+instance = _runtime(runtime)
+if instance is None:
+    _set_status(PORTAPY_INVALID_HANDLE)
+    return PORTAPY_VALUE_OBJECT
+status, kind = instance.value_kind(value)
+_set_status(status)
+return int(kind)
+'''
+
+_VALUE_AS_BOOL_SOURCE = '''
+instance = _runtime(runtime)
+if instance is None:
+    _set_status(PORTAPY_INVALID_HANDLE)
+    return 0
+status, kind = instance.value_kind(value)
+if status is not Status.OK:
+    _set_status(status)
+    return 0
+if kind is not ValueKind.BOOL:
+    _set_status(PORTAPY_TYPE_ERROR)
+    return 0
+status, target = instance.unbox(value)
+if status is not Status.OK:
+    _set_status(status)
+    return 0
+_set_status(PORTAPY_OK)
+return 1 if target else 0
+'''
+
 
 def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
     """Return True for ``source_size > len(source)``.
@@ -114,6 +144,10 @@ class _Rewrite(ast.NodeTransformer):
         self.generic_visit(node)
         if node.name == "_portapy_runtime_create_impl":
             node.body = ast.parse(_RUNTIME_CREATE_SOURCE).body
+        elif node.name == "_portapy_value_get_kind_impl":
+            node.body = ast.parse(_VALUE_GET_KIND_SOURCE).body
+        elif node.name == "_portapy_value_as_bool_impl":
+            node.body = ast.parse(_VALUE_AS_BOOL_SOURCE).body
         return node
 
     def visit_AsyncFunctionDef(
@@ -184,18 +218,56 @@ def main() -> int:
         ),
         None,
     )
+    value_get_kind = next(
+        (
+            node
+            for node in verified.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_portapy_value_get_kind_impl"
+        ),
+        None,
+    )
+    value_as_bool = next(
+        (
+            node
+            for node in verified.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_portapy_value_as_bool_impl"
+        ),
+        None,
+    )
     runtime_create_text = ast.unparse(runtime_create) if runtime_create is not None else ""
+    value_get_kind_text = ast.unparse(value_get_kind) if value_get_kind is not None else ""
+    value_as_bool_text = ast.unparse(value_as_bool) if value_as_bool is not None else ""
     loader_ready = (
         "_PortaPyImportLoader" in classes
         and "__pyinbin_import__" in runtime_create_text
     )
     builtins_ready = "_seed_builtins" in runtime_create_text
-    if missing or stale or unsafe_spans or not loader_ready or not builtins_ready:
+    tagged_kind_ready = (
+        "instance.value_kind(value)" in value_get_kind_text
+        and "_value_kind(" not in value_get_kind_text
+    )
+    tagged_bool_ready = (
+        "instance.value_kind(value)" in value_as_bool_text
+        and "type(target)" not in value_as_bool_text
+    )
+    if (
+        missing
+        or stale
+        or unsafe_spans
+        or not loader_ready
+        or not builtins_ready
+        or not tagged_kind_ready
+        or not tagged_bool_ready
+    ):
         raise RuntimeError(
             "full Runtime ABI helper normalization failed; "
             f"missing={missing}, stale={stale}, "
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
-            f"loader_ready={loader_ready}, builtins_ready={builtins_ready}"
+            f"loader_ready={loader_ready}, builtins_ready={builtins_ready}, "
+            f"tagged_kind_ready={tagged_kind_ready}, "
+            f"tagged_bool_ready={tagged_bool_ready}"
         )
     print(
         "NORMALIZED FULL RUNTIME ABI HELPERS",
@@ -203,6 +275,7 @@ def main() -> int:
         len(_DROP),
         "BUILTINS",
         "IMPORT_LOADER",
+        "TAGGED_VALUES",
     )
     return 0
 

@@ -1,0 +1,75 @@
+name: Full-core import audit
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install verified asmpython
+        run: |
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize probe source
+        run: |
+          python tools/normalize_full_core_probe.py
+          python tools/normalize_full_core_lambdas.py
+      - name: Audit full-core project import graph
+        id: import_audit
+        continue-on-error: true
+        run: |
+          mkdir -p dist
+          python -m asmpython._compiler.import_audit \
+            src/portapy/native_full_core_probe.py \
+            > dist/full-core-import-audit.txt 2>&1
+      - name: Audit source positions
+        id: parse_audit
+        continue-on-error: true
+        run: |
+          python tools/asmpython_parse_audit.py \
+            src/portapy/core/frontend.py \
+            src/portapy/core/vm.py \
+            > dist/full-core-parse-audit.txt 2>&1
+      - name: Show audits
+        if: always()
+        run: |
+          cat dist/full-core-import-audit.txt
+          cat dist/full-core-parse-audit.txt
+      - name: Report failed audits
+        if: (steps.import_audit.outcome != 'success' || steps.parse_audit.outcome != 'success') && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '<!-- portapy-full-core-import-audit -->'
+            echo '### Full-core import and parser audit'
+            echo
+            echo '```text'
+            cat dist/full-core-import-audit.txt
+            echo
+            cat dist/full-core-parse-audit.txt
+            echo '```'
+          } > /tmp/portapy-full-core-import-audit.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/portapy-full-core-import-audit.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-core-import-audit
+          path: |
+            dist/full-core-import-audit.txt
+            dist/full-core-parse-audit.txt
+      - name: Require clean audits
+        if: steps.import_audit.outcome != 'success' || steps.parse_audit.outcome != 'success'
+        run: exit 1

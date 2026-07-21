@@ -23,11 +23,55 @@ _EXECUTION_WITH_TRACEBACK = '''    _call_depth[runtime] += 1
 
 
 def _state_and_api() -> str:
-    return '''_traceback_runtime: list[int] = [0]
+    return '''_traceback_filename_runtime: list[int] = [0]
+_traceback_current_filename: list[str] = [""]
+_traceback_runtime: list[int] = [0]
 _traceback_line: list[int] = [0]
 _traceback_column: list[int] = [0]
+_traceback_filename: list[str] = [""]
 _traceback_function: list[str] = [""]
 _traceback_source: list[str] = [""]
+
+
+def _traceback_filename_slot(runtime: int) -> int:
+    index = 1
+    while index < len(_traceback_filename_runtime):
+        if _traceback_filename_runtime[index] == runtime:
+            return index
+        index += 1
+    return 0
+
+
+def _portapy_traceback_set_filename_impl(
+    runtime: int,
+    filename: str,
+    filename_size: int,
+) -> int:
+    if not _runtime_is_valid(runtime):
+        return _set_status(PORTAPY_INVALID_HANDLE)
+    if filename_size < 0:
+        return _set_status(PORTAPY_INVALID_ARGUMENT)
+    selected = "<portapy>"
+    if filename_size > 0:
+        selected = filename[0:filename_size]
+    slot = _traceback_filename_slot(runtime)
+    if slot == 0:
+        _traceback_filename_runtime.append(runtime)
+        _traceback_current_filename.append(selected)
+    else:
+        _traceback_current_filename[slot] = selected
+    return _set_status(PORTAPY_OK)
+
+
+def _portapy_traceback_default_filename_impl(runtime: int) -> int:
+    return _portapy_traceback_set_filename_impl(runtime, "<portapy>", 10)
+
+
+def _traceback_filename_for_runtime(runtime: int) -> str:
+    slot = _traceback_filename_slot(runtime)
+    if slot == 0:
+        return "<portapy>"
+    return _traceback_current_filename[slot]
 
 
 def _portapy_traceback_reset_impl(runtime: int) -> int:
@@ -39,6 +83,7 @@ def _portapy_traceback_reset_impl(runtime: int) -> int:
             _traceback_runtime[index] = 0
             _traceback_line[index] = 0
             _traceback_column[index] = 0
+            _traceback_filename[index] = ""
             _traceback_function[index] = ""
             _traceback_source[index] = ""
         index += 1
@@ -57,6 +102,7 @@ def _portapy_traceback_add_impl(
     _traceback_runtime.append(runtime)
     _traceback_line.append(line)
     _traceback_column.append(column)
+    _traceback_filename.append(_traceback_filename_for_runtime(runtime))
     _traceback_function.append(function_name)
     _traceback_source.append(source_line)
     return PORTAPY_OK
@@ -147,6 +193,25 @@ def _portapy_traceback_column_impl(runtime: int, wanted: int) -> int:
     if slot == 0:
         return 0
     return _traceback_column[slot]
+
+
+def _portapy_traceback_filename_size_impl(runtime: int, wanted: int) -> int:
+    slot = _traceback_slot(runtime, wanted)
+    if slot == 0:
+        return 0
+    return len(_traceback_filename[slot])
+
+
+def _portapy_traceback_filename_byte_impl(runtime: int, wanted: int, character_index: int) -> int:
+    slot = _traceback_slot(runtime, wanted)
+    if slot == 0:
+        return 0
+    data = _traceback_filename[slot]
+    if character_index < 0 or character_index >= len(data):
+        _set_status(PORTAPY_INVALID_ARGUMENT)
+        return 0
+    _set_status(PORTAPY_OK)
+    return ord(data[character_index])
 
 
 def _portapy_traceback_function_size_impl(runtime: int, wanted: int) -> int:

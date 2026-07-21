@@ -23,6 +23,8 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize probe source
+        run: python tools/normalize_full_core_probe.py
       - name: Compile full frontend and VM
         shell: bash
         run: |
@@ -112,6 +114,9 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize probe source
+        shell: powershell
+        run: python tools/normalize_full_core_probe.py
       - name: Compile full frontend and VM
         shell: powershell
         run: |

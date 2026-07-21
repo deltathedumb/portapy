@@ -86,37 +86,37 @@ instance = Runtime()
 instance._vm._seed_builtins(instance._globals)
 instance.set_global("__pyinbin_import__", _PortaPyImportLoader(instance))
 _runtimes.append(instance)
-_set_status(PORTAPY_OK)
+_set_status(Status.OK)
 return len(_runtimes) - 1
 '''
 
 _VALUE_GET_KIND_SOURCE = '''
 instance = _runtime(runtime)
 if instance is None:
-    _set_status(PORTAPY_INVALID_HANDLE)
-    return PORTAPY_VALUE_OBJECT
+    _set_status(Status.INVALID_HANDLE)
+    return ValueKind.OBJECT.value
 status, kind = instance.value_kind(value)
 _set_status(status)
-return int(kind)
+return kind.value
 '''
 
 _VALUE_AS_BOOL_SOURCE = '''
 instance = _runtime(runtime)
 if instance is None:
-    _set_status(PORTAPY_INVALID_HANDLE)
+    _set_status(Status.INVALID_HANDLE)
     return 0
 status, kind = instance.value_kind(value)
 if status is not Status.OK:
     _set_status(status)
     return 0
 if kind is not ValueKind.BOOL:
-    _set_status(PORTAPY_TYPE_ERROR)
+    _set_status(Status.TYPE_ERROR)
     return 0
 status, target = instance.unbox(value)
 if status is not Status.OK:
     _set_status(status)
     return 0
-_set_status(PORTAPY_OK)
+_set_status(Status.OK)
 return 1 if target else 0
 '''
 
@@ -143,6 +143,16 @@ def _is_utf8_source_upper_bound(node: ast.AST) -> bool:
         and isinstance(node.comparators[0].args[0], ast.Name)
         and node.comparators[0].args[0].id == "source"
     )
+
+
+def _is_native_enum_expression(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in {"status", "kind"}
+    if not isinstance(node, ast.Attribute):
+        return False
+    if node.attr == "status":
+        return True
+    return isinstance(node.value, ast.Name) and node.value.id in {"Status", "ValueKind"}
 
 
 class _StoreTagger(ast.NodeTransformer):
@@ -205,6 +215,21 @@ class _Rewrite(ast.NodeTransformer):
             return node
         return ast.copy_location(ast.Name(id=renamed, ctx=node.ctx), node)
 
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "int"
+            and len(node.args) == 1
+            and not node.keywords
+            and _is_native_enum_expression(node.args[0])
+        ):
+            return ast.copy_location(
+                ast.Attribute(value=node.args[0], attr="value", ctx=ast.Load()),
+                node,
+            )
+        return node
+
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
         if not isinstance(node.op, ast.Or):
@@ -260,7 +285,17 @@ def main() -> int:
         for node in ast.walk(verified)
         if _is_utf8_source_upper_bound(node)
     ]
+    enum_int_calls = [
+        node
+        for node in ast.walk(verified)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "int"
+        and len(node.args) == 1
+        and _is_native_enum_expression(node.args[0])
+    ]
     runtime_create_text = _function_text(verified, "_portapy_runtime_create_impl")
+    set_status_text = _function_text(verified, "_set_status")
     value_get_kind_text = _function_text(verified, "_portapy_value_get_kind_impl")
     value_as_bool_text = _function_text(verified, "_portapy_value_as_bool_impl")
     loader_ready = (
@@ -268,6 +303,11 @@ def main() -> int:
         and "__pyinbin_import__" in runtime_create_text
     )
     builtins_ready = "_seed_builtins" in runtime_create_text
+    enum_values_ready = (
+        not enum_int_calls
+        and "status.value" in set_status_text
+        and "return kind.value" in value_get_kind_text
+    )
     tagged_kind_ready = (
         "instance.value_kind(value)" in value_get_kind_text
         and "_value_kind(" not in value_get_kind_text
@@ -290,6 +330,7 @@ def main() -> int:
         or unsafe_spans
         or not loader_ready
         or not builtins_ready
+        or not enum_values_ready
         or not tagged_kind_ready
         or not tagged_bool_ready
         or not tagged_stores_ready
@@ -298,7 +339,9 @@ def main() -> int:
             "full Runtime ABI helper normalization failed; "
             f"missing={missing}, stale={stale}, "
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
+            f"enum_int_calls={len(enum_int_calls)}, "
             f"loader_ready={loader_ready}, builtins_ready={builtins_ready}, "
+            f"enum_values_ready={enum_values_ready}, "
             f"tagged_kind_ready={tagged_kind_ready}, "
             f"tagged_bool_ready={tagged_bool_ready}, "
             f"tagged_stores_ready={tagged_stores_ready}"
@@ -309,6 +352,7 @@ def main() -> int:
         len(_DROP),
         "BUILTINS",
         "IMPORT_LOADER",
+        "ENUM_VALUES",
         "TAGGED_VALUES",
         "TAGGED_STORES",
     )

@@ -28,6 +28,7 @@ jobs:
           python tools/normalize_full_core_probe.py
           python tools/normalize_full_core_lambdas.py
           python tools/normalize_full_core_native_semantics.py
+          python tools/normalize_full_core_opcode_maps.py
           mkdir -p dist/debug-tree
           python - <<'PY'
           from pathlib import Path
@@ -62,6 +63,7 @@ jobs:
             --export portapy_abi_version \
             --export portapy_full_core_probe
           python tools/elf_pic.py dist/libportapy_full_core_probe.asm
+          python tools/elf_relocatable_constants.py dist/libportapy_full_core_probe.asm
           nasm -f elf64 -w-label-redef-late \
             dist/libportapy_full_core_probe.asm \
             -o dist/libportapy_full_core_probe.o
@@ -137,6 +139,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_native_semantics.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile full frontend and VM
         shell: powershell
         run: |
@@ -181,6 +185,7 @@ jobs:
           $output = & dist/native_full_core_probe_host.exe `
             dist/portapy_full_core_probe.dll
           $output | Out-File -Encoding utf8 dist/windows-full-core-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($output -ne 'full-core=42') { throw "unexpected full-core output: $output" }
       - name: Report Windows full-core failure
         if: failure() && github.event_name == 'pull_request'

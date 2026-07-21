@@ -30,6 +30,9 @@ from tools.normalize_full_reference_abi_helpers import (
 from tools.normalize_full_reference_errors import (
     main as normalize_reference_errors,
 )
+from tools.normalize_full_reference_float_bits import (
+    main as normalize_reference_float_bits,
+)
 from tools.normalize_full_reference_runtime import (
     main as normalize_reference_runtime,
 )
@@ -80,6 +83,7 @@ def main() -> int:
 
     materialize_reference_entry()
     normalize_reference_abi_helpers()
+    normalize_reference_float_bits()
     normalize_reference_errors()
     normalize_native_parser()
     normalize_calls_closures()

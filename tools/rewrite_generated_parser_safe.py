@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.rewrite_generated_dict import rewrite_generated_dict
+from tools.rewrite_generated_dict_safe import rewrite_generated_dict
 from tools.rewrite_generated_dict_expression import rewrite_generated_dict_expression
 from tools.rewrite_generated_parser import (
     _replace_function,

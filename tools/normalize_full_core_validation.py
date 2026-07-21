@@ -23,6 +23,7 @@ from tools.normalize_full_core_native_semantics import main as normalize_native_
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 from tools.normalize_full_core_probe import main as normalize_probe
+from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
 from tools.normalize_full_reference_abi_helpers import (
     main as normalize_reference_abi_helpers,
 )
@@ -85,6 +86,7 @@ def main() -> int:
     normalize_extended_semantics()
     normalize_collections()
     normalize_builtins()
+    normalize_tracebacks()
     _normalize_nested_code_introspection()
     _normalize_opcode_validation()
     return 0

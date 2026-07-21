@@ -1,4 +1,4 @@
-name: Native host call probe
+name: Native host call and full environment probe
 
 on:
   pull_request:
@@ -22,18 +22,41 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Build host-call library
+      - name: Normalize standalone VM implementation for the pinned compiler
+        run: |
+          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
+          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
+          python tools/normalize_full_core_lambdas.py
+          python tools/normalize_full_core_native_semantics.py
+          python tools/normalize_full_core_opcode_maps.py
+          python tools/normalize_full_core_validation.py
+          cp src/portapy/core/vm.py src/portapy/core/vm_impl.py
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+      - name: Build host-call library over standalone VM
         run: |
           python tools/build_native_host_calls.py \
+            --standalone-vm \
             --target linux \
             --output dist/libportapy.so \
             --work-dir dist/build-linux
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
       - name: Execute host calls from C
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_host_call_host.c -ldl -o dist/native_host_call_host
           ./dist/native_host_call_host ./dist/libportapy.so | tee dist/host-call-output.txt
           grep -qx 'native-host-calls: ok' dist/host-call-output.txt
+      - name: Execute full high-level environment from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_full_environment_host.c -ldl \
+            -o dist/native_full_environment_host
+          ./dist/native_full_environment_host ./dist/libportapy.so \
+            | tee dist/full-environment-output.txt
+          grep -qx 'native-full-environment: ok' dist/full-environment-output.txt
       - name: Execute public tuple ABI from C
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
@@ -65,10 +88,26 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Build host-call library
+      - name: Normalize standalone VM implementation for the pinned compiler
+        shell: powershell
+        run: |
+          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
+          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
+          python tools/normalize_full_core_lambdas.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_native_semantics.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_validation.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item src/portapy/core/vm.py src/portapy/core/vm_impl.py -Force
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+      - name: Build host-call library over standalone VM
         shell: powershell
         run: |
           python tools/build_native_host_calls.py `
+            --standalone-vm `
             --target windows `
             --output dist/portapy.dll `
             --work-dir dist/build-windows
@@ -82,6 +121,18 @@ jobs:
           $output = & dist/native_host_call_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/host-call-output.txt
           if ($output -ne 'native-host-calls: ok') { throw "unexpected host-call output: $output" }
+      - name: Execute full high-level environment from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_full_environment_host.c `
+            -o dist/native_full_environment_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_full_environment_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/full-environment-output.txt
+          if ($output -ne 'native-full-environment: ok') {
+            throw "unexpected full environment output: $output"
+          }
       - name: Execute public tuple ABI from C
         shell: powershell
         run: |

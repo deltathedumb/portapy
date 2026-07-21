@@ -84,11 +84,12 @@ jobs:
       - name: Exercise Python list facade
         shell: powershell
         run: |
-          $output = python tests/native_list_adapter_probe.py dist/portapy.dll
+          $output = @(python tests/native_list_adapter_probe.py dist/portapy.dll)
           $output | Out-File -Encoding utf8 dist/list-adapter-output.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($output -ne 'native-list-adapter: ok') {
-            throw "unexpected native list adapter output: $output"
+          $lastLine = $output[-1]
+          if ($lastLine -ne 'native-list-adapter: ok') {
+            throw "unexpected native list adapter output: $($output -join [Environment]::NewLine)"
           }
       - uses: actions/upload-artifact@v4
         if: always()

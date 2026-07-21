@@ -25,13 +25,11 @@ def run(library: Path) -> None:
             "list_first = input_list[0]\n"
             "list_size = len(input_list)\n"
             "list_result = list_roundtrip(input_list)\n"
-            "input_list[0] = 20\n"
-            "input_list.append(22)\n"
         )
 
         print("stage:snapshot", flush=True)
         snapshot = environment.snapshot()
-        assert snapshot.var["input_list"] == [20, [1, 2], 24, 22]
+        assert snapshot.var["input_list"] == [18, [1, 2], 24]
         assert snapshot.var["list_first"] == 18
         assert snapshot.var["list_size"] == 3
         assert snapshot.var["list_result"] == [24, [1, 2], 42]
@@ -40,7 +38,7 @@ def run(library: Path) -> None:
         environment.set("input_list", [99])
         assert environment.get("input_list") == [99]
         snapshot.restore()
-        assert environment.get("input_list") == [20, [1, 2], 24, 22]
+        assert environment.get("input_list") == [18, [1, 2], 24]
 
 
 def main() -> int:

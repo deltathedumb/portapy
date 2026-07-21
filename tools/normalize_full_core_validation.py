@@ -3,17 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.normalize_full_core_calls_closures import (
-    main as normalize_calls_closures,
-)
-from tools.normalize_full_core_collections import (
-    main as normalize_collections,
-)
+from tools.materialize_full_reference_entry import main as materialize_reference_entry
+from tools.normalize_full_core_builtins import main as normalize_builtins
+from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_extended_semantics import (
     main as normalize_extended_semantics,
-)
-from tools.normalize_full_core_keyword_calls import (
-    main as normalize_keyword_calls,
 )
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
@@ -34,12 +28,12 @@ def _normalize_opcode_validation() -> None:
 
 
 def main() -> int:
+    materialize_reference_entry()
     normalize_native_parser()
+    normalize_closures()
     normalize_pattern_slices()
     normalize_extended_semantics()
-    normalize_calls_closures()
-    normalize_keyword_calls()
-    normalize_collections()
+    normalize_builtins()
     _normalize_opcode_validation()
     return 0
 

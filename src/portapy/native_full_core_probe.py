@@ -21,7 +21,17 @@ from .native_full_reference_entry import (
     _portapy_value_as_i64_impl,
     _portapy_value_from_i64_impl,
     _portapy_value_get_kind_impl,
+    _runtime,
 )
+
+
+class _ProbeModule:
+    def __init__(self) -> None:
+        self.value = 42
+
+
+def _probe_import(name: str) -> object:
+    return _ProbeModule()
 
 
 def portapy_abi_version() -> int:
@@ -40,6 +50,11 @@ def portapy_full_core_parse_probe() -> int:
 
 def portapy_full_core_probe() -> int:
     runtime = _portapy_runtime_create_impl()
+    instance = _runtime(runtime)
+    if instance is None:
+        return -6
+    if instance.set_global("__pyinbin_import__", _probe_import) != PORTAPY_OK:
+        return -7
     forty = _portapy_value_from_i64_impl(runtime, 40)
     two = _portapy_value_from_i64_impl(runtime, 2)
     values = _portapy_list_begin_impl(runtime, 2)
@@ -63,13 +78,14 @@ class Box:
         return self.value
 fn = outer(base=19)
 box = Box(value=fn(value=total(items=values) - 19))
+import probe
 def fail():
     return 1 // 0
 try:
     fail()
 except Exception as exc:
     traced = exc.__traceback__ is not None
-answer = box.get() if traced else -1
+answer = box.get() + probe.value - 42 if traced else -1
 """
     status = _portapy_exec_span_impl(runtime, source, len(source))
     if status != PORTAPY_OK:

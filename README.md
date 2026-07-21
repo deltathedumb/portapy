@@ -10,9 +10,25 @@ Native artifact names:
 - `libportapy.so` on Linux
 - `libportapy.dylib` on macOS when that asmpython target becomes available
 
-## High-level API
+## Universal public API
 
-The native binary interface is environment-oriented and available through a real Python facade:
+The stable cross-language contract is a C ABI. Any language capable of calling C functions can use the same native library. PortaPy does not provide `import_module`; the host language imports or loads its own modules and then adds their objects to an environment.
+
+The first-class helper exports are:
+
+- `portapy_new()` and `portapy_new_with_config()`
+- `portapy_add()` and `portapy_add_all()`
+- `portapy_add_value_utf8()` and `portapy_add_callable_utf8()`
+- `portapy_execute()` and `portapy_evaluate()`
+- `portapy_destroy()`
+
+`portapy_environment` is an alias of the opaque `portapy_runtime` handle, so a host may freely drop from the helper layer into the complete low-level runtime, value, global, callback, container, and error APIs.
+
+See [`docs/FFI.md`](docs/FFI.md) for C and direct C# P/Invoke examples.
+
+## High-level Python API
+
+The native binary interface is environment-oriented and available through a Python facade:
 
 ```python
 import math
@@ -22,8 +38,8 @@ from somnia import env
 
 portapy = import_binary("portapy.dll")
 environment = portapy.new()
-environment.add_modules(math)
-environment.expose(env)
+environment.add(math)       # available as math.floor(...)
+environment.add_all(env)    # public members become direct globals
 environment.set("requested_value", 41.9)
 environment.set("coordinates", (10, 20, (30, 40)))
 environment.set("settings", {"scale": 2, "nested": {"value": 21}})
@@ -45,7 +61,7 @@ settings = snapshot.var["settings"]
 samples = snapshot.var["samples"]
 ```
 
-`add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
+`add(value)` binds a named function, class, module, or object using its `__name__`, unless an explicit name is supplied. `add_all(module)` flattens all eligible public members from a module, object, or mapping. `add_module()`, `add_modules()`, `expose()`, and `add_builtin()` remain compatibility or fine-grained namespace operations.
 
 The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, tuples, lists, string-key mappings, modules, objects, and callables into native PortaPy values. Tuples, lists, and mappings are converted recursively and remain ordinary PortaPy values across globals, snapshots, and host callback arguments/results. Native mapping keys are currently restricted to non-empty ASCII strings. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
 
@@ -56,14 +72,22 @@ The hosted implementation uses the same API:
 ```python
 import portapy
 
+def plus_one(value):
+    return value + 1
+
 environment = portapy.new()
-environment.expose({"seed": 41})
-environment.execute("answer = seed + 1")
+environment.add(plus_one)
+environment.add_all({"seed": 41})
+environment.execute("answer = plus_one(seed)")
 assert environment.snapshot().var["answer"] == 42
 ```
 
-The native C ABI underneath the facade provides:
+## Fine-grained native ABI
 
+The helper API is built on, and interoperates with, the complete public C ABI:
+
+- `portapy_runtime_create()` and `portapy_runtime_destroy()` for explicit runtime ownership.
+- `portapy_exec_utf8()` and `portapy_eval_utf8()` for explicit UTF-8 spans and filenames.
 - `portapy_value_from_host_object()` for opaque objects with stable host IDs.
 - `portapy_value_from_host_callable()` for callables with stable callable IDs.
 - `portapy_value_from_tuple()` for immutable tuples built from borrowed item handles.
@@ -75,11 +99,9 @@ The native C ABI underneath the facade provides:
 - `portapy_set_global_utf8()` and `portapy_delete_global_utf8()` for namespace management.
 - `portapy_global_count()` and `portapy_global_name_copy_utf8()` for exact snapshot enumeration.
 - `portapy_host_set_attr_utf8()` for host-owned attribute graphs.
-- dotted traversal such as `game.provider.HttpProvider`.
-- `portapy_host_set_call_handler()` for one synchronous dispatcher per runtime.
-- borrowed callback arguments and one owned callback result.
-- qualified and flattened calls, including nested calls, on Linux and Windows.
-- `portapy_value_get_host_id()` for mapping evaluated values back to Python objects.
+- `portapy_host_set_call_handler()` for a raw synchronous dispatcher per runtime.
+- helper callbacks and raw callback dispatchers coexisting in one environment.
+- checked conversions, retained callback results, structured errors, and retain/release ownership.
 
 ## 3.14 Developer Preview 1
 
@@ -87,15 +109,17 @@ The native C ABI underneath the facade provides:
 
 Implemented native ABI and source surface:
 
-- isolated runtime handles
+- isolated runtime and environment handles
+- first-class cross-language `new`, `add`, `add_all`, `execute`, `evaluate`, and `destroy` exports
 - `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, dictionary, list, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
 - retained native global injection, enumeration, replacement, and deletion
 - host attribute graph registration, replacement, lookup, and dotted traversal
 - synchronous qualified, flattened, and nested host calls
+- helper and fine-grained raw callbacks in the same environment
 - borrowed callback arguments, owned callback results, and structured callback failures
-- `import_binary()` / `load_native()` module facades
-- native `new()`, `add_modules()`, `expose()`, `set()`, `get()`, `remove()`, `execute()`, `evaluate()`, and snapshots
+- `import_binary()` / `load_native()` Python binary facades
+- hosted and native `new()`, `add()`, `add_all()`, `add_modules()`, `expose()`, `set()`, `get()`, `remove()`, `execute()`, `evaluate()`, and snapshots
 - automatic Python scalar, tuple, list, string-key mapping, module, object, and callable adaptation
 - exact native snapshot restoration with post-snapshot global cleanup
 - checked value-kind/conversion and buffer-copy operations
@@ -127,7 +151,7 @@ Implemented native ABI and source surface:
 - positional `def` functions, zero/multi-argument calls, nested calls, and `return`
 - recursive `if`/`else` and `while` blocks inside native functions
 - nested `break`, `continue`, and early `return` propagation inside functions
-- trailing scalar defaults captured once when each `def` executes`
+- trailing scalar defaults captured once when each `def` executes
 - transactional capture replacement on successful function redefinition
 - positional/keyword, mixed, reordered, and nested default calls
 - `/` positional-only and bare `*` keyword-only parameter markers
@@ -144,10 +168,10 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include closures, classes, completing the frontend/bytecode VM transition, broader object syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include closures, classes, completing the frontend/bytecode VM transition, broader object syntax, full traceback-frame retrieval, and native module imports inside executed PortaPy source. Host module loading is intentionally outside the PortaPy embedding API.
 
 ## Relationship to pyinbin
 
 `pyinbin` remains tailored to asmpython's native/static import pipeline and packaged-source fallback. PortaPy forks the reusable interpreter core and exposes it as a separately versioned embeddable product.
 
-See `docs/DESIGN.md`, `RELEASE_STATUS.json`, and `include/portapy.h`.
+See `docs/DESIGN.md`, `docs/FFI.md`, `RELEASE_STATUS.json`, and `include/portapy.h`.

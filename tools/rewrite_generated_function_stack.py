@@ -11,6 +11,7 @@ from tools.rewrite_generated_function_arguments_safe import rewrite_generated_fu
 from tools.rewrite_generated_function_default_capture import (
     rewrite_generated_function_default_capture,
 )
+from tools.rewrite_generated_function_kwargs import rewrite_generated_function_kwargs
 from tools.rewrite_generated_function_parameter_kinds_safe import (
     rewrite_generated_function_parameter_kinds,
 )
@@ -100,6 +101,7 @@ def rewrite_generated_function(path: Path) -> Path:
     rewrite_generated_function_default_capture(path)
     rewrite_generated_function_parameter_kinds(path)
     rewrite_generated_function_varargs(path)
+    rewrite_generated_function_kwargs(path)
     return path
 
 

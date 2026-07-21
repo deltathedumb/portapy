@@ -87,9 +87,12 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "native_api_control import" not in function_source
     assert "native_api_expressions import" not in function_source
     assert "native_api_scalar import" not in function_source
-    assert "_ctrl_portapy_exec_span_impl as _control_exec_span" in function_source
-    assert "_expr_parse_boolean_expression as _parse_boolean_expression" in function_source
-    assert "_scalar_binary as _binary" in function_source
+    assert "_ctrl_portapy_exec_span_impl," in function_source
+    assert "_expr_parse_boolean_expression," in function_source
+    assert "_scalar_binary," in function_source
+    assert " as _control_exec_span" not in function_source
+    assert " as _parse_boolean_expression" not in function_source
+    assert " as _retain_global" not in function_source
     assert "from .native_api import _last_status" not in function_source
 
 

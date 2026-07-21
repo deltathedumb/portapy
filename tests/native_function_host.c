@@ -89,9 +89,33 @@ int main(int argc, char **argv) {
     if (!execute(exec_utf8, runtime, nested)) return 20;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested_answer", 42)) return 21;
 
+    const char control[] =
+        "def calculate(limit):\n"
+        "    count = 0\n"
+        "    total = 0\n"
+        "    while count < limit:\n"
+        "        count += 1\n"
+        "        if count == 2:\n"
+        "            continue\n"
+        "        if count > 4:\n"
+        "            break\n"
+        "        total += count\n"
+        "    return total\n"
+        "def choose(value):\n"
+        "    if value > 10:\n"
+        "        return 42\n"
+        "    else:\n"
+        "        return -1\n"
+        "loop_answer = calculate(10)\n"
+        "branch_answer = choose(20)\n";
+    if (!execute(exec_utf8, runtime, control)) return 22;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "loop_answer", 8)) return 23;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "branch_answer", 42)) return 24;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "choose(1)", -1)) return 25;
+
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 22;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 23;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 26;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 27;
     puts("native-functions: ok");
     return 0;
 }

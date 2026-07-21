@@ -1,8 +1,8 @@
 """Extended CPython-independent PortaPy frontend.
 
 The first standalone lowering slices live in :mod:`portable_frontend_base`.
-This module layers control-flow semantics that need explicit VM coordination on
-top while keeping the public import path stable.
+This module layers control-flow and lexical-scope semantics that need explicit
+VM coordination on top while keeping the public import path stable.
 """
 from __future__ import annotations
 
@@ -17,7 +17,10 @@ PortableFrontendError = _base.PortableFrontendError
 
 
 class _PortableLowerer(_base._PortableLowerer):
-    """Add exceptions, generators, and pattern matching to the lowerer."""
+    """Add closures, exceptions, generators, and matching to the lowerer."""
+
+    function_definitions: dict[str, A.FuncDef] = {}
+    function_code_cache: dict[int, CodeObject] = {}
 
     def exception_spec(self, names: list[str]) -> object:
         """Build the VM's compact named-value specification."""
@@ -31,6 +34,54 @@ class _PortableLowerer(_base._PortableLowerer):
         if len(specs) == 1:
             return specs[0]
         return tuple(specs)
+
+    def compile_function_code(self, node: A.FuncDef) -> CodeObject:
+        """Compile one function body once, including parser-discovered cells."""
+        cache_key = id(node)
+        cached = self.function_code_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        nested = _PortableLowerer(node.name, list(node.params))
+        nested.free_names = set(getattr(node, "free_vars", []) or [])
+        for statement in node.body:
+            nested.statement(statement)
+        nested.emit(Op.RETURN)
+        code = nested.finish()
+        self.function_code_cache[cache_key] = code
+        return code
+
+    def emit_function(self, node: A.FuncDef, store_as: str | None = None) -> None:
+        if node.vararg is not None or node.kwarg is not None:
+            self.unsupported(node, "*args or **kwargs")
+        function_code = self.compile_function_code(node)
+
+        defaults = list(node.defaults)
+        if len(defaults) < len(node.params):
+            defaults = [None] * (len(node.params) - len(defaults)) + defaults
+        first_default = len(defaults)
+        for index, default in enumerate(defaults):
+            if default is not None:
+                first_default = index
+                break
+        if any(default is None for default in defaults[first_default:]):
+            self.unsupported(node, "non-trailing default arguments")
+        default_count = len(defaults) - first_default
+        for default in defaults[first_default:]:
+            assert default is not None
+            self.expression(default)
+
+        self.emit(
+            Op.MAKE_FUNCTION,
+            self.constant((function_code, default_count, 0, {})),
+        )
+        for decorator in reversed(node.decorators):
+            self.load_dotted_name(decorator)
+            self.emit(Op.SWAP)
+            self.emit(Op.CALL, 1)
+        self.store_name(store_as or node.name)
+
+    def function(self, node: A.FuncDef) -> None:
+        self.emit_function(node)
 
     def value_spec(self, node: A.Expr) -> object:
         """Encode a match value for runtime resolution."""
@@ -186,6 +237,16 @@ class _PortableLowerer(_base._PortableLowerer):
             self.patch(jump, end)
 
     def statement(self, node: A.Stmt) -> None:
+        if isinstance(node, A.ClosureBind):
+            definition = self.function_definitions.get(node.func_name)
+            if definition is None:
+                self.unsupported(node, f"unknown lifted function {node.func_name!r}")
+            self.emit_function(definition, node.func_name)
+            return
+        if isinstance(node, A.Nonlocal):
+            # The parser already records these names in FuncDef.free_vars; VM
+            # STORE_NAME writes through the closure when a free name is stored.
+            return
         if isinstance(node, A.Match):
             self.lower_match(node)
             return
@@ -207,14 +268,14 @@ class _PortableLowerer(_base._PortableLowerer):
             names=self.names,
             arg_names=self.arg_names,
             is_generator=getattr(self, "is_generator", False),
+            free_names=sorted(getattr(self, "free_names", set())),
         )
         code.validate()
         return code
 
 
 # Base methods create nested lowerers through their module-global class name.
-# Rebind it so functions, lambdas, class methods, and nested code all receive
-# the extended control-flow implementation without duplicating the base file.
+# Rebind it so lambdas and class methods receive the extended implementation.
 _base._PortableLowerer = _PortableLowerer
 
 
@@ -224,11 +285,16 @@ def compile_portable_source(
 ) -> CodeObject:
     """Parse and lower source without importing CPython's :mod:`ast`."""
     module = parse_source(source)
+    _PortableLowerer.function_definitions = {
+        function.name: function for function in module.funcs
+    }
+    _PortableLowerer.function_code_cache = {}
     lowerer = _PortableLowerer(filename)
     for class_definition in module.classes:
         lowerer.class_definition(class_definition)
     for function in module.funcs:
-        lowerer.function(function)
+        if not function.is_lifted:
+            lowerer.function(function)
     for statement in module.body:
         lowerer.statement(statement)
     return lowerer.finish()

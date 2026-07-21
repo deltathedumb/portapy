@@ -29,9 +29,16 @@ label = "before"
     assert environment.get("root") == 9.0
 
     snapshot = environment.snapshot()
+    assert snapshot.var["http_service"] == "http-provider"
+    assert snapshot["root"] == 9.0
+    assert snapshot.get("missing", 42) == 42
+    with pytest.raises(TypeError):
+        snapshot.var["label"] = "mutated"  # type: ignore[index]
+
     environment.execute('label = "after"\nnew_value = 42\n')
     assert environment.get("label") == "after"
     assert environment.get("new_value") == 42
+    assert snapshot.var["label"] == "before"
 
     snapshot.restore()
     assert environment.get("label") == "before"

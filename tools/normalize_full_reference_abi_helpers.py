@@ -167,6 +167,28 @@ def _is_native_enum_expression(node: ast.AST) -> bool:
     return isinstance(node.value, ast.Name) and node.value.id in {"Status", "ValueKind"}
 
 
+def _contains_raw_status(node: ast.AST) -> bool:
+    return any(
+        isinstance(item, ast.Name) and item.id in _STATUS_CONSTANTS
+        for item in ast.walk(node)
+    )
+
+
+class _StatusConstantRewriter(ast.NodeTransformer):
+    def visit_Name(self, node: ast.Name) -> ast.AST:
+        member = _STATUS_CONSTANTS.get(node.id)
+        if member is None:
+            return node
+        return ast.copy_location(
+            ast.Attribute(
+                value=ast.Name(id="Status", ctx=ast.Load()),
+                attr=member,
+                ctx=ast.Load(),
+            ),
+            node,
+        )
+
+
 class _StoreTagger(ast.NodeTransformer):
     def __init__(self, kind_source: str) -> None:
         self.kind = ast.parse(kind_source, mode="eval").body
@@ -234,17 +256,8 @@ class _Rewrite(ast.NodeTransformer):
             and node.func.id == "_set_status"
             and len(node.args) == 1
             and not node.keywords
-            and isinstance(node.args[0], ast.Name)
-            and node.args[0].id in _STATUS_CONSTANTS
         ):
-            node.args[0] = ast.copy_location(
-                ast.Attribute(
-                    value=ast.Name(id="Status", ctx=ast.Load()),
-                    attr=_STATUS_CONSTANTS[node.args[0].id],
-                    ctx=ast.Load(),
-                ),
-                node.args[0],
-            )
+            node.args[0] = _StatusConstantRewriter().visit(node.args[0])
             return node
         if (
             isinstance(node.func, ast.Name)
@@ -330,8 +343,7 @@ def main() -> int:
         and isinstance(node.func, ast.Name)
         and node.func.id == "_set_status"
         and len(node.args) == 1
-        and isinstance(node.args[0], ast.Name)
-        and node.args[0].id in _STATUS_CONSTANTS
+        and _contains_raw_status(node.args[0])
     ]
     runtime_create_text = _function_text(verified, "_portapy_runtime_create_impl")
     set_status_text = _function_text(verified, "_set_status")

@@ -10,7 +10,7 @@ from tools.generate_native_expression_entry import (
     generate_namespaced_scalar_entry,
     generate_native_expression_entry,
 )
-from tools.rewrite_generated_parser import (
+from tools.rewrite_generated_parser_safe import (
     rewrite_generated_expression,
     rewrite_generated_scalar,
 )
@@ -50,7 +50,9 @@ def test_generator_produces_namespace_safe_source(tmp_path: Path) -> None:
 
     assert "def _scalar_parse_comparison(" in scalar_source
     assert "def _parse_comparison(" not in scalar_source
-    assert "for operator in operators" not in scalar_source
+    assert scalar_source.count("for operator in operators") == 1
+    assert "def _scalar_parse_multiply(" in scalar_source
+    assert 'source[operator_at] == "*"' in scalar_source
     assert f"from .{scalar_name} import" in expression_source
     assert "_scalar_parse_comparison" in expression_source
     assert "native_api_expressions as" not in expression_source

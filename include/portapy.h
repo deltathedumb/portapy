@@ -123,6 +123,22 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_set_global_utf8(
     size_t name_size,
     portapy_value value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_delete_global_utf8(
+    portapy_runtime runtime,
+    const uint8_t *name,
+    size_t name_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_global_count(
+    portapy_runtime runtime,
+    size_t *out_count
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_global_name_copy_utf8(
+    portapy_runtime runtime,
+    size_t index,
+    uint8_t *buffer,
+    size_t capacity,
+    size_t *out_size
+);
 
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_none(
     portapy_runtime runtime,

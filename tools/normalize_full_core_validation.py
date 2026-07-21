@@ -27,6 +27,9 @@ from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
 from tools.normalize_full_reference_abi_helpers import (
     main as normalize_reference_abi_helpers,
 )
+from tools.normalize_full_reference_data_builders import (
+    main as normalize_reference_data_builders,
+)
 from tools.normalize_full_reference_errors import (
     main as normalize_reference_errors,
 )
@@ -93,6 +96,7 @@ def main() -> int:
     normalize_reference_errors()
     normalize_reference_value_kinds()
     normalize_reference_source_preprocess()
+    normalize_reference_data_builders()
     normalize_native_parser()
     normalize_calls_closures()
     normalize_keyword_calls()

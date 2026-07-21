@@ -152,8 +152,8 @@ def test_single_inheritance_and_inherited_method_dispatch_execute() -> None:
 
 
 def test_unsupported_statement_fails_precisely() -> None:
-    with pytest.raises(PortableFrontendError, match="slicing"):
-        compile_portable_source("value = [1, 2, 3][1:]\n")
+    with pytest.raises(PortableFrontendError, match="dictionary unpacking"):
+        compile_portable_source("value = {**{'answer': 42}}\n")
 
 
 def test_portable_frontend_source_has_no_host_ast_import() -> None:

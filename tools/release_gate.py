@@ -14,6 +14,7 @@ REQUIRED = {
     "windows": "portapy.dll",
     "linux": "libportapy.so",
 }
+PYTHON_MODULE_ENTRY = "portapy"
 
 
 def sha256(path: Path) -> str:
@@ -89,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"public export surface mismatch in {metadata_path}")
         if metadata.get("python_module_exports") != expected_python_exports:
             raise SystemExit(f"Python module surface mismatch in {metadata_path}")
-        if metadata.get("python_module_entry") != "portapy.public_api":
+        if metadata.get("python_module_entry") != PYTHON_MODULE_ENTRY:
             raise SystemExit(f"Python module entry mismatch in {metadata_path}")
         records[name] = {
             "platform": target,
@@ -106,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         "artifacts": records,
         "public_exports": expected_exports,
         "python_module_exports": expected_python_exports,
-        "python_module_entry": "portapy.public_api",
+        "python_module_entry": PYTHON_MODULE_ENTRY,
     }
     (args.dist / "release-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
@@ -132,13 +133,14 @@ def main(argv: list[str] | None = None) -> int:
             "## High-level Python surface",
             "",
             "The artifact metadata declares the environment-oriented binary-module "
-            "surface: `new`, `Environment`, `Snapshot`, and structured public errors.",
+            "surface: `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, "
+            "and structured public errors.",
             "",
             "## Not yet included",
             "",
             "This is not the final Python 3.14 interpreter release. Native source "
-            "execution remains gated on compound statements, function/class "
-            "execution, host callbacks, and module imports.",
+            "execution remains gated on functions/classes, the native host-object "
+            "bridge, module imports, and full traceback-frame retrieval.",
             "",
         ]
     )

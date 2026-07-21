@@ -7,38 +7,14 @@ import pytest
 from tools import normalize_full_reference_runtime as normalizer
 
 
-def _reference_source() -> str:
-    return (
-        "import traceback\n"
-        "class Runtime:\n"
-        "    def __init__(self):\n"
-        "        self._values: dict[int, _Slot] = {}\n"
-        "    def capture(self, error):\n"
-        "        return ErrorInfo(\n"
-        '            "".join(traceback.format_exception(error)),\n'
-        "        )\n"
-        "    def store(self, handle, value):\n"
-        "        self._values[handle] = value\n"
-        "    def remove(self, handle):\n"
-        "        del self._values[handle]\n"
-        "    def lookup1(self, handle): return self._values.get(handle)\n"
-        "    def lookup2(self, handle): return self._values.get(handle)\n"
-        "    def lookup3(self, handle): return self._values.get(handle)\n"
-        "    def lookup4(self, handle): return self._values.get(handle)\n"
-        "    def lookup5(self, handle): return self._values.get(handle)\n"
-        "    def lookup6(self, handle): return self._values.get(handle)\n"
-        "    def lookup7(self, handle): return self._values.get(handle)\n"
-        "    def lookup8(self, handle): return self._values.get(handle)\n"
-        "    def callable(self, callable_handle):\n"
-        "        return self._values.get(callable_handle)\n"
-    )
+REFERENCE_SOURCE = Path("src/portapy/reference_api.py")
 
 
-def test_replaces_host_tracebacks_and_integer_handle_keys(
+def test_normalizes_real_reference_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "reference_api.py"
-    path.write_text(_reference_source(), encoding="utf-8")
+    path.write_text(REFERENCE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
 
     assert normalizer.main() == 0
@@ -47,10 +23,26 @@ def test_replaces_host_tracebacks_and_integer_handle_keys(
     assert "import traceback" not in result
     assert "format_exception" not in result
     assert 'type(error).__name__ + ": " + str(error)' in result
+
     assert "dict[str, _Slot]" in result
-    assert result.count("self._values[str(handle)]") == 2
+    assert "kind: ValueKind = ValueKind.INT" in result
+    assert "self._values[str(handle)] = _Slot(value, kind)" in result
     assert result.count("self._values.get(str(handle))") == 8
     assert result.count("self._values.get(str(callable_handle))") == 1
+    assert "del self._values[str(handle)]" in result
+
+    assert "self._store(None, ValueKind.NONE)" in result
+    assert "self._store(value, ValueKind.BOOL)" in result
+    assert "self._store(value, ValueKind.INT)" in result
+    assert "self._store(value, ValueKind.FLOAT)" in result
+    assert "self._store(value, ValueKind.STRING)" in result
+    assert "self._store(value, ValueKind.BYTES)" in result
+
+    assert "return Status.OK, slot.kind" in result
+    assert "slot.kind is not ValueKind.INT" in result
+    assert "slot.kind is not ValueKind.FLOAT" in result
+    assert "slot.kind is not ValueKind.STRING" in result
+    assert "type(slot.value)" not in result
 
 
 def test_rejects_unexpected_reference_runtime_shape(

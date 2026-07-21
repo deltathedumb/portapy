@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tools.rewrite_generated_imports import rewrite_generated_imports
 from tools.rewrite_generated_parser import _replace_function
+from tools.rewrite_generated_traceback_entry import rewrite_generated_traceback_entry
 
 
 def _begin_pending_call() -> str:
@@ -124,7 +125,8 @@ def rewrite_generated_host_calls(path: Path) -> Path:
         _parse_host_call_or_expression(),
     )
     path.write_text(source, encoding="utf-8")
-    return rewrite_generated_imports(path)
+    rewrite_generated_imports(path)
+    return rewrite_generated_traceback_entry(path)
 
 
 __all__ = ["rewrite_generated_host_calls"]

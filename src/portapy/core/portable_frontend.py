@@ -92,6 +92,42 @@ class _PortableLowerer:
             f"{self.name}:{line}: portable frontend does not support {kind}"
         )
 
+    def load_dotted_name(self, value: str) -> None:
+        """Load a decorator or other parser-provided dotted name."""
+        pieces = value.split(".")
+        self.emit(Op.LOAD_NAME, self.name_index(pieces[0]))
+        for piece in pieces[1:]:
+            self.emit(Op.GET_ATTR, self.name_index(piece))
+
+    def call(
+        self,
+        args: list[A.Expr],
+        kwargs: list,
+        dstar: A.Expr | None = None,
+    ) -> None:
+        if dstar is not None:
+            self.unsupported(dstar, "** call arguments")
+        for argument in args:
+            if isinstance(argument, A.Starred):
+                self.unsupported(argument, "* call arguments")
+            self.expression(argument)
+        if not kwargs:
+            self.emit(Op.CALL, len(args))
+            return
+        keyword_names: list[str] = []
+        for item in kwargs:
+            if not isinstance(item, tuple) or len(item) != 2:
+                self.unsupported(item, "malformed keyword argument")
+            keyword_name, value = item
+            if not isinstance(keyword_name, str):
+                self.unsupported(item, "keyword argument name")
+            keyword_names.append(keyword_name)
+            self.expression(value)
+        self.emit(
+            Op.CALL_KW,
+            self.constant((tuple(False for _ in args), tuple(keyword_names))),
+        )
+
     def expression(self, node: A.Expr) -> None:
         if isinstance(node, A.IntLit):
             if node.is_none:
@@ -110,6 +146,10 @@ class _PortableLowerer:
             return
         if isinstance(node, A.Name):
             self.emit(Op.LOAD_NAME, self.name_index(node.name))
+            return
+        if isinstance(node, A.Attr):
+            self.expression(node.obj)
+            self.emit(Op.GET_ATTR, self.name_index(node.name))
             return
         if isinstance(node, A.BinOp):
             opcode = _BINARY_OPS.get(node.op)
@@ -190,12 +230,13 @@ class _PortableLowerer:
             self.emit(Op.GET_ITEM)
             return
         if isinstance(node, A.Call):
-            if node.kwargs or node.dstar is not None:
-                self.unsupported(node, "keyword or ** call arguments")
             self.emit(Op.LOAD_NAME, self.name_index(node.func))
-            for argument in node.args:
-                self.expression(argument)
-            self.emit(Op.CALL, len(node.args))
+            self.call(node.args, node.kwargs, node.dstar)
+            return
+        if isinstance(node, A.MethodCall):
+            self.expression(node.obj)
+            self.emit(Op.GET_ATTR, self.name_index(node.method))
+            self.call(node.args, node.kwargs)
             return
         self.unsupported(node)
 
@@ -214,6 +255,11 @@ class _PortableLowerer:
         if isinstance(node, A.Assign):
             self.expression(node.value)
             self.emit(Op.STORE_NAME, self.name_index(node.target))
+            return
+        if isinstance(node, A.AttrAssign):
+            self.expression(node.obj)
+            self.expression(node.value)
+            self.emit(Op.SET_ATTR, self.name_index(node.name))
             return
         if isinstance(node, A.AugAssign):
             opcode = _BINARY_OPS.get(node.op)
@@ -307,17 +353,60 @@ class _PortableLowerer:
     def function(self, node: A.FuncDef) -> None:
         if node.vararg is not None or node.kwarg is not None:
             self.unsupported(node, "*args or **kwargs")
-        if any(default is not None for default in node.defaults):
-            self.unsupported(node, "default arguments")
         nested = _PortableLowerer(node.name, list(node.params))
         for statement in node.body:
             nested.statement(statement)
         nested.emit(Op.RETURN)
         function_code = nested.finish()
+
+        defaults = list(node.defaults)
+        if len(defaults) < len(node.params):
+            defaults = [None] * (len(node.params) - len(defaults)) + defaults
+        first_default = len(defaults)
+        for index, default in enumerate(defaults):
+            if default is not None:
+                first_default = index
+                break
+        if any(default is None for default in defaults[first_default:]):
+            self.unsupported(node, "non-trailing default arguments")
+        default_count = len(defaults) - first_default
+        for default in defaults[first_default:]:
+            assert default is not None
+            self.expression(default)
+
         self.emit(
             Op.MAKE_FUNCTION,
-            self.constant((function_code, 0, 0, {})),
+            self.constant((function_code, default_count, 0, {})),
         )
+        for decorator in reversed(node.decorators):
+            self.load_dotted_name(decorator)
+            self.emit(Op.SWAP)
+            self.emit(Op.CALL, 1)
+        self.emit(Op.STORE_NAME, self.name_index(node.name))
+
+    def class_definition(self, node: A.ClassDef) -> None:
+        body = _PortableLowerer(f"{self.name}.{node.name}")
+        for class_name, _annotation, value in node.class_vars:
+            if value is None:
+                continue
+            body.expression(value)
+            body.emit(Op.STORE_NAME, body.name_index(class_name))
+        for method in node.methods:
+            body.function(method)
+        body.emit(Op.RETURN)
+
+        base_count = 0
+        if node.parent is not None:
+            self.emit(Op.LOAD_NAME, self.name_index(node.parent))
+            base_count = 1
+        self.emit(
+            Op.MAKE_CLASS,
+            self.constant((node.name, body.finish(), base_count, False)),
+        )
+        for decorator in reversed(node.decorators):
+            self.load_dotted_name(decorator)
+            self.emit(Op.SWAP)
+            self.emit(Op.CALL, 1)
         self.emit(Op.STORE_NAME, self.name_index(node.name))
 
     def finish(self) -> CodeObject:
@@ -339,6 +428,8 @@ def compile_portable_source(
     """Parse and lower source without importing CPython's ``ast`` module."""
     module = parse_source(source)
     lowerer = _PortableLowerer(filename)
+    for class_definition in module.classes:
+        lowerer.class_definition(class_definition)
     for function in module.funcs:
         lowerer.function(function)
     for statement in module.body:

@@ -120,6 +120,37 @@ def test_for_range_break_continue_and_loop_else_execute() -> None:
     assert namespace["completed"] is True
 
 
+def test_classes_attributes_methods_defaults_and_keyword_calls_execute() -> None:
+    namespace = run_source(
+        "class Counter:\n"
+        "    scale = 2\n"
+        "    def __init__(self, value=10):\n"
+        "        self.value = value\n"
+        "    def add(self, amount):\n"
+        "        self.value = self.value + amount\n"
+        "        return self.value * self.scale\n"
+        "counter = Counter(value=20)\n"
+        "answer = counter.add(1)\n"
+    )
+    counter = namespace["counter"]
+    assert namespace["answer"] == 42
+    assert counter.value == 21
+    assert counter.scale == 2
+
+
+def test_single_inheritance_and_inherited_method_dispatch_execute() -> None:
+    namespace = run_source(
+        "class Base:\n"
+        "    def base_value(self):\n"
+        "        return 40\n"
+        "class Child(Base):\n"
+        "    def answer(self):\n"
+        "        return self.base_value() + 2\n"
+        "value = Child().answer()\n"
+    )
+    assert namespace["value"] == 42
+
+
 def test_unsupported_statement_fails_precisely() -> None:
     with pytest.raises(PortableFrontendError, match="slicing"):
         compile_portable_source("value = [1, 2, 3][1:]\n")

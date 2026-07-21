@@ -14,6 +14,7 @@
     "bit-exact binary64 values",
     "UTF-8 string value handles",
     "arbitrary bytes value handles",
+    "opaque host object value handles with stable 64-bit IDs",
     "checked text and byte buffer copies",
     "retain and release",
     "runtime isolation",
@@ -25,7 +26,11 @@
     "identity comparisons with is and is not",
     "not, and, and or with operand-return semantics",
     "truthiness for native scalar handles",
-    "typed global assignment, aliasing, and augmented assignment",
+    "typed global assignment, lookup, aliasing, and augmented assignment",
+    "retained native host global injection",
+    "native host attribute graph registration and lookup",
+    "dotted host attribute traversal in eval and source execution",
+    "host ID recovery from evaluated and snapshotted value handles",
     "statement blocks with newline and semicolon separators",
     "bare expression statements and pass",
     "indented if and else blocks",
@@ -50,8 +55,9 @@
     "compound statements inside native functions",
     "default and keyword arguments, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
+    "synchronous native host callable dispatch",
+    "binary-module adapter that maps add_modules and expose onto the host-object C ABI",
     "full traceback frame retrieval beyond structured error location",
-    "native host-object bridge required by add_modules and expose through import_binary",
     "native module import registration and loading"
   ]
 }

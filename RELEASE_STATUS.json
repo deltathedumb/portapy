@@ -31,6 +31,12 @@
     "indented if and else blocks",
     "nested blocks and while loops",
     "break and continue",
+    "positional function definitions and return statements",
+    "zero-argument and multi-argument function calls",
+    "nested direct function calls",
+    "callable value handles",
+    "cross-exec function persistence",
+    "local function binding save and restore",
     "quote-aware statement separators and comments",
     "runtime-global typed value lookup",
     "per-runtime structured error status, type, message, line, and column",
@@ -41,7 +47,8 @@
     "Linux and Windows external C conformance hosts"
   ],
   "release_blockers": [
-    "native function definitions, calls, classes, and general VM execution",
+    "compound statements inside native functions",
+    "default and keyword arguments, closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native host-object bridge required by add_modules and expose through import_binary",

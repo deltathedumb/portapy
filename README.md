@@ -48,11 +48,11 @@ environment.execute("answer = seed + 1")
 assert environment.snapshot().var["answer"] == 42
 ```
 
-Artifact metadata records `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, and the public exception/status types as the stable Python-module surface. Native arbitrary-object injection still depends on the host-object bridge gate; scalar and control-flow execution use the existing opaque-handle C ABI.
+Artifact metadata records `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, and the public exception/status types as the stable Python-module surface. Native arbitrary-object injection still depends on the host-object bridge gate; scalar, control-flow, and positional-function execution use the existing opaque-handle C ABI.
 
 ## 3.14 Developer Preview 1
 
-`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, and structured error state are Python-authored and compiled by asmpython. Linux and Windows artifacts are loaded and exercised from independent C processes before publication.
+`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, and positional function machinery are Python-authored and compiled by asmpython. Linux and Windows artifacts are loaded and exercised from independent C processes before publication.
 
 Implemented native ABI and source surface:
 
@@ -71,13 +71,16 @@ Implemented native ABI and source surface:
 - newline/semicolon statement blocks, bare expressions, and `pass`
 - indented `if`/`else`, nested blocks, and `while`
 - `break` and `continue`
+- positional `def` functions, zero/multi-argument calls, nested calls, and `return`
+- callable value handles and cross-`exec` function persistence
+- local call-frame save/restore without leaking local bindings
 - quote-aware comments and separators
 - exact public export allowlists
 - Linux position-independent linking with no text relocations
 - independent Linux and Windows C conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on native functions/classes and calls, broader object/container syntax, full traceback-frame retrieval, the native host-object bridge, and module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on compound statements inside functions, defaults/keyword arguments, closures, classes, broader object/container syntax, full traceback-frame retrieval, the native host-object bridge, and module imports.
 
 ## Relationship to pyinbin
 

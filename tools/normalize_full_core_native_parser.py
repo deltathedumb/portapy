@@ -6,7 +6,7 @@ from pathlib import Path
 from asmpython._compiler.lexer import Lexer
 from asmpython._compiler.parser import Parser
 
-from tools.vendor_full_core_native_parser import vendor_native_parser
+from tools.vendor_portapy_native_parser import vendor_native_parser
 
 
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")

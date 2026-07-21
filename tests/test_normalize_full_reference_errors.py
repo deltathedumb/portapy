@@ -53,5 +53,5 @@ def test_native_error_location_finds_division_by_zero() -> None:
     locate = namespace["_native_error_location"]
 
     assert locate("safe = 1\nbroken = 5 // 0") == (2, 12)
-    assert locate("value = 9 % 0") == (1, 9)
+    assert locate("value = 9 % 0") == (1, 11)
     assert locate("value = 4") == (1, 1)

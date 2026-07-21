@@ -17,10 +17,10 @@ PortableFrontendError = _base.PortableFrontendError
 
 
 class _PortableLowerer(_base._PortableLowerer):
-    """Add structured exceptions and generators to the portable lowerer."""
+    """Add exceptions, generators, and pattern matching to the lowerer."""
 
     def exception_spec(self, names: list[str]) -> object:
-        """Build the VM's compact exception-type specification."""
+        """Build the VM's compact named-value specification."""
         specs: list[object] = []
         for name in names:
             pieces = name.split(".")
@@ -31,6 +31,98 @@ class _PortableLowerer(_base._PortableLowerer):
         if len(specs) == 1:
             return specs[0]
         return tuple(specs)
+
+    def value_spec(self, node: A.Expr) -> object:
+        """Encode a match value for runtime resolution."""
+        if isinstance(node, A.IntLit):
+            if node.is_none:
+                value: object = None
+            elif node.is_bool:
+                value = bool(node.value)
+            else:
+                value = node.value
+            return ("literal", value)
+        if isinstance(node, A.FloatLit):
+            return ("literal", node.value)
+        if isinstance(node, A.StrLit):
+            return ("literal", node.value)
+        if isinstance(node, A.Name):
+            return self.name_index(node.name)
+        if isinstance(node, A.Attr):
+            pieces: list[str] = []
+            current: A.Expr = node
+            while isinstance(current, A.Attr):
+                pieces.append(current.name)
+                current = current.obj
+            if isinstance(current, A.Name):
+                spec: object = self.name_index(current.name)
+                for piece in reversed(pieces):
+                    spec = ("attr", spec, piece)
+                return spec
+        nested = _PortableLowerer(f"{self.name}.<pattern-value>")
+        nested.expression(node)
+        nested.emit(Op.RETURN)
+        return ("expr", nested.finish())
+
+    def pattern_spec(self, pattern: A.Pattern) -> object:
+        if isinstance(pattern, A.MatchValue):
+            return ("value", self.value_spec(pattern.value))
+        if isinstance(pattern, A.MatchCapture):
+            if pattern.name == "_":
+                return ("wildcard",)
+            return ("bind", None, pattern.name)
+        if isinstance(pattern, A.MatchOr):
+            return ("or", tuple(self.pattern_spec(item) for item in pattern.patterns))
+        if isinstance(pattern, A.MatchSequence):
+            items: list[object] = []
+            for index, item in enumerate(pattern.patterns):
+                item_spec = self.pattern_spec(item)
+                if pattern.star_index == index:
+                    item_spec = ("star", item_spec)
+                items.append(item_spec)
+            return ("sequence", tuple(items))
+        if isinstance(pattern, A.MatchClass):
+            cls_spec = self.exception_spec([pattern.cls_name])
+            positional = tuple(self.pattern_spec(item) for item in pattern.positional)
+            keywords = tuple(
+                (name, self.pattern_spec(item)) for name, item in pattern.kwargs
+            )
+            return ("class", cls_spec, positional, keywords)
+        if isinstance(pattern, A.MatchAs):
+            inner = self.pattern_spec(pattern.pattern) if pattern.pattern is not None else None
+            return ("bind", inner, pattern.name)
+        if isinstance(pattern, A.MatchMapping):
+            pairs = tuple(
+                (("literal", key), self.pattern_spec(item))
+                for key, item in zip(pattern.keys, pattern.patterns)
+            )
+            return ("mapping", pairs, None)
+        self.unsupported(pattern, "match pattern")
+        return ("wildcard",)
+
+    def lower_match(self, node: A.Match) -> None:
+        subject_name = f"__portapy_match_{len(self.instructions)}"
+        self.expression(node.subject)
+        self.emit(Op.STORE_NAME, self.name_index(subject_name))
+        end_jumps: list[int] = []
+        for pattern, guard, body in node.cases:
+            self.emit(Op.LOAD_NAME, self.name_index(subject_name))
+            self.emit(Op.MATCH_PATTERN, self.constant(self.pattern_spec(pattern)))
+            next_case = self.emit(Op.JUMP_IF_FALSE)
+            guard_jump: int | None = None
+            if guard is not None:
+                self.expression(guard)
+                guard_jump = self.emit(Op.JUMP_IF_FALSE)
+            for statement in body:
+                self.statement(statement)
+            end_jumps.append(self.emit(Op.JUMP))
+            next_offset = len(self.instructions)
+            self.patch(next_case, next_offset)
+            if guard_jump is not None:
+                self.patch(guard_jump, next_offset)
+        end = len(self.instructions)
+        for jump in end_jumps:
+            self.patch(jump, end)
 
     def lower_try(self, node: A.Try) -> None:
         handlers = [
@@ -94,6 +186,9 @@ class _PortableLowerer(_base._PortableLowerer):
             self.patch(jump, end)
 
     def statement(self, node: A.Stmt) -> None:
+        if isinstance(node, A.Match):
+            self.lower_match(node)
+            return
         if isinstance(node, A.Try):
             self.lower_try(node)
             return

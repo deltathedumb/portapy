@@ -1,4 +1,10 @@
-"""Replace PortaPy's generated host-dispatch stub with a C callback call."""
+"""Patch host-call dispatch and add C-to-generated ABI preservation shims.
+
+asmpython's generated helpers currently use several platform nonvolatile
+registers as ordinary temporaries. Native C code must therefore call them
+through small audited adapters that preserve the platform ABI around the
+Python-authored implementation.
+"""
 from __future__ import annotations
 
 import re
@@ -6,6 +12,101 @@ from pathlib import Path
 
 
 _LABEL = re.compile(r"^(?P<label>[A-Za-z_.$?][\w.$?@]*):\s*(?:;.*)?$")
+_ADAPTER_TARGETS = (
+    ("_portapy_cabi_last_status_impl", "_portapy_last_status_impl"),
+    (
+        "_portapy_cabi_value_from_host_callable_impl",
+        "_portapy_value_from_host_callable_impl",
+    ),
+    (
+        "_portapy_cabi_value_get_host_callable_id_impl",
+        "_portapy_value_get_host_callable_id_impl",
+    ),
+    (
+        "_portapy_cabi_host_pending_arg_count_impl",
+        "_portapy_host_pending_arg_count_impl",
+    ),
+    ("_portapy_cabi_host_pending_arg_impl", "_portapy_host_pending_arg_impl"),
+    (
+        "_portapy_cabi_host_dispatch_complete_impl",
+        "_portapy_host_dispatch_complete_impl",
+    ),
+)
+
+
+def _linux_adapter(adapter: str, target: str) -> list[str]:
+    return [
+        f"global {adapter}",
+        f"{adapter}:",
+        "    push rbx",
+        "    push rbp",
+        "    push r12",
+        "    push r13",
+        "    push r14",
+        "    push r15",
+        "    sub rsp, 8",
+        f"    call {target}",
+        "    add rsp, 8",
+        "    pop r15",
+        "    pop r14",
+        "    pop r13",
+        "    pop r12",
+        "    pop rbp",
+        "    pop rbx",
+        "    ret",
+        "",
+    ]
+
+
+def _windows_adapter(adapter: str, target: str) -> list[str]:
+    lines = [
+        f"global {adapter}",
+        f"{adapter}:",
+        "    push rbx",
+        "    push rbp",
+        "    push rdi",
+        "    push rsi",
+        "    push r12",
+        "    push r13",
+        "    push r14",
+        "    push r15",
+        # 32 bytes of shadow space, 160 bytes for XMM6-XMM15, and 8 bytes
+        # to align RSP to 16 before the nested Windows x64 ABI call.
+        "    sub rsp, 200",
+    ]
+    for register in range(6, 16):
+        offset = 32 + (register - 6) * 16
+        lines.append(f"    movdqu [rsp + {offset}], xmm{register}")
+    lines.append(f"    call {target}")
+    for register in range(6, 16):
+        offset = 32 + (register - 6) * 16
+        lines.append(f"    movdqu xmm{register}, [rsp + {offset}]")
+    lines.extend(
+        [
+            "    add rsp, 200",
+            "    pop r15",
+            "    pop r14",
+            "    pop r13",
+            "    pop r12",
+            "    pop rsi",
+            "    pop rdi",
+            "    pop rbp",
+            "    pop rbx",
+            "    ret",
+            "",
+        ]
+    )
+    return lines
+
+
+def _abi_adapters(target: str) -> list[str]:
+    lines = ["", "section .text", ""]
+    for adapter, implementation in _ADAPTER_TARGETS:
+        if target == "linux":
+            lines.extend(_linux_adapter(adapter, implementation))
+        else:
+            lines.extend(_windows_adapter(adapter, implementation))
+    return lines
 
 
 def patch_host_call_dispatch(source: str, *, target: str) -> str:
@@ -49,6 +150,7 @@ def patch_host_call_dispatch(source: str, *, target: str) -> str:
         while insertion < len(lines) and lines[insertion].startswith(";"):
             insertion += 1
         lines.insert(insertion, extern_line)
+    lines.extend(_abi_adapters(target))
     return "\n".join(lines) + "\n"
 
 

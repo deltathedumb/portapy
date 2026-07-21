@@ -138,9 +138,13 @@ ENVIRONMENT_GLUE_INTERNALS = (
 )
 
 TRACEBACK_INTERNALS = (
+    "_portapy_traceback_set_filename_impl",
+    "_portapy_traceback_default_filename_impl",
     "_portapy_traceback_count_impl",
     "_portapy_traceback_line_impl",
     "_portapy_traceback_column_impl",
+    "_portapy_traceback_filename_size_impl",
+    "_portapy_traceback_filename_byte_impl",
     "_portapy_traceback_function_size_impl",
     "_portapy_traceback_function_byte_impl",
     "_portapy_traceback_source_size_impl",

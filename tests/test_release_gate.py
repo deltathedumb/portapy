@@ -38,6 +38,7 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "host_calls": True,
             "native_environment_adapter": True,
             "public_environment_api": True,
+            "public_traceback_abi": True,
             "generated_host_call_entry": True,
         }
         artifact.with_suffix(artifact.suffix + ".json").write_text(
@@ -73,3 +74,5 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
     assert "not the final Python 3.14 interpreter release" in notes
     assert "`add_all`" in notes
     assert "does not expose `import_module`" in notes
+    assert "NativeTracebackFrame" in notes
+    assert "already added by the host" in notes

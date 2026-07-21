@@ -89,6 +89,7 @@ def generate_native_function_entry(
     expression_import = f"""from .{expression_module} import (
     _expr_parse_boolean_expression,
     _expr_record_expression_failure,
+    _expr_truthy,
 )"""
     scalar_import = f"""from .{scalar_module} import (
     _scalar_binary,

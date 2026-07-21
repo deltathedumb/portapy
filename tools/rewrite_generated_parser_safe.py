@@ -86,25 +86,25 @@ def _explicit_augmented_operator(indent: str) -> str:
     )
 
 
-def _rewrite_augmented_dispatch(source: str) -> str:
-    marker = '        operator = str(assignment[0])[:-1]\n'
+def _rewrite_augmented_dispatch(source: str, *, indent: str) -> str:
+    marker = f'{indent}operator = str(assignment[0])[:-1]\n'
     if marker not in source:
         raise ValueError("generated parser is missing augmented operator conversion")
-    return source.replace(marker, _explicit_augmented_operator("        "), 1)
+    return source.replace(marker, _explicit_augmented_operator(indent), 1)
 
 
 def rewrite_generated_expression(path: Path) -> Path:
     source = path.read_text(encoding="utf-8")
     source = _replace_function(source, "_find_word_operator", _word_operator())
     source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
-    source = _rewrite_augmented_dispatch(source)
+    source = _rewrite_augmented_dispatch(source, indent="            ")
     path.write_text(source, encoding="utf-8")
     return path
 
 
 def rewrite_generated_control(path: Path) -> Path:
     source = path.read_text(encoding="utf-8")
-    source = _rewrite_augmented_dispatch(source)
+    source = _rewrite_augmented_dispatch(source, indent="        ")
     path.write_text(source, encoding="utf-8")
     return path
 

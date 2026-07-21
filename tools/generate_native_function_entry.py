@@ -98,6 +98,11 @@ def generate_native_function_entry(
     _scalar_tuple_item_owner,
     _scalar_tuple_item_index,
     _scalar_tuple_item_value,
+    _scalar_dict_build_top,
+    _scalar_push_dict_build,
+    _scalar_release_dict_build,
+    _scalar_append_dict,
+    _scalar_string_from_text,
 )"""
 
     for old, new, label in (
@@ -148,18 +153,18 @@ def generate_native_function_entry(
     return output
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def main() -> int:
+    parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     parser.add_argument("--scalar-module", required=True)
     parser.add_argument("--expression-module", required=True)
     parser.add_argument("--control-module", required=True)
-    args = parser.parse_args(argv)
+    arguments = parser.parse_args()
     generate_native_function_entry(
-        args.output,
-        scalar_module=args.scalar_module,
-        expression_module=args.expression_module,
-        control_module=args.control_module,
+        arguments.output,
+        scalar_module=arguments.scalar_module,
+        expression_module=arguments.expression_module,
+        control_module=arguments.control_module,
     )
     return 0
 

@@ -17,6 +17,7 @@ _REQUIRED_IMPLS = (
     "_portapy_last_status_impl",
     "_portapy_eval_span_impl",
 )
+_TRACEBACK_FILENAME_BRIDGE = "_portapy_traceback_set_filename_utf8_bridge"
 
 
 def _labels(source: str) -> set[str]:
@@ -26,6 +27,13 @@ def _labels(source: str) -> set[str]:
         if match is not None:
             result.add(match.group("label"))
     return result
+
+
+def _declare_traceback_bridge(source: str) -> str:
+    declaration = f"extern {_TRACEBACK_FILENAME_BRIDGE}"
+    if declaration in source:
+        return source.rstrip()
+    return source.rstrip() + "\n" + declaration
 
 
 def _linux_wrapper() -> str:
@@ -46,11 +54,13 @@ portapy_eval_utf8:
     je .eval_invalid
     mov qword [r9], 0
     push rbx
-    sub rsp, 48
+    sub rsp, 80
     mov [rsp], rdi
     mov [rsp + 8], rsi
     mov [rsp + 16], rdx
-    mov [rsp + 24], r9
+    mov [rsp + 24], rcx
+    mov [rsp + 32], r8
+    mov [rsp + 40], r9
 
     xor rcx, rcx
 .eval_nul_scan:
@@ -63,18 +73,25 @@ portapy_eval_utf8:
     jmp .eval_nul_scan
 .eval_nul_scan_done:
 
+    mov rdi, [rsp]
+    mov rsi, [rsp + 24]
+    mov rdx, [rsp + 32]
+    call _portapy_traceback_set_filename_utf8_bridge
+    test eax, eax
+    jnz .eval_bridge_failed
+
     mov rdx, [rsp + 16]
     lea rdi, [rdx + 1]
     call malloc
     test rax, rax
     jz .eval_alloc_failed
-    mov [rsp + 32], rax
+    mov [rsp + 48], rax
 
     mov rdi, rax
     mov rsi, [rsp + 8]
     mov rdx, [rsp + 16]
     call memcpy
-    mov rax, [rsp + 32]
+    mov rax, [rsp + 48]
     mov rcx, [rsp + 16]
     mov byte [rax + rcx], 0
 
@@ -82,27 +99,31 @@ portapy_eval_utf8:
     mov rsi, rax
     mov rdx, [rsp + 16]
     call _portapy_eval_span_impl
-    mov [rsp + 40], rax
+    mov [rsp + 56], rax
 
-    mov rdi, [rsp + 32]
+    mov rdi, [rsp + 48]
     call free
     call _portapy_last_status_impl
     test eax, eax
     jnz .eval_done
-    mov rdx, [rsp + 24]
-    mov rcx, [rsp + 40]
+    mov rdx, [rsp + 40]
+    mov rcx, [rsp + 56]
     mov [rdx], rcx
 .eval_done:
-    add rsp, 48
+    add rsp, 80
+    pop rbx
+    ret
+.eval_bridge_failed:
+    add rsp, 80
     pop rbx
     ret
 .eval_embedded_nul:
-    add rsp, 48
+    add rsp, 80
     pop rbx
     mov eax, 2
     ret
 .eval_alloc_failed:
-    add rsp, 48
+    add rsp, 80
     pop rbx
     mov eax, 3
     ret
@@ -119,23 +140,26 @@ section .text
 portapy_eval_utf8:
     test rdx, rdx
     jz .eval_invalid
+    mov r10, [rsp + 48]
+    test r10, r10
+    jz .eval_invalid
     cmp qword [rsp + 40], 0
     je .eval_filename_ok
     test r9, r9
     jz .eval_invalid
 .eval_filename_ok:
-    mov r10, [rsp + 48]
-    test r10, r10
-    jz .eval_invalid
     cmp r8, -1
     je .eval_invalid
     mov qword [r10], 0
+    mov r11, [rsp + 40]
     push rbx
-    sub rsp, 80
+    sub rsp, 112
     mov [rsp + 32], rcx
     mov [rsp + 40], rdx
     mov [rsp + 48], r8
-    mov [rsp + 56], r10
+    mov [rsp + 56], r9
+    mov [rsp + 64], r11
+    mov [rsp + 72], r10
 
     xor r10, r10
 .eval_nul_scan:
@@ -148,18 +172,25 @@ portapy_eval_utf8:
     jmp .eval_nul_scan
 .eval_nul_scan_done:
 
+    mov rcx, [rsp + 32]
+    mov rdx, [rsp + 56]
+    mov r8, [rsp + 64]
+    call _portapy_traceback_set_filename_utf8_bridge
+    test eax, eax
+    jnz .eval_bridge_failed
+
     mov rcx, [rsp + 48]
     inc rcx
     call malloc
     test rax, rax
     jz .eval_alloc_failed
-    mov [rsp + 64], rax
+    mov [rsp + 80], rax
 
     mov rcx, rax
     mov rdx, [rsp + 40]
     mov r8, [rsp + 48]
     call memcpy
-    mov rax, [rsp + 64]
+    mov rax, [rsp + 80]
     mov r10, [rsp + 48]
     mov byte [rax + r10], 0
 
@@ -167,27 +198,31 @@ portapy_eval_utf8:
     mov rdx, rax
     mov r8, [rsp + 48]
     call _portapy_eval_span_impl
-    mov [rsp + 72], rax
+    mov [rsp + 88], rax
 
-    mov rcx, [rsp + 64]
+    mov rcx, [rsp + 80]
     call free
     call _portapy_last_status_impl
     test eax, eax
     jnz .eval_done
-    mov r8, [rsp + 56]
-    mov r9, [rsp + 72]
+    mov r8, [rsp + 72]
+    mov r9, [rsp + 88]
     mov [r8], r9
 .eval_done:
-    add rsp, 80
+    add rsp, 112
+    pop rbx
+    ret
+.eval_bridge_failed:
+    add rsp, 112
     pop rbx
     ret
 .eval_embedded_nul:
-    add rsp, 80
+    add rsp, 112
     pop rbx
     mov eax, 2
     ret
 .eval_alloc_failed:
-    add rsp, 80
+    add rsp, 112
     pop rbx
     mov eax, 3
     ret
@@ -211,7 +246,8 @@ def append_eval_abi(source: str, *, target: str) -> str:
         wrapper = _windows_wrapper()
     else:
         raise ValueError(f"unsupported ABI target: {target}")
-    return source.rstrip() + "\n" + wrapper.strip() + "\n"
+    source = _declare_traceback_bridge(source)
+    return source + "\n" + wrapper.strip() + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:

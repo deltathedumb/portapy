@@ -92,6 +92,7 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "native_api_scalar import" not in function_source
     assert "_ctrl_portapy_exec_span_impl," in function_source
     assert "_expr_parse_boolean_expression," in function_source
+    assert "_expr_truthy," in function_source
     assert "_scalar_binary," in function_source
     assert " as _control_exec_span" not in function_source
     assert " as _parse_boolean_expression" not in function_source
@@ -103,9 +104,13 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "from .native_api import _last_status" not in function_source
     assert 'elif char == "\\\\":' in function_source
     assert "_call_argument_top: list[int] = [1]" in function_source
+    assert "def _execute_function_block(" in function_source
+    assert "_FUNCTION_FLOW_RETURN = 3" in function_source
+    assert "_functions." not in function_source
+    assert "compound statements inside native functions are not implemented" not in function_source
 
 
-def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> None:
+def test_generated_function_entry_executes_calls_and_control_flow(tmp_path: Path) -> None:
     generated = _generate(tmp_path)
     names = generated[:4]
     paths = generated[4:]
@@ -121,15 +126,51 @@ def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> N
             "def add(left, right):\n"
             "    total = left + right\n"
             "    return total\n"
+            "def calculate(limit):\n"
+            "    count = 0\n"
+            "    total = 0\n"
+            "    while count < limit:\n"
+            "        count += 1\n"
+            "        if count == 2:\n"
+            "            continue\n"
+            "        if count > 4:\n"
+            "            break\n"
+            "        total += count\n"
+            "    return total\n"
+            "def choose(value):\n"
+            "    if value > 10:\n"
+            "        return 42\n"
+            "    else:\n"
+            "        return -1\n"
             "answer = add(20, 22)\n"
+            "loop_answer = calculate(10)\n"
+            "branch_answer = choose(20)\n"
         )
         assert api._portapy_exec_span_impl(runtime, source, len(source)) == base.PORTAPY_OK
         answer = api._portapy_eval_span_impl(runtime, "answer", len("answer"))
         assert base._portapy_value_as_i64_impl(runtime, answer) == 42
         zero = api._portapy_eval_span_impl(runtime, "zero()", len("zero()"))
         assert base._portapy_value_as_i64_impl(runtime, zero) == 7
-        nested = api._portapy_eval_span_impl(runtime, "add(add(10, 11), 21)", len("add(add(10, 11), 21)"))
+        nested = api._portapy_eval_span_impl(
+            runtime,
+            "add(add(10, 11), 21)",
+            len("add(add(10, 11), 21)"),
+        )
         assert base._portapy_value_as_i64_impl(runtime, nested) == 42
+        loop_answer = api._portapy_eval_span_impl(
+            runtime,
+            "loop_answer",
+            len("loop_answer"),
+        )
+        assert base._portapy_value_as_i64_impl(runtime, loop_answer) == 8
+        branch_answer = api._portapy_eval_span_impl(
+            runtime,
+            "branch_answer",
+            len("branch_answer"),
+        )
+        assert base._portapy_value_as_i64_impl(runtime, branch_answer) == 42
+        negative = api._portapy_eval_span_impl(runtime, "choose(1)", len("choose(1)"))
+        assert base._portapy_value_as_i64_impl(runtime, negative) == -1
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)

@@ -40,6 +40,12 @@ jobs:
             tests/native_tuple_host.c -ldl -o dist/native_tuple_host
           ./dist/native_tuple_host ./dist/libportapy.so | tee dist/tuple-output.txt
           grep -qx 'native-tuples: ok' dist/tuple-output.txt
+      - name: Execute public dictionary ABI from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_dict_host.c -ldl -o dist/native_dict_host
+          ./dist/native_dict_host ./dist/libportapy.so | tee dist/dict-output.txt
+          grep -qx 'native-dicts: ok' dist/dict-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -85,6 +91,15 @@ jobs:
           $output = & dist/native_tuple_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/tuple-output.txt
           if ($output -ne 'native-tuples: ok') { throw "unexpected tuple output: $output" }
+      - name: Execute public dictionary ABI from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_dict_host.c -o dist/native_dict_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_dict_host.exe dist/portapy.dll
+          $output | Out-File -Encoding utf8 dist/dict-output.txt
+          if ($output -ne 'native-dicts: ok') { throw "unexpected dictionary output: $output" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

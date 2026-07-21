@@ -19,6 +19,28 @@ def _locator():
     return namespace["locate"]
 
 
+def _is_name_plus_one(node: ast.AST, name: str) -> bool:
+    return (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.Add)
+        and isinstance(node.left, ast.Name)
+        and node.left.id == name
+        and isinstance(node.right, ast.Constant)
+        and node.right.value == 1
+    )
+
+
+def _has_return_pair(function: ast.FunctionDef, second_name: str) -> bool:
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Tuple)
+        and len(node.value.elts) == 2
+        and _is_name_plus_one(node.value.elts[0], "line_index")
+        and _is_name_plus_one(node.value.elts[1], second_name)
+        for node in ast.walk(function)
+    )
+
+
 def test_finds_invalid_indentation_and_zero_division() -> None:
     locate = _locator()
     assert locate("value = 1\n  unexpected = 2\n") == (2, 3)
@@ -51,7 +73,11 @@ def test_replaces_generated_error_locator(
         if isinstance(node, ast.FunctionDef)
         and node.name == "_native_error_location"
     )
-    text = ast.unparse(locator)
-    assert "previous_opens_block" in text
-    assert "return line_index + 1, indent + 1" in text
-    assert "return line_index + 1, column_index + 1" in text
+    names = {
+        node.id
+        for node in ast.walk(locator)
+        if isinstance(node, ast.Name)
+    }
+    assert "previous_opens_block" in names
+    assert _has_return_pair(locator, "indent")
+    assert _has_return_pair(locator, "column_index")

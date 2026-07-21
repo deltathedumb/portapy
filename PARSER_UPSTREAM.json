@@ -1,0 +1,7 @@
+{
+  "repository": "deltathedumb/asmpython",
+  "branch": "beta",
+  "commit": "c5ed854379c06b6be10f4dce4e79528edb1de4fc",
+  "source": "asmpython/_compiler/{lexer,parser,ast_nodes,errors}.py",
+  "extensions": "removed; standard Python syntax only"
+}

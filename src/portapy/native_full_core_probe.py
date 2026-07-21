@@ -17,7 +17,9 @@ def _probe_import(name: str) -> object:
 _PROBE_SOURCE = """import demo
 
 def outer():
-    value = 40
+    value = int('40')
+    if not isinstance(value, int):
+        return -100
     def inner():
         return value + demo.offset
     return inner()
@@ -26,11 +28,15 @@ class Box:
     def __init__(self, value):
         self.value = value
 
+try:
+    int('not-an-integer')
+except ValueError:
+    box = Box(outer())
+    answer = box.value
+
 def crash():
     return 1 / 0
 
-box = Box(outer())
-answer = box.value
 crash()
 """
 

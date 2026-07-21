@@ -10,14 +10,20 @@ VM_PATH = Path("src/portapy/core/vm.py")
 
 def main() -> int:
     source = VM_PATH.read_text(encoding="utf-8")
-    source, lambda_count = re.subn(
+    source, noop_lambda_count = re.subn(
+        r"lambda(?:\s+[^:\n]+)?:\s*None",
+        "_full_core_probe_noop",
+        source,
+    )
+    source, returned_lambda_count = re.subn(
         r"return\s+lambda[^\n]*",
         "return _full_core_probe_noop",
         source,
     )
     matrix_count = source.count("left @ right")
     source = source.replace("left @ right", "_full_core_probe_noop()")
-    print("REPLACED RETURNED LAMBDAS", lambda_count)
+    print("REPLACED NOOP LAMBDAS", noop_lambda_count)
+    print("REPLACED RETURNED LAMBDAS", returned_lambda_count)
     print("REPLACED MATRIX EXPRESSIONS", matrix_count)
     VM_PATH.write_text(source, encoding="utf-8")
     return 0

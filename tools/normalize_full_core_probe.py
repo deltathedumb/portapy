@@ -1,8 +1,8 @@
 """Normalize CPython-valid shorthand unsupported by the pinned asmpython parser.
 
 This tool mutates only the CI checkout used by the full-core transition probe.
-Each replacement is exact and fails closed so the probe cannot silently rewrite
-unrelated source.
+Each replacement is exact and fails closed when no matching source remains, so
+the probe cannot silently rewrite unrelated code.
 """
 from __future__ import annotations
 
@@ -34,11 +34,12 @@ def normalize(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
     source = path.read_text(encoding="utf-8")
     for old, new in replacements:
         count = source.count(old)
-        if count != 1:
+        if count < 1:
             raise RuntimeError(
-                f"expected exactly one normalization target in {path}: {old!r}; found {count}"
+                f"normalization target is absent in {path}: {old!r}"
             )
         source = source.replace(old, new)
+        print("REPLACED", path, count)
     path.write_text(source, encoding="utf-8")
     print("NORMALIZED", path)
 

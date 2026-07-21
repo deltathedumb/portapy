@@ -89,9 +89,33 @@ int main(int argc, char **argv) {
     if (!execute(exec_utf8, runtime, nested)) return 20;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested_answer", 42)) return 21;
 
+    const char control[] =
+        "def classify(value):\n"
+        "    if value == 0:\n"
+        "        return 100\n"
+        "    else:\n"
+        "        total = 0\n"
+        "        current = 0\n"
+        "        while current < value:\n"
+        "            current += 1\n"
+        "            if current == 2:\n"
+        "                continue\n"
+        "            total += current\n"
+        "            if total > 6:\n"
+        "                break\n"
+        "        return total\n"
+        "control_zero = classify(0)\n"
+        "control_small = classify(3)\n"
+        "control_large = classify(5)\n";
+    if (!execute(exec_utf8, runtime, control)) return 22;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "control_zero", 100)) return 23;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "control_small", 4)) return 24;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "control_large", 8)) return 25;
+
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 22;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 23;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 26;
+    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 27;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 28;
     puts("native-functions: ok");
     return 0;
 }

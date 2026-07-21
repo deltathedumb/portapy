@@ -1,4 +1,4 @@
-"""Corrected public rewrite entry used by native builds and tests."""
+"""Native-safe rewrites used by generated PortaPy parser entries."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -64,12 +64,53 @@ def _word_operator() -> str:
     return -1'''
 
 
+def _explicit_augmented_operator(indent: str) -> str:
+    return (
+        f'{indent}operator = ""\n'
+        f'{indent}if assignment[0] == "+=":\n'
+        f'{indent}    operator = "+"\n'
+        f'{indent}elif assignment[0] == "-=":\n'
+        f'{indent}    operator = "-"\n'
+        f'{indent}elif assignment[0] == "*=":\n'
+        f'{indent}    operator = "*"\n'
+        f'{indent}elif assignment[0] == "//=":\n'
+        f'{indent}    operator = "//"\n'
+        f'{indent}elif assignment[0] == "%=":\n'
+        f'{indent}    operator = "%"\n'
+        f'{indent}elif assignment[0] == "&=":\n'
+        f'{indent}    operator = "&"\n'
+        f'{indent}elif assignment[0] == "^=":\n'
+        f'{indent}    operator = "^"\n'
+        f'{indent}elif assignment[0] == "|=":\n'
+        f'{indent}    operator = "|"\n'
+    )
+
+
+def _rewrite_augmented_dispatch(source: str) -> str:
+    marker = '        operator = str(assignment[0])[:-1]\n'
+    if marker not in source:
+        raise ValueError("generated parser is missing augmented operator conversion")
+    return source.replace(marker, _explicit_augmented_operator("        "), 1)
+
+
 def rewrite_generated_expression(path: Path) -> Path:
     source = path.read_text(encoding="utf-8")
     source = _replace_function(source, "_find_word_operator", _word_operator())
     source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
+    source = _rewrite_augmented_dispatch(source)
     path.write_text(source, encoding="utf-8")
     return path
 
 
-__all__ = ["rewrite_generated_expression", "rewrite_generated_scalar"]
+def rewrite_generated_control(path: Path) -> Path:
+    source = path.read_text(encoding="utf-8")
+    source = _rewrite_augmented_dispatch(source)
+    path.write_text(source, encoding="utf-8")
+    return path
+
+
+__all__ = [
+    "rewrite_generated_control",
+    "rewrite_generated_expression",
+    "rewrite_generated_scalar",
+]

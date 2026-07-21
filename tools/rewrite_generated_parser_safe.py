@@ -7,15 +7,18 @@ from tools.rewrite_generated_parser import (
     _replace_function,
     rewrite_generated_scalar as _rewrite_generated_scalar,
 )
+from tools.rewrite_generated_tuple import rewrite_generated_tuple
+from tools.rewrite_generated_tuple_expression import rewrite_generated_tuple_expression
 
 
 def rewrite_generated_scalar(path: Path) -> Path:
-    """Apply scalar rewrites and avoid pointer-truthiness string sentinels."""
+    """Apply scalar rewrites and native tuple semantics."""
     _rewrite_generated_scalar(path)
     source = path.read_text(encoding="utf-8")
     source = source.replace("if not operator[0]:", 'if operator[0] == "":')
     source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
     path.write_text(source, encoding="utf-8")
+    rewrite_generated_tuple(path)
     return path
 
 
@@ -99,6 +102,7 @@ def rewrite_generated_expression(path: Path) -> Path:
     source = source.replace("if assignment[0]:", 'if assignment[0] != "":')
     source = _rewrite_augmented_dispatch(source, indent="            ")
     path.write_text(source, encoding="utf-8")
+    rewrite_generated_tuple_expression(path)
     return path
 
 

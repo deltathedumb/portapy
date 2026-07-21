@@ -21,6 +21,11 @@ def _portapy_runtime_create_impl() -> int:
         _full_ensure_runtime(runtime)
     return runtime
 '''
+_SEED_MARKER = "    machine = _FullTracingVirtualMachine(runtime)\n"
+_SEED_REPLACEMENT = (
+    "    machine = _FullTracingVirtualMachine(runtime)\n"
+    "    machine._seed_builtins(namespace)\n"
+)
 
 
 def rewrite_generated_full_vm_environment(
@@ -36,6 +41,9 @@ def rewrite_generated_full_vm_environment(
         selected = "windows" if host_module.endswith("_windows") else "linux"
     rewrite_generated_full_runtime(path, target=selected)
     source = path.read_text(encoding="utf-8")
+    if source.count(_SEED_MARKER) != 1:
+        raise ValueError("generated full runtime has an unexpected VM seed point")
+    source = source.replace(_SEED_MARKER, _SEED_REPLACEMENT, 1)
     if "def _portapy_runtime_create_impl(" in source:
         raise ValueError("generated environment already defines runtime creation")
     path.write_text(source.rstrip() + _RUNTIME_CREATE + "\n", encoding="utf-8")

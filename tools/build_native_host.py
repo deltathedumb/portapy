@@ -116,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             source=host_source,
             work_dir=args.work_dir,
+            host_bridge=True,
         )
     except (BuildFailure, ValueError) as error:
         print(f"portapy native host build failed: {error}", file=sys.stderr)

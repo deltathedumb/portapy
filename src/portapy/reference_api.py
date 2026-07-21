@@ -34,6 +34,7 @@ class ValueKind(IntEnum):
     BYTES = 5
     CALLABLE = 6
     OBJECT = 7
+    TUPLE = 8
 
 
 @dataclass(frozen=True)
@@ -282,6 +283,8 @@ class Runtime:
             kind = ValueKind.STRING
         elif type(value) is bytes:
             kind = ValueKind.BYTES
+        elif type(value) is tuple:
+            kind = ValueKind.TUPLE
         elif callable(value):
             kind = ValueKind.CALLABLE
         else:

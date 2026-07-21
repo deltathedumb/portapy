@@ -77,6 +77,11 @@ def generate_native_host_call_entry(
     _scalar_find_assignment,
     _scalar_release,
     _scalar_retain_global,
+    _scalar_tuple_item_owner,
+    _scalar_tuple_item_index,
+    _scalar_tuple_item_value,
+    _scalar_tuple_size_unchecked,
+    _scalar_tuple_item_unchecked,
 )"""
     source = source.replace(_HOST_IMPORT, host_import, 1)
     source = source.replace(_SCALAR_IMPORT, scalar_import, 1)

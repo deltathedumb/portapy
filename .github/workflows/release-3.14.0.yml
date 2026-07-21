@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,7 +70,7 @@ jobs:
             dist/conformance-linux
 
   windows:
-    runs-on: windows-2025
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -118,7 +118,7 @@ jobs:
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
     needs: [linux, windows]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -156,5 +156,6 @@ jobs:
             dist/RELEASE_STATUS.json \
             dist/checksums.json \
             dist/release-manifest.json \
+            --target "$GITHUB_SHA" \
             --title 'PortaPy 3.14.0' \
             --notes-file dist/RELEASE_NOTES.md

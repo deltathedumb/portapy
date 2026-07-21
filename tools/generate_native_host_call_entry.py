@@ -32,6 +32,14 @@ _ENVIRONMENT_IMPORT = """from .native_api_environment import (
 """
 _TRACEBACK_FORWARDERS = '''
 
+def _portapy_traceback_set_filename_impl(runtime: int, filename: str, filename_size: int) -> int:
+    return _host_portapy_traceback_set_filename_impl(runtime, filename, filename_size)
+
+
+def _portapy_traceback_default_filename_impl(runtime: int) -> int:
+    return _host_portapy_traceback_default_filename_impl(runtime)
+
+
 def _portapy_traceback_reset_impl(runtime: int) -> int:
     return _host_portapy_traceback_reset_impl(runtime)
 
@@ -62,6 +70,14 @@ def _portapy_traceback_line_impl(runtime: int, index: int) -> int:
 
 def _portapy_traceback_column_impl(runtime: int, index: int) -> int:
     return _host_portapy_traceback_column_impl(runtime, index)
+
+
+def _portapy_traceback_filename_size_impl(runtime: int, index: int) -> int:
+    return _host_portapy_traceback_filename_size_impl(runtime, index)
+
+
+def _portapy_traceback_filename_byte_impl(runtime: int, index: int, byte_index: int) -> int:
+    return _host_portapy_traceback_filename_byte_impl(runtime, index, byte_index)
 
 
 def _portapy_traceback_function_size_impl(runtime: int, index: int) -> int:
@@ -149,11 +165,15 @@ def generate_native_host_call_entry(
     _host_portapy_eval_span_impl,
     _host_portapy_exec_span_impl,
     _host_resolve_host_path,
+    _host_portapy_traceback_set_filename_impl,
+    _host_portapy_traceback_default_filename_impl,
     _host_portapy_traceback_reset_impl,
     _host_portapy_traceback_add_impl,
     _host_portapy_traceback_count_impl,
     _host_portapy_traceback_line_impl,
     _host_portapy_traceback_column_impl,
+    _host_portapy_traceback_filename_size_impl,
+    _host_portapy_traceback_filename_byte_impl,
     _host_portapy_traceback_function_size_impl,
     _host_portapy_traceback_function_byte_impl,
     _host_portapy_traceback_source_size_impl,

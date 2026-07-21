@@ -87,12 +87,7 @@ _unpacking._comprehensions._control._PortableLowerer = _PortableLowerer
 _unpacking._comprehensions._control._base._PortableLowerer = _PortableLowerer
 
 
-def compile_portable_source(
-    source: str,
-    filename: str = "<portapy>",
-) -> CodeObject:
-    """Parse and lower once, entirely through PortaPy-owned components."""
-    parsed = parse_portable_source(source)
+def _configure_lowerer(parsed: A.Module, filename: str) -> _PortableLowerer:
     _PortableLowerer.function_definitions = {
         function.name: function for function in parsed.funcs
     }
@@ -102,8 +97,10 @@ def compile_portable_source(
         for function in parsed.funcs
         if function.is_lifted
     }
-    lowerer = _PortableLowerer(filename)
+    return _PortableLowerer(filename)
 
+
+def _lower_module(parsed: A.Module, lowerer: _PortableLowerer) -> None:
     ordered: list[tuple[int, int, str, object]] = []
     sequence = 0
     for class_definition in parsed.classes:
@@ -125,7 +122,53 @@ def compile_portable_source(
             lowerer.function(node)
         else:
             lowerer.statement(node)
-    return lowerer.finish()
+
+
+def compile_portable_source(
+    source: str,
+    filename: str = "<portapy>",
+    mode: str = "exec",
+) -> CodeObject:
+    """Parse and lower through PortaPy-owned components.
+
+    ``mode`` mirrors Python's public ``compile`` modes. ``eval`` returns the
+    expression value from :class:`VirtualMachine.run`; ``single`` marks the
+    code interactive and also returns a lone expression instead of discarding
+    it. No path imports or delegates to host ``ast``.
+    """
+    if mode not in {"exec", "eval", "single"}:
+        raise ValueError(f"unsupported compile mode: {mode!r}")
+
+    result_name = "__portapy_compiled_result"
+    parse_source = source
+    if mode == "eval":
+        parse_source = f"{result_name} = ({source})\n"
+
+    parsed = parse_portable_source(parse_source)
+    lowerer = _configure_lowerer(parsed, filename)
+
+    lone_expression = (
+        mode == "single"
+        and not parsed.classes
+        and not parsed.funcs
+        and len(parsed.body) == 1
+        and isinstance(parsed.body[0], A.ExprStmt)
+    )
+    if lone_expression:
+        lowerer.expression(parsed.body[0].expr)
+        lowerer.emit(Op.RETURN)
+    else:
+        _lower_module(parsed, lowerer)
+        if mode == "eval":
+            index = lowerer.name_index(result_name)
+            lowerer.emit(Op.LOAD_NAME, index)
+            lowerer.emit(Op.DELETE_NAME, index)
+            lowerer.emit(Op.RETURN)
+
+    code = lowerer.finish()
+    code.interactive = mode == "single"
+    code.validate()
+    return code
 
 
 __all__ = ["PortableFrontendError", "compile_portable_source"]

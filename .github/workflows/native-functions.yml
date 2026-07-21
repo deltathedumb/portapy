@@ -42,6 +42,13 @@ jobs:
           ./dist/native_varargs_host ./dist/libportapy-functions.so \
             | tee dist/native-varargs-output.txt
           grep -qx 'native-varargs: ok' dist/native-varargs-output.txt
+      - name: Execute keyword variadics from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_kwargs_host.c -ldl -o dist/native_kwargs_host
+          ./dist/native_kwargs_host ./dist/libportapy-functions.so \
+            | tee dist/native-kwargs-output.txt
+          grep -qx 'native-kwargs: ok' dist/native-kwargs-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -92,6 +99,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($output -ne 'native-varargs: ok') {
             throw "unexpected native varargs output: $output"
+          }
+      - name: Execute keyword variadics from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_kwargs_host.c -o dist/native_kwargs_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_kwargs_host.exe dist/portapy-functions.dll
+          $output | Out-File -Encoding utf8 dist/native-kwargs-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-kwargs: ok') {
+            throw "unexpected native kwargs output: $output"
           }
       - uses: actions/upload-artifact@v4
         if: always()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.rewrite_generated_function_control import rewrite_generated_function_control
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
 from tools.rewrite_generated_parser import _replace_function
 
@@ -63,6 +64,7 @@ def rewrite_generated_function(path: Path) -> Path:
         _parse_call_or_expression(),
     )
     path.write_text(source, encoding="utf-8")
+    rewrite_generated_function_control(path)
     return path
 
 

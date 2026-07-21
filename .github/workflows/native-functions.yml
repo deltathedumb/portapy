@@ -22,6 +22,8 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize legacy kwargs fixture
+        run: python tools/normalize_native_function_host_kwargs.py
       - name: Compile generated native function entry
         run: |
           python tools/build_native_functions.py \
@@ -49,6 +51,13 @@ jobs:
           ./dist/native_dict_host ./dist/libportapy-functions.so \
             | tee dist/native-dict-output.txt
           grep -qx 'native-dicts: ok' dist/native-dict-output.txt
+      - name: Execute keyword variadics from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_kwargs_host.c -ldl -o dist/native_kwargs_host
+          ./dist/native_kwargs_host ./dist/libportapy-functions.so \
+            | tee dist/native-kwargs-output.txt
+          grep -qx 'native-kwargs: ok' dist/native-kwargs-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -68,6 +77,11 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize legacy kwargs fixture
+        shell: powershell
+        run: |
+          python tools/normalize_native_function_host_kwargs.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile generated native function entry
         shell: powershell
         run: |
@@ -111,6 +125,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($output -ne 'native-dicts: ok') {
             throw "unexpected native dictionary output: $output"
+          }
+      - name: Execute keyword variadics from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_kwargs_host.c -o dist/native_kwargs_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_kwargs_host.exe dist/portapy-functions.dll
+          $output | Out-File -Encoding utf8 dist/native-kwargs-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-kwargs: ok') {
+            throw "unexpected native kwargs output: $output"
           }
       - uses: actions/upload-artifact@v4
         if: always()

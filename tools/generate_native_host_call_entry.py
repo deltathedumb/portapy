@@ -134,6 +134,7 @@ def _rename(source: str, mapping: dict[str, str]) -> str:
 def _alias_core_lifecycle(source: str) -> str:
     aliases = (
         ("_portapy_error_clear_impl", "_core_portapy_error_clear_impl"),
+        ("_portapy_runtime_create_impl", "_core_portapy_runtime_create_impl"),
         ("_portapy_runtime_destroy_impl", "_core_portapy_runtime_destroy_impl"),
     )
     for original, alias in aliases:

@@ -1,19 +1,25 @@
-"""Generate PortaPy's static native expression source entry.
+"""Generate namespace-safe native scalar and expression source entries.
 
-The native library initializer cannot safely mutate imported module functions.
-This build-time transform composes the Python-authored boolean and scalar parser
-layers into one ordinary Python module before asmpython compilation. It does not
-introduce interpreter semantics in C, assembly, or the build tool itself.
+asmpython currently lowers imported Python functions into one native symbol
+namespace. PortaPy's scalar and boolean parser layers intentionally use several
+of the same private helper names, so the scalar layer is deterministically
+prefixed before compilation. Interpreter semantics remain in the original
+Python sources; this tool only performs a build-time symbol transform.
 """
 from __future__ import annotations
 
 import argparse
+import ast
+from io import StringIO
 from pathlib import Path
+import token
+import tokenize
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BOOLEAN_SOURCE = REPOSITORY_ROOT / "src" / "portapy" / "native_api_boolean.py"
 SCALAR_SOURCE = REPOSITORY_ROOT / "src" / "portapy" / "native_api_scalar.py"
+SCALAR_PREFIX = "_scalar_"
 
 
 def _replace_function(source: str, name: str, replacement: str) -> str:
@@ -28,15 +34,68 @@ def _replace_function(source: str, name: str, replacement: str) -> str:
     return source[:start] + replacement.rstrip() + "\n\n" + source[end:]
 
 
-def _static_imports() -> str:
-    return """from .native_api_scalar import (
-    _binary,
-    _find_assignment,
-    _parse_comparison as _parse_scalar_expression,
-    _record_failure as _record_scalar_failure,
-    _release,
-    _retain_global,
-)"""
+def _prefixed(name: str) -> str:
+    return SCALAR_PREFIX + name.lstrip("_")
+
+
+def _top_level_function_names(source: str) -> tuple[str, ...]:
+    tree = ast.parse(source)
+    return tuple(
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def _rename_identifiers(source: str, mapping: dict[str, str]) -> str:
+    tokens: list[tokenize.TokenInfo] = []
+    for item in tokenize.generate_tokens(StringIO(source).readline):
+        if item.type == token.NAME and item.string in mapping:
+            item = tokenize.TokenInfo(
+                item.type,
+                mapping[item.string],
+                item.start,
+                item.end,
+                item.line,
+            )
+        tokens.append(item)
+    return tokenize.untokenize(tokens)
+
+
+def generate_namespaced_scalar_entry(output: Path) -> Path:
+    """Write a scalar parser module whose private functions cannot collide."""
+    source = SCALAR_SOURCE.read_text(encoding="utf-8")
+    names = _top_level_function_names(source)
+    mapping = {name: _prefixed(name) for name in names}
+    required = {
+        "_binary",
+        "_find_assignment",
+        "_parse_comparison",
+        "_record_failure",
+    }
+    missing = sorted(required.difference(mapping))
+    if missing:
+        raise ValueError(f"native scalar source is missing helpers: {missing}")
+
+    source = _rename_identifiers(source, mapping)
+    source = source.replace(
+        '"""Precedence-aware scalar expression entry for PortaPy.',
+        '"""Generated namespace-safe scalar expression entry for PortaPy.',
+        1,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(source, encoding="utf-8")
+    return output
+
+
+def _static_imports(scalar_module: str) -> str:
+    return f"""from .{scalar_module} import (
+    _scalar_binary,
+    _scalar_find_assignment,
+    _scalar_parse_comparison,
+    _scalar_record_failure,
+)
+from .native_api import _release, _retain_global"""
 
 
 def _find_comparison() -> str:
@@ -106,7 +165,7 @@ def _parse_scalar_complete() -> str:
     bounds = _trim_range(source, start, end)
     start = bounds[0]
     end = bounds[1]
-    parsed = _parse_scalar_expression(runtime, source, end, start)
+    parsed = _scalar_parse_comparison(runtime, source, end, start)
     if parsed[2] != PORTAPY_OK:
         return parsed
     final = _skip_space(source, end, parsed[1])
@@ -118,7 +177,7 @@ def _parse_scalar_complete() -> str:
 
 def _record_failure() -> str:
     return '''def _record_expression_failure(runtime: int, status: int, position: int) -> int:
-    return _record_scalar_failure(runtime, status, position)'''
+    return _scalar_record_failure(runtime, status, position)'''
 
 
 def _exec_statement() -> str:
@@ -130,7 +189,7 @@ def _exec_statement() -> str:
     if source_size == 0 or source == "pass":
         return _set_status(PORTAPY_OK)
 
-    assignment = _find_assignment(source, source_size)
+    assignment = _scalar_find_assignment(source, source_size)
     if assignment[0]:
         left_text = source[0:int(assignment[1])]
         left_bounds = _parse_identifier_bounds(left_text, len(left_text), 0)
@@ -149,7 +208,7 @@ def _exec_statement() -> str:
                 _release(runtime, right[0])
                 return _record_expression_failure(runtime, current[2], 0)
             operator = str(assignment[0])[:-1]
-            combined = _binary(
+            combined = _scalar_binary(
                 runtime,
                 current[0],
                 right[0],
@@ -168,15 +227,15 @@ def _exec_statement() -> str:
     return _set_status(PORTAPY_OK)'''
 
 
-def generate_native_expression_entry(output: Path) -> Path:
+def generate_native_expression_entry(output: Path, *, scalar_module: str) -> Path:
+    if not scalar_module.isidentifier():
+        raise ValueError(f"invalid generated scalar module: {scalar_module!r}")
     source = BOOLEAN_SOURCE.read_text(encoding="utf-8")
-    if not SCALAR_SOURCE.is_file():
-        raise ValueError(f"native scalar source is missing: {SCALAR_SOURCE}")
 
     old_import = "from .native_api_typed import _parse_typed_expression, _record_typed_failure"
     if old_import not in source:
         raise ValueError("boolean expression source has an unexpected scalar import")
-    source = source.replace(old_import, _static_imports(), 1)
+    source = source.replace(old_import, _static_imports(scalar_module), 1)
     source = source.replace(
         '"""Boolean and comparison expression entry for PortaPy\'s native runtime.',
         '"""Generated general expression entry for PortaPy\'s native runtime.',
@@ -195,8 +254,12 @@ def generate_native_expression_entry(output: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--scalar-module", required=True)
+    parser.add_argument("--scalar-output", type=Path)
     args = parser.parse_args(argv)
-    generate_native_expression_entry(args.output)
+    if args.scalar_output is not None:
+        generate_namespaced_scalar_entry(args.scalar_output)
+    generate_native_expression_entry(args.output, scalar_module=args.scalar_module)
     return 0
 
 

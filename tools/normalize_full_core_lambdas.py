@@ -69,6 +69,16 @@ def _normalize_ascii_file(path: Path, label: str) -> None:
     print(f"REPLACED {label} ASCII CONVERSIONS", conversion_count)
 
 
+def _target_table(source: str, marker: str, label: str) -> str:
+    if source.count(marker) != 1:
+        raise RuntimeError(f"{label}: expected one insertion marker")
+    marker_index = source.index(marker)
+    table_start = source.rfind("{", 0, marker_index)
+    if table_start < 0:
+        raise RuntimeError(f"{label}: table start not found")
+    return source[table_start:marker_index + len(marker)]
+
+
 def _insert_mapping_entries(
     source: str,
     *,
@@ -76,11 +86,10 @@ def _insert_mapping_entries(
     entries: dict[str, object],
     label: str,
 ) -> str:
-    missing = [name for name in entries if f'    "{name}":' not in source]
+    table = _target_table(source, marker, label)
+    missing = [name for name in entries if f'    "{name}":' not in table]
     if not missing:
         return source
-    if source.count(marker) != 1:
-        raise RuntimeError(f"{label}: expected one insertion marker")
     lines = "".join(f'    "{name}": {entries[name]!r},\n' for name in missing)
     return source.replace(marker, lines + marker, 1)
 
@@ -92,11 +101,10 @@ def _insert_set_entries(
     names: tuple[str, ...],
     label: str,
 ) -> str:
-    missing = [name for name in names if f'    "{name}",' not in source]
+    table = _target_table(source, marker, label)
+    missing = [name for name in names if f'    "{name}",' not in table]
     if not missing:
         return source
-    if source.count(marker) != 1:
-        raise RuntimeError(f"{label}: expected one insertion marker")
     lines = "".join(f'    "{name}",\n' for name in missing)
     return source.replace(marker, lines + marker, 1)
 

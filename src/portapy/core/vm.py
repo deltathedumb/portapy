@@ -1,14 +1,12 @@
 """Runtime entrypoint for PortaPy's Python-authored virtual machine.
 
-The full implementation remains in :mod:`portapy.core.vm_impl` so native probe
-workflows can normalize that source in an isolated checkout. This wrapper owns
-hosted runtime setup that must happen before every top-level execution.
+The implementation lives in :mod:`portapy.core.vm_impl`; this module owns the
+small amount of top-level runtime setup shared by hosted and native callers.
 """
 from __future__ import annotations
 
 from .bytecode import CodeObject
-from .vm_impl import *  # noqa: F401,F403
-from .vm_impl import VirtualMachine as _VirtualMachine
+from .vm_impl import VMError, VirtualMachine as _VirtualMachine
 
 
 class VirtualMachine(_VirtualMachine):
@@ -20,4 +18,4 @@ class VirtualMachine(_VirtualMachine):
         return super().run(code, namespace)
 
 
-__all__ = [name for name in globals() if not name.startswith("_")]
+__all__ = ["VMError", "VirtualMachine"]

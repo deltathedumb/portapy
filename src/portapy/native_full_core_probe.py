@@ -59,6 +59,8 @@ def outer(base):
 class Box:
     def __init__(self, value):
         self.value = value
+    def get(self):
+        return self.value
 fn = outer(base=19)
 box = Box(value=fn(value=total(items=values) - 19))
 def fail():
@@ -67,7 +69,7 @@ try:
     fail()
 except Exception as exc:
     traced = exc.__traceback__ is not None
-answer = box.value if traced else -1
+answer = box.get() if traced else -1
 """
     status = _portapy_exec_span_impl(runtime, source, len(source))
     if status != PORTAPY_OK:

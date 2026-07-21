@@ -52,6 +52,7 @@ def main() -> int:
             "input_mapping",
             {"left": 18, "right": 24, "nested": {"value": 42}},
         )
+        environment.set("values", [40, 2])
         environment.execute(
             "http_provider = game.provider.HttpProvider\n"
             "floor_value = math.floor(input_value)\n"
@@ -63,6 +64,29 @@ def main() -> int:
             "mapping_total = input_mapping[\"left\"] + input_mapping[\"right\"]\n"
             "mapping_size = len(input_mapping)\n"
             "mapping_result = dict_roundtrip(input_mapping)\n"
+            "def total(items):\n"
+            "    result = 0\n"
+            "    for item in items:\n"
+            "        result += item\n"
+            "    return result\n"
+            "def outer(base):\n"
+            "    def inner(value):\n"
+            "        return base + value\n"
+            "    return inner\n"
+            "class Box:\n"
+            "    def __init__(self, value):\n"
+            "        self.value = value\n"
+            "    def get(self):\n"
+            "        return self.value\n"
+            "fn = outer(base=19)\n"
+            "box = Box(value=fn(value=total(items=values) - 19))\n"
+            "def fail():\n"
+            "    return 1 // 0\n"
+            "try:\n"
+            "    fail()\n"
+            "except Exception as exc:\n"
+            "    traced = exc.__traceback__ is not None\n"
+            "full_runtime_answer = box.get() if traced else -1\n"
         )
 
         snapshot = environment.snapshot()
@@ -91,6 +115,9 @@ def main() -> int:
             "total": 42,
             "nested": {"value": 42},
         }
+        assert snapshot.var["values"] == [40, 2]
+        assert snapshot.var["traced"] is True
+        assert snapshot.var["full_runtime_answer"] == 42
 
         environment.execute(
             "answer = 7\n"

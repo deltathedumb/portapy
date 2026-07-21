@@ -23,6 +23,13 @@
     "integer shifts and bitwise expressions",
     "string and bytes concatenation and repetition",
     "typed literal evaluation for None, bool, str, and bytes",
+    "UTF-8 source literal encoding across hosted and native byte-oriented boundaries",
+    "immutable tuple literals",
+    "empty single-item multi-item and nested tuples",
+    "positive negative and chained tuple indexing",
+    "tuple-aware len truthiness and structural equality",
+    "tuple values in native functions and control flow",
+    "tuple element ownership in flat runtime handle storage",
     "equality and ordering comparisons",
     "identity comparisons with is and is not",
     "not, and, and or with operand-return semantics",
@@ -78,7 +85,9 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "variadic parameters, closures, classes, and general VM execution",
+    "public tuple extraction and automatic high-level tuple boxing",
+    "variadic parameters and native list and dictionary containers",
+    "closures, classes, and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",
     "native module import registration and loading"

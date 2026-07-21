@@ -23,6 +23,7 @@ typedef portapy_status (ABI_CALL *exec_fn)(portapy_runtime, const uint8_t *, siz
 typedef portapy_status (ABI_CALL *eval_fn)(portapy_runtime, const uint8_t *, size_t, const uint8_t *, size_t, portapy_value *);
 typedef portapy_status (ABI_CALL *get_global_fn)(portapy_runtime, const uint8_t *, size_t, portapy_value *);
 typedef portapy_status (ABI_CALL *get_kind_fn)(portapy_runtime, portapy_value, portapy_value_kind *);
+typedef portapy_status (ABI_CALL *as_bool_fn)(portapy_runtime, portapy_value, int *);
 typedef portapy_status (ABI_CALL *as_i64_fn)(portapy_runtime, portapy_value, int64_t *);
 typedef portapy_status (ABI_CALL *release_fn)(portapy_runtime, portapy_value);
 
@@ -46,6 +47,14 @@ static int evaluate_i64(eval_fn function, as_i64_fn as_i64, release_fn release, 
     return release(runtime, value) == PORTAPY_OK;
 }
 
+static int evaluate_bool(eval_fn function, as_bool_fn as_bool, release_fn release, portapy_runtime runtime, const char *source, int expected) {
+    portapy_value value = PORTAPY_NULL_VALUE;
+    int result = 0;
+    if (function(runtime, (const uint8_t *)source, strlen(source), NULL, 0, &value) != PORTAPY_OK) return 0;
+    if (as_bool(runtime, value, &result) != PORTAPY_OK || result != expected) return 0;
+    return release(runtime, value) == PORTAPY_OK;
+}
+
 static int evaluate_status(eval_fn function, portapy_runtime runtime, const char *source, portapy_status expected) {
     portapy_value value = PORTAPY_NULL_VALUE;
     return function(runtime, (const uint8_t *)source, strlen(source), NULL, 0, &value) == expected;
@@ -63,6 +72,7 @@ int main(int argc, char **argv) {
     RESOLVE(eval_fn, eval_utf8, "portapy_eval_utf8");
     RESOLVE(get_global_fn, get_global, "portapy_get_global_utf8");
     RESOLVE(get_kind_fn, get_kind, "portapy_value_get_kind");
+    RESOLVE(as_bool_fn, as_bool, "portapy_value_as_bool");
     RESOLVE(as_i64_fn, as_i64, "portapy_value_as_i64");
     RESOLVE(release_fn, release, "portapy_value_release");
 
@@ -189,10 +199,34 @@ int main(int argc, char **argv) {
     if (!evaluate_status(eval_utf8, runtime, "required(40, 2)", PORTAPY_TYPE_ERROR)) return 50;
     if (!execute_status(exec_utf8, runtime, "def bad(*args):\n    return 1\n", PORTAPY_COMPILE_ERROR)) return 51;
 
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "(1, 2, 3)[0]", 1)) return 52;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "(1, 2, 3)[-1]", 3)) return 53;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "(1, (2, 3))[1][0]", 2)) return 54;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "len(())", 0)) return 55;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "len((1, 2, 3))", 3)) return 56;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "len(\"\xC3\xA9\")", 1)) return 57;
+    if (!evaluate_bool(eval_utf8, as_bool, release, runtime, "not ()", 1)) return 58;
+    if (!evaluate_bool(eval_utf8, as_bool, release, runtime, "not (1,)", 0)) return 59;
+    if (!evaluate_bool(eval_utf8, as_bool, release, runtime, "(1, (2, 3)) == (1, (2, 3))", 1)) return 60;
+    if (!evaluate_bool(eval_utf8, as_bool, release, runtime, "(1, 2) != (1, 3)", 1)) return 61;
+    if (!evaluate_status(eval_utf8, runtime, "(1,)[2]", PORTAPY_RUNTIME_ERROR)) return 62;
+    if (!evaluate_status(eval_utf8, runtime, "(1,)[\"x\"]", PORTAPY_TYPE_ERROR)) return 63;
+
+    const char tuples[] =
+        "def summarize(values):\n"
+        "    if values:\n"
+        "        return values[0] + values[-1] + len(values)\n"
+        "    return 0\n"
+        "tuple_answer = summarize((18, 1, 20))\n"
+        "tuple_empty = summarize(())\n";
+    if (!execute(exec_utf8, runtime, tuples)) return 64;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "tuple_answer", 41)) return 65;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "tuple_empty", 0)) return 66;
+
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 52;
-    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 53;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 54;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 67;
+    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 68;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 69;
     puts("native-functions: ok");
     return 0;
 }

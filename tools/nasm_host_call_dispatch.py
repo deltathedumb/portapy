@@ -43,6 +43,12 @@ _ADAPTER_TARGETS = (
         "_portapy_cabi_global_name_byte_impl",
         "_portapy_global_name_byte_impl",
     ),
+    ("_portapy_cabi_tuple_begin_impl", "_portapy_tuple_begin_impl"),
+    ("_portapy_cabi_tuple_set_item_impl", "_portapy_tuple_set_item_impl"),
+    ("_portapy_cabi_tuple_finish_impl", "_portapy_tuple_finish_impl"),
+    ("_portapy_cabi_tuple_get_size_impl", "_portapy_tuple_get_size_impl"),
+    ("_portapy_cabi_tuple_get_item_impl", "_portapy_tuple_get_item_impl"),
+    ("_portapy_cabi_tuple_release_impl", "_portapy_tuple_release_impl"),
 )
 
 
@@ -119,22 +125,41 @@ def _abi_adapters(target: str) -> list[str]:
     return lines
 
 
+def _label_range(lines: list[str], label: str) -> tuple[int, int]:
+    start = -1
+    for index, line in enumerate(lines):
+        if line.strip() == f"{label}:":
+            start = index
+            break
+    if start < 0:
+        raise ValueError(f"generated source is missing {label}")
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        match = _LABEL.match(lines[index].strip())
+        if match is not None and not match.group("label").startswith("."):
+            end = index
+            break
+    return start, end
+
+
+def _patch_public_release(lines: list[str]) -> None:
+    start, end = _label_range(lines, "portapy_value_release")
+    replaced = False
+    for index in range(start + 1, end):
+        if lines[index].strip() == "call _portapy_value_release_impl":
+            indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
+            lines[index] = f"{indent}call _portapy_cabi_tuple_release_impl"
+            replaced = True
+            break
+    if not replaced:
+        raise ValueError("public value release wrapper has an unexpected implementation")
+
+
 def patch_host_call_dispatch(source: str, *, target: str) -> str:
     if target not in {"linux", "windows"}:
         raise ValueError(f"unsupported ABI target: {target}")
     lines = source.splitlines()
-    start = -1
-    for index, line in enumerate(lines):
-        if line.strip() == "_portapy_host_dispatch_impl:":
-            start = index
-            break
-    if start < 0:
-        raise ValueError("generated source is missing _portapy_host_dispatch_impl")
-    end = len(lines)
-    for index in range(start + 1, len(lines)):
-        if _LABEL.match(lines[index].strip()) is not None:
-            end = index
-            break
+    start, end = _label_range(lines, "_portapy_host_dispatch_impl")
 
     if target == "linux":
         replacement = [
@@ -160,6 +185,7 @@ def patch_host_call_dispatch(source: str, *, target: str) -> str:
         while insertion < len(lines) and lines[insertion].startswith(";"):
             insertion += 1
         lines.insert(insertion, extern_line)
+    _patch_public_release(lines)
     lines.extend(_abi_adapters(target))
     return "\n".join(lines) + "\n"
 

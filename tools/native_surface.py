@@ -73,12 +73,16 @@ HOST_GLUE_INTERNALS = (
     "_portapy_host_get_attr_span_impl",
 )
 
+# These are ABI-preserving assembly adapters, not the generated implementations
+# themselves. The C host-call glue links against them so asmpython's current use
+# of nonvolatile registers cannot violate the platform C ABI.
 HOST_CALL_GLUE_INTERNALS = (
-    "_portapy_value_from_host_callable_impl",
-    "_portapy_value_get_host_callable_id_impl",
-    "_portapy_host_pending_arg_count_impl",
-    "_portapy_host_pending_arg_impl",
-    "_portapy_host_dispatch_complete_impl",
+    "_portapy_cabi_last_status_impl",
+    "_portapy_cabi_value_from_host_callable_impl",
+    "_portapy_cabi_value_get_host_callable_id_impl",
+    "_portapy_cabi_host_pending_arg_count_impl",
+    "_portapy_cabi_host_pending_arg_impl",
+    "_portapy_cabi_host_dispatch_complete_impl",
 )
 
 # Compatibility constants used by older tooling and tests.

@@ -23,7 +23,7 @@ from tools.generate_native_function_entry import (
 )
 from tools.namespace_generated_module import namespace_generated_module
 from tools.python_surface import PYTHON_MODULE_EXPORTS
-from tools.rewrite_generated_function_safe import rewrite_generated_function
+from tools.rewrite_generated_function_stack import rewrite_generated_function
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,

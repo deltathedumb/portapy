@@ -11,9 +11,6 @@ import argparse
 from pathlib import Path
 import tempfile
 
-from asmpython._compiler.lexer import Lexer
-from asmpython._compiler.parser import Parser
-
 from tools.generate_native_control_entry import generate_native_control_entry
 from tools.generate_native_expression_entry import (
     generate_namespaced_scalar_entry,
@@ -101,6 +98,9 @@ def generate(target: str, directory: Path) -> Path:
 
 
 def audit(path: Path) -> None:
+    from asmpython._compiler.lexer import Lexer
+    from asmpython._compiler.parser import Parser
+
     source = path.read_text(encoding="utf-8")
     try:
         Parser(Lexer(source).tokenize()).parse()

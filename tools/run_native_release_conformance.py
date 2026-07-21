@@ -26,15 +26,31 @@ HOSTS = (
 )
 
 
-def _run(command: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         cwd=cwd,
-        check=True,
+        check=check,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+
+
+def _write_result(path: Path, result: subprocess.CompletedProcess[str]) -> str:
+    output = result.stdout.strip()
+    report = output
+    if result.returncode != 0:
+        if report:
+            report += "\n"
+        report += f"process-exit={result.returncode}"
+    path.write_text(report + "\n", encoding="utf-8")
+    return output
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for source_name, expected in HOSTS:
+        print(f"native-conformance: {source_name}", flush=True)
         source = repository / "tests" / source_name
         executable = output_dir / Path(source_name).stem
         if os.name == "nt":
@@ -68,17 +85,20 @@ def main(argv: list[str] | None = None) -> int:
         if os.name != "nt":
             compile_command.append("-ldl")
         _run(compile_command)
-        result = _run([str(executable), str(library)])
-        output = result.stdout.strip()
-        (output_dir / f"{Path(source_name).stem}.txt").write_text(
-            output + "\n", encoding="utf-8"
-        )
+        result = _run([str(executable), str(library)], check=False)
+        output_path = output_dir / f"{Path(source_name).stem}.txt"
+        output = _write_result(output_path, result)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"{source_name} exited with {result.returncode}:\n{output}"
+            )
         if expected not in output.splitlines():
             raise RuntimeError(
                 f"{source_name} did not emit {expected!r}:\n{output}"
             )
         print(expected)
 
+    print("native-conformance: native_environment_adapter_probe.py", flush=True)
     adapter = _run(
         [
             sys.executable,
@@ -86,11 +106,17 @@ def main(argv: list[str] | None = None) -> int:
             str(library),
         ],
         cwd=repository,
+        check=False,
     )
-    adapter_output = adapter.stdout.strip()
-    (output_dir / "native_environment_adapter_probe.txt").write_text(
-        adapter_output + "\n", encoding="utf-8"
+    adapter_output = _write_result(
+        output_dir / "native_environment_adapter_probe.txt",
+        adapter,
     )
+    if adapter.returncode != 0:
+        raise RuntimeError(
+            "native environment adapter exited with "
+            f"{adapter.returncode}:\n{adapter_output}"
+        )
     if "native-environment-adapter: ok" not in adapter_output.splitlines():
         raise RuntimeError(f"native environment adapter failed:\n{adapter_output}")
     print("native-environment-adapter: ok")

@@ -3,9 +3,9 @@
 The verified source payload originally named several Python-authored functions
 with the ``_portapy_cabi_`` prefix. PortaPy's linker layer reserves those names
 for register-preserving assembly adapters. This pass renames the underlying
-implementations, removes redundant forwarding wrappers, installs host-owned
-module resolution for every runtime, and preserves UTF-8 C span semantics at
-the Python-authored ABI boundary.
+implementations, removes redundant forwarding wrappers, installs explicit
+builtins and host-owned module resolution for every runtime, and preserves
+UTF-8 C span semantics at the Python-authored ABI boundary.
 """
 from __future__ import annotations
 
@@ -74,6 +74,7 @@ class _PortaPyImportLoader:
 
 _RUNTIME_CREATE_SOURCE = '''
 instance = Runtime()
+instance._vm._seed_builtins(instance._globals)
 instance.set_global("__pyinbin_import__", _PortaPyImportLoader(instance))
 _runtimes.append(instance)
 _set_status(PORTAPY_OK)
@@ -188,16 +189,19 @@ def main() -> int:
         "_PortaPyImportLoader" in classes
         and "__pyinbin_import__" in runtime_create_text
     )
-    if missing or stale or unsafe_spans or not loader_ready:
+    builtins_ready = "_seed_builtins" in runtime_create_text
+    if missing or stale or unsafe_spans or not loader_ready or not builtins_ready:
         raise RuntimeError(
             "full Runtime ABI helper normalization failed; "
             f"missing={missing}, stale={stale}, "
-            f"unsafe_utf8_spans={len(unsafe_spans)}, loader_ready={loader_ready}"
+            f"unsafe_utf8_spans={len(unsafe_spans)}, "
+            f"loader_ready={loader_ready}, builtins_ready={builtins_ready}"
         )
     print(
         "NORMALIZED FULL RUNTIME ABI HELPERS",
         len(_RENAME),
         len(_DROP),
+        "BUILTINS",
         "IMPORT_LOADER",
     )
     return 0

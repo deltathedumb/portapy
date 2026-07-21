@@ -1,8 +1,4 @@
-"""Build PortaPy's asmpython-generated native shared library.
-
-Interpreter/runtime semantics remain Python-authored. This tool only orchestrates
-asmpython, audited ABI transformations, NASM, optional C ABI glue, and linking.
-"""
+"""Build a PortaPy native shared-library probe from the Python-authored API."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +6,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shlex
 import shutil
 import subprocess
 import sys
@@ -20,14 +15,12 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from tools.elf_pic import make_elf_pic
 from tools.nasm_eval_abi import append_eval_abi
-from tools.nasm_exports import declare_exports
-from tools.nasm_float_abi import append_float_abi
-from tools.nasm_handle_abi import append_handle_abi
-from tools.nasm_module_init import make_module_initializer
-from tools.nasm_scalar_abi import append_scalar_abi
+from tools.nasm_host_abi import append_host_abi
+from tools.nasm_pic import patch_elf_pic
+from tools.nasm_runtime_wrappers import append_runtime_wrappers
 from tools.nasm_state_abi import append_state_abi
+from tools.nasm_text_error_abi import append_text_error_abi
 from tools.native_surface import (
     assembly_exports,
     linux_version_script,
@@ -37,7 +30,14 @@ from tools.native_surface import (
 
 
 class BuildFailure(RuntimeError):
-    pass
+    """Raised when a required native build step cannot be completed."""
+
+
+def _tool(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved is None:
+        raise BuildFailure(f"required build tool is unavailable: {name}")
+    return resolved
 
 
 def _sha256(path: Path) -> str:
@@ -51,103 +51,22 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _tool(name: str) -> str:
-    resolved = shutil.which(name)
-    if resolved is None:
-        raise BuildFailure(f"required native build tool is unavailable: {name}")
-    return resolved
-
-
-def _run(command: list[str], *, log: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(command: list[str], *, log: Path, env: dict[str, str] | None = None) -> None:
     completed = subprocess.run(
         command,
         cwd=REPOSITORY_ROOT,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
     )
-    if log is not None:
-        log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(completed.stdout, encoding="utf-8")
+    log.write_text(completed.stdout, encoding="utf-8")
     if completed.returncode != 0:
-        rendered = shlex.join(command)
         raise BuildFailure(
-            f"command failed with exit code {completed.returncode}: {rendered}\n"
-            f"{completed.stdout}"
+            f"command failed ({completed.returncode}): {' '.join(command)}; "
+            f"see {log}"
         )
-    return completed
-
-
-def _compile_python_source(
-    *,
-    target: str,
-    source: Path,
-    output: Path,
-    build_log: Path,
-) -> Path:
-    command = [
-        sys.executable,
-        "-m",
-        "asmpython",
-        "build",
-        str(source),
-        "--target",
-        target,
-        "--type",
-        "library",
-        "--backend",
-        "legacy",
-        "--no-pyinbin-fallback",
-        "--keep-assembly",
-        "-o",
-        str(output),
-    ]
-    completed = subprocess.run(
-        command,
-        cwd=REPOSITORY_ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    build_log.parent.mkdir(parents=True, exist_ok=True)
-    build_log.write_text(completed.stdout, encoding="utf-8")
-
-    assembly = output.with_suffix(".asm")
-    if not assembly.is_file():
-        rendered = shlex.join(command)
-        raise BuildFailure(
-            f"asmpython did not emit assembly (exit {completed.returncode}): "
-            f"{rendered}\n{completed.stdout}"
-        )
-    return assembly
-
-
-def _transform_assembly(
-    assembly: Path,
-    *,
-    target: str,
-    host_bridge: bool,
-) -> None:
-    source = assembly.read_text(encoding="utf-8")
-    source = make_module_initializer(
-        source,
-        target=target,
-        public_symbol="portapy_library_initialize",
-    )
-    source = append_handle_abi(source, target=target)
-    source = append_scalar_abi(source, target=target)
-    source = append_float_abi(source, target=target)
-    source = append_eval_abi(source, target=target)
-    source = append_state_abi(source, target=target)
-    source = declare_exports(
-        source,
-        list(assembly_exports(host_bridge=host_bridge)),
-    )
-    if target == "linux":
-        source = make_elf_pic(source)
-    assembly.write_text(source, encoding="utf-8")
 
 
 def _compile_glue(
@@ -176,6 +95,28 @@ def _compile_glue(
     _run(command, log=log)
 
 
+def _transform_assembly(
+    assembly: Path,
+    target: str,
+    *,
+    host_bridge: bool = False,
+) -> None:
+    source = assembly.read_text(encoding="utf-8")
+    source = append_runtime_wrappers(source, target=target)
+    source = append_state_abi(source, target=target)
+    source = append_eval_abi(source, target=target)
+    source = append_text_error_abi(source, target=target)
+    if host_bridge:
+        source = append_host_abi(source, target=target)
+    if target == "linux":
+        source = patch_elf_pic(
+            source,
+            external_functions=("malloc", "free", "memcpy"),
+            external_data=(),
+        )
+    assembly.write_text(source, encoding="utf-8")
+
+
 def build_native(
     *,
     target: str,
@@ -185,53 +126,51 @@ def build_native(
     host_bridge: bool = False,
 ) -> dict[str, object]:
     if target not in {"linux", "windows"}:
-        raise BuildFailure(f"unsupported native target: {target}")
+        raise ValueError(f"unsupported target: {target}")
     if not source.is_file():
-        raise BuildFailure(f"Python native API source does not exist: {source}")
+        raise BuildFailure(f"native API source is missing: {source}")
 
-    base_glue = REPOSITORY_ROOT / "native" / "text_error_glue.c"
-    if not base_glue.is_file():
-        raise BuildFailure(f"public C ABI glue does not exist: {base_glue}")
-    host_glue = REPOSITORY_ROOT / "native" / "host_object_glue.c"
-    if host_bridge and not host_glue.is_file():
-        raise BuildFailure(f"host-object C ABI glue does not exist: {host_glue}")
-
-    output = output.resolve()
-    work_dir = work_dir.resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    build_log = work_dir / f"{target}-asmpython-build.log"
-
-    assembly = _compile_python_source(
-        target=target,
-        source=source.resolve(),
-        output=output,
-        build_log=build_log,
-    )
-    _transform_assembly(
-        assembly,
-        target=target,
-        host_bridge=host_bridge,
-    )
-
+    asmpython = _tool("asmpython")
     nasm = _tool("nasm")
     gcc = _tool("gcc")
-    object_suffix = ".o" if target == "linux" else ".obj"
-    object_path = work_dir / f"portapy-python{object_suffix}"
-    base_glue_object = work_dir / f"portapy-glue{object_suffix}"
-    nasm_format = "elf64" if target == "linux" else "win64"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    suffix = ".obj" if target == "windows" else ".o"
+    assembly = output.with_suffix(".asm")
+    python_object = work_dir / f"portapy-python{suffix}"
+    base_glue_object = work_dir / f"portapy-glue{suffix}"
+    host_glue_object = work_dir / f"portapy-host-glue{suffix}"
+    traceback_stub_object = work_dir / f"portapy-traceback-filename-stub{suffix}"
+    base_glue = REPOSITORY_ROOT / "native" / "text_error_glue.c"
+    host_glue = REPOSITORY_ROOT / "native" / "host_object_glue.c"
+    traceback_stub = REPOSITORY_ROOT / "native" / "traceback_filename_stub.c"
+
+    environment = os.environ.copy()
+    existing_pythonpath = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = (
+        str(REPOSITORY_ROOT)
+        if not existing_pythonpath
+        else str(REPOSITORY_ROOT) + os.pathsep + existing_pythonpath
+    )
+
     _run(
         [
-            nasm,
-            "-f",
-            nasm_format,
-            "-w-label-redef-late",
-            str(assembly),
+            asmpython,
+            "build",
+            str(source),
+            "--target",
+            target,
             "-o",
-            str(object_path),
+            str(output),
         ],
-        log=work_dir / f"{target}-nasm.log",
+        log=work_dir / f"{target}-asmpython.log",
+        env=environment,
     )
+
+    if not assembly.is_file():
+        raise BuildFailure(f"asmpython did not emit expected assembly: {assembly}")
+    _transform_assembly(assembly, target, host_bridge=host_bridge)
 
     _compile_glue(
         gcc=gcc,
@@ -240,9 +179,14 @@ def build_native(
         output=base_glue_object,
         log=work_dir / f"{target}-glue.log",
     )
-    link_objects = [str(object_path), str(base_glue_object)]
+    _compile_glue(
+        gcc=gcc,
+        target=target,
+        source=traceback_stub,
+        output=traceback_stub_object,
+        log=work_dir / f"{target}-traceback-filename-stub.log",
+    )
     if host_bridge:
-        host_glue_object = work_dir / f"portapy-host-glue{object_suffix}"
         _compile_glue(
             gcc=gcc,
             target=target,
@@ -250,6 +194,26 @@ def build_native(
             output=host_glue_object,
             log=work_dir / f"{target}-host-glue.log",
         )
+
+    format_name = "win64" if target == "windows" else "elf64"
+    _run(
+        [
+            nasm,
+            "-f",
+            format_name,
+            str(assembly),
+            "-o",
+            str(python_object),
+        ],
+        log=work_dir / f"{target}-nasm.log",
+    )
+
+    link_objects = [
+        str(python_object),
+        str(base_glue_object),
+        str(traceback_stub_object),
+    ]
+    if host_bridge:
         link_objects.append(str(host_glue_object))
 
     if target == "linux":
@@ -295,6 +259,8 @@ def build_native(
         "source_sha256": _sha256(source),
         "abi_glue": str(base_glue.relative_to(REPOSITORY_ROOT)),
         "abi_glue_sha256": _sha256(base_glue),
+        "traceback_filename_stub": str(traceback_stub.relative_to(REPOSITORY_ROOT)),
+        "traceback_filename_stub_sha256": _sha256(traceback_stub),
         "host_bridge": host_bridge,
         "public_exports": list(public_exports(host_bridge=host_bridge)),
         "python_built_runtime": True,

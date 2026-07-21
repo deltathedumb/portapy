@@ -79,6 +79,19 @@ def _portapy_traceback_source_size_impl(runtime: int, index: int) -> int:
 def _portapy_traceback_source_byte_impl(runtime: int, index: int, byte_index: int) -> int:
     return _host_portapy_traceback_source_byte_impl(runtime, index, byte_index)
 '''
+_LIFECYCLE_FORWARDERS = '''
+
+def _portapy_error_clear_impl(runtime: int) -> int:
+    if _runtime_is_valid(runtime):
+        _portapy_traceback_reset_impl(runtime)
+    return _core_portapy_error_clear_impl(runtime)
+
+
+def _portapy_runtime_destroy_impl(runtime: int) -> int:
+    if _runtime_is_valid(runtime):
+        _portapy_traceback_reset_impl(runtime)
+    return _core_portapy_runtime_destroy_impl(runtime)
+'''
 
 
 def _rename(source: str, mapping: dict[str, str]) -> str:
@@ -96,6 +109,20 @@ def _rename(source: str, mapping: dict[str, str]) -> str:
     return tokenize.untokenize(rewritten)
 
 
+def _alias_core_lifecycle(source: str) -> str:
+    aliases = (
+        ("_portapy_error_clear_impl", "_core_portapy_error_clear_impl"),
+        ("_portapy_runtime_destroy_impl", "_core_portapy_runtime_destroy_impl"),
+    )
+    for original, alias in aliases:
+        marker = f"    {original},\n"
+        replacement = f"    {original} as {alias},\n"
+        if marker not in source:
+            raise ValueError(f"host-call source is missing lifecycle import: {original}")
+        source = source.replace(marker, replacement, 1)
+    return source
+
+
 def generate_native_host_call_entry(
     output: Path,
     *,
@@ -109,6 +136,7 @@ def generate_native_host_call_entry(
         raise ValueError("host-call source has an unexpected host import")
     if _SCALAR_IMPORT not in source:
         raise ValueError("host-call source has an unexpected scalar import")
+    source = _alias_core_lifecycle(source)
 
     host_import = f"""from .{host_module} import (
     _host_dotted_path_bounds,
@@ -183,7 +211,7 @@ def generate_native_host_call_entry(
         '"""Generated synchronous host-call entry for PortaPy.',
         1,
     )
-    source = source.rstrip() + _TRACEBACK_FORWARDERS
+    source = source.rstrip() + _TRACEBACK_FORWARDERS + _LIFECYCLE_FORWARDERS
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(source, encoding="utf-8")
     return output

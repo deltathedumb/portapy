@@ -7,10 +7,24 @@ from pathlib import Path
 PATH = Path("src/portapy/reference_api.py")
 
 _TRACEBACK_IMPORT = "import traceback\n"
-_TRACEBACK_FORMAT = '            "".join(traceback.format_exception(error)),\n'
-_NATIVE_FORMAT = (
-    '            type(error).__name__ + ": " + str(error),\n'
-)
+_CAPTURE_METHOD = '''    def _capture(self, status: Status, error: BaseException) -> Status:
+        self._last_error = ErrorInfo(
+            status,
+            type(error).__name__,
+            str(error),
+            "".join(traceback.format_exception(error)),
+        )
+        return status
+'''
+_NATIVE_CAPTURE_METHOD = '''    def _capture(self, status: Status, error: BaseException) -> Status:
+        self._last_error = ErrorInfo(
+            status,
+            "PortaPyError",
+            "PortaPy operation failed",
+            "PortaPy operation failed",
+        )
+        return status
+'''
 _SLOT = '''@dataclass
 class _Slot:
     value: object
@@ -188,7 +202,7 @@ def main() -> int:
     source = PATH.read_text(encoding="utf-8")
     replacements = (
         (_TRACEBACK_IMPORT, "", "traceback import"),
-        (_TRACEBACK_FORMAT, _NATIVE_FORMAT, "traceback formatter"),
+        (_CAPTURE_METHOD, _NATIVE_CAPTURE_METHOD, "error capture"),
         (_SLOT, _NATIVE_SLOT, "value slot"),
         (_STORE, _NATIVE_STORE, "value store"),
         (_BOX_METHODS, _NATIVE_BOX_METHODS, "scalar boxing"),

@@ -1,9 +1,10 @@
 """Make native text/bytes builders safe for the pinned compiler runtime.
 
-The compiled list-item assignment path only reliably updates index zero. C-facing
-text and bytes construction is inherently sequential, so builders append each byte
-in order and retain the requested final size for validation. UTF-8 validation also
-operates on the builder's materialized bytes rather than the builder object.
+Native local empty lists expose a sentinel slot in the pinned compiler runtime, so
+``len([])`` is not a safe byte cursor. Builders instead append to one module-owned
+byte arena and retain a start/size pair. Materialization uses a one-item seed list,
+which avoids both indexed writes and the empty-list sentinel while preserving every
+byte exactly.
 """
 from __future__ import annotations
 
@@ -13,10 +14,32 @@ from pathlib import Path
 
 PATH = Path("src/portapy/native_full_reference_entry.py")
 
+_STORAGE_SOURCE = "_native_byte_data: list[int] = [0]\n"
+
 _BUILDER_INIT = '''
 self.kind = kind
 self.size = size
-self.data: list[int] = []
+self.start = len(_native_byte_data)
+self.written = 0
+'''
+
+_DATA_BYTES = '''
+if isinstance(value, _DataBuilder):
+    if value.written != value.size:
+        raise TypeError("data builder is incomplete")
+    if value.size == 0:
+        return b""
+    data: list[int] = [_native_byte_data[value.start]]
+    index = 1
+    while index < value.size:
+        data.append(_native_byte_data[value.start + index])
+        index += 1
+    return bytes(data)
+if type(value) is str:
+    return value.encode("utf-8")
+if type(value) is bytes:
+    return value
+raise TypeError("value is not text or bytes")
 '''
 
 _SET_BYTE = '''
@@ -30,9 +53,10 @@ if not isinstance(target, _DataBuilder):
     return _set_status_code(PORTAPY_TYPE_ERROR)
 if index < 0 or index >= target.size or byte < 0 or byte > 255:
     return _set_status_code(PORTAPY_INVALID_ARGUMENT)
-if index != len(target.data):
+if index != target.written:
     return _set_status_code(PORTAPY_INVALID_ARGUMENT)
-target.data.append(byte)
+_native_byte_data.append(byte)
+target.written += 1
 return _set_status_code(PORTAPY_OK)
 '''
 
@@ -106,7 +130,10 @@ class _Rewrite(ast.NodeTransformer):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
         self.generic_visit(node)
-        if node.name == "_portapy_value_from_data_begin_impl":
+        if node.name == "_data_bytes":
+            node.body = ast.parse(_DATA_BYTES).body
+            self.functions.add(node.name)
+        elif node.name == "_portapy_value_from_data_begin_impl":
             count = _map_builder_store_kind(node)
             if count != 1:
                 raise RuntimeError(
@@ -124,9 +151,17 @@ class _Rewrite(ast.NodeTransformer):
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
+    if any(
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "_native_byte_data"
+        for node in module.body
+    ):
+        raise RuntimeError("native byte arena is already installed")
     rewriter = _Rewrite()
     module = rewriter.visit(module)
     expected = {
+        "_data_bytes",
         "_portapy_value_from_data_begin_impl",
         "_portapy_value_set_data_byte_impl",
         "_portapy_value_validate_utf8_impl",
@@ -136,6 +171,7 @@ def main() -> int:
             "native data-builder normalization missed expected shapes; "
             f"builder={rewriter.builder}, functions={sorted(rewriter.functions)}"
         )
+    module.body.extend(ast.parse(_STORAGE_SOURCE).body)
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
@@ -143,16 +179,19 @@ def main() -> int:
     verified = ast.parse(source)
     text = ast.unparse(verified)
     required = (
-        "self.size = size",
+        "_native_byte_data: list[int] = [0]",
+        "self.start = len(_native_byte_data)",
+        "self.written = 0",
         "instance._store(_DataBuilder(kind, size), _native_kind_member(kind))",
-        "index != len(target.data)",
-        "target.data.append(byte)",
+        "index != target.written",
+        "_native_byte_data.append(byte)",
+        "data: list[int] = [_native_byte_data[value.start]]",
         "_data_bytes(raw).decode('utf-8')",
     )
     absent = [marker for marker in required if marker not in text]
     if absent:
         raise RuntimeError(f"native data-builder validation failed: {absent}")
-    print("NORMALIZED NATIVE DATA BUILDERS", 4)
+    print("NORMALIZED NATIVE DATA BUILDERS", 5)
     return 0
 
 

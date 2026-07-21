@@ -6,7 +6,7 @@ small amount of top-level runtime setup shared by hosted and native callers.
 from __future__ import annotations
 
 from .bytecode import CodeObject
-from .vm_impl import VMError, VirtualMachine as _VirtualMachine
+from .vm_impl import Frame, VMError, VirtualMachine as _VirtualMachine
 
 
 class VirtualMachine(_VirtualMachine):
@@ -18,4 +18,4 @@ class VirtualMachine(_VirtualMachine):
         return super().run(code, namespace)
 
 
-__all__ = ["VMError", "VirtualMachine"]
+__all__ = ["Frame", "VMError", "VirtualMachine"]

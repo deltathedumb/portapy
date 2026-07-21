@@ -30,6 +30,50 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "src/portapy/core/vm.py": (
         (
+            "@dataclass(eq=False)\n"
+            "class Function:\n"
+            "    code: CodeObject\n"
+            "    globals: dict[str, object]\n"
+            "    defaults: list[object] = field(default_factory=list)\n"
+            "    kw_defaults: dict[str, object] = field(default_factory=dict)\n"
+            "    closure: dict[str, object] | None = None\n"
+            "    vm: \"VirtualMachine | None\" = None\n"
+            "    _metadata: dict[str, object] = field(default_factory=dict, init=False, repr=False)\n"
+            "\n"
+            "    class _CodeDescriptor:\n"
+            "        def __get__(self, instance: object, owner: type) -> object:\n"
+            "            return self if instance is None else instance.code\n"
+            "\n"
+            "    class _GlobalsDescriptor:\n"
+            "        def __get__(self, instance: object, owner: type) -> object:\n"
+            "            return self if instance is None else instance.globals\n"
+            "\n"
+            "    __code__ = _CodeDescriptor()\n"
+            "    __globals__ = _GlobalsDescriptor()",
+            "class _FunctionCodeDescriptor:\n"
+            "    def __get__(self, instance: object, owner: type) -> object:\n"
+            "        return self if instance is None else instance.code\n"
+            "\n"
+            "\n"
+            "class _FunctionGlobalsDescriptor:\n"
+            "    def __get__(self, instance: object, owner: type) -> object:\n"
+            "        return self if instance is None else instance.globals\n"
+            "\n"
+            "\n"
+            "@dataclass(eq=False)\n"
+            "class Function:\n"
+            "    code: CodeObject\n"
+            "    globals: dict[str, object]\n"
+            "    defaults: list[object] = field(default_factory=list)\n"
+            "    kw_defaults: dict[str, object] = field(default_factory=dict)\n"
+            "    closure: dict[str, object] | None = None\n"
+            "    vm: \"VirtualMachine | None\" = None\n"
+            "    _metadata: dict[str, object] = field(default_factory=dict, init=False, repr=False)\n"
+            "\n"
+            "    __code__ = _FunctionCodeDescriptor()\n"
+            "    __globals__ = _FunctionGlobalsDescriptor()",
+        ),
+        (
             "                    right = frame.stack.pop(); left = frame.stack.pop()",
             "                    right = frame.stack.pop()\n"
             "                    left = frame.stack.pop()",

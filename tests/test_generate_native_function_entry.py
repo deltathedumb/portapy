@@ -15,6 +15,7 @@ from tools.generate_native_function_entry import (
     rewrite_control_expression_imports,
 )
 from tools.namespace_generated_module import namespace_generated_module
+from tools.rewrite_generated_function import rewrite_generated_function
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,
@@ -57,11 +58,13 @@ def _generate(tmp_path: Path):
     )
     rewrite_control_expression_imports(control, expression_name)
     namespace_generated_module(control, "_ctrl_")
-    generate_native_function_entry(
-        function,
-        scalar_module=scalar_name,
-        expression_module=expression_name,
-        control_module=control_name,
+    rewrite_generated_function(
+        generate_native_function_entry(
+            function,
+            scalar_module=scalar_name,
+            expression_module=expression_name,
+            control_module=control_name,
+        )
     )
     return (
         scalar_name,
@@ -93,6 +96,10 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert " as _control_exec_span" not in function_source
     assert " as _parse_boolean_expression" not in function_source
     assert " as _retain_global" not in function_source
+    assert "str(header[0])" not in function_source
+    assert "str(header[1])" not in function_source
+    assert "str(call[0])" not in function_source
+    assert "str(assignment[0])" not in function_source
     assert "from .native_api import _last_status" not in function_source
 
 

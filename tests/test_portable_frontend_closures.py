@@ -59,3 +59,29 @@ def test_closure_instances_keep_isolated_state() -> None:
     assert namespace["left_value"] == 41
     assert namespace["right_value"] == 10
     assert namespace["answer"] == 42
+
+
+def test_nested_function_without_captures_is_bound() -> None:
+    namespace = run_source(
+        "def outer():\n"
+        "    def answer():\n"
+        "        return 42\n"
+        "    return answer()\n"
+        "value = outer()\n"
+    )
+    assert namespace["value"] == 42
+
+
+def test_same_named_nested_functions_resolve_by_scope_position() -> None:
+    namespace = run_source(
+        "def left():\n"
+        "    def value():\n"
+        "        return 20\n"
+        "    return value()\n"
+        "def right():\n"
+        "    def value():\n"
+        "        return 22\n"
+        "    return value()\n"
+        "answer = left() + right()\n"
+    )
+    assert namespace["answer"] == 42

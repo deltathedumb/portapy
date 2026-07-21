@@ -6,6 +6,7 @@ import re
 
 
 VM_PATH = Path("src/portapy/core/vm.py")
+FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 
 
 def main() -> int:
@@ -26,6 +27,20 @@ def main() -> int:
     print("REPLACED RETURNED LAMBDAS", returned_lambda_count)
     print("REPLACED MATRIX EXPRESSIONS", matrix_count)
     VM_PATH.write_text(source, encoding="utf-8")
+
+    frontend = FRONTEND_PATH.read_text(encoding="utf-8")
+    old = '            nested = _Lowerer("<lambda>", [arg.arg for arg in [*node.args.posonlyargs, *node.args.args]])'
+    new = (
+        "            lambda_arguments = list(node.args.posonlyargs)\n"
+        "            for argument in node.args.args:\n"
+        "                lambda_arguments.append(argument)\n"
+        '            nested = _Lowerer("<lambda>", [arg.arg for arg in lambda_arguments])'
+    )
+    count = frontend.count(old)
+    if count != 1:
+        raise RuntimeError(f"expected one starred lambda argument list, found {count}")
+    FRONTEND_PATH.write_text(frontend.replace(old, new, 1), encoding="utf-8")
+    print("REPLACED STARRED LAMBDA ARGUMENT LIST", count)
     return 0
 
 

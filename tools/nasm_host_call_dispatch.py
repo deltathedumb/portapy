@@ -85,30 +85,40 @@ def _linux_adapter(adapter: str, implementation: str) -> list[str]:
 
 
 def _windows_adapter(adapter: str, implementation: str) -> list[str]:
-    lines = [
-        f"{adapter}:",
-        "    push rbx",
-        "    push rbp",
-        "    push rdi",
-        "    push rsi",
-        "    push r12",
-        "    push r13",
-        "    push r14",
-        "    push r15",
-        # 32 bytes of shadow space, 160 bytes for XMM6-XMM15, and 8 bytes
-        # of alignment padding before the nested Windows x64 ABI call.
-        "    sub rsp, 200",
-    ]
+    forwards_fifth = adapter == "_portapy_cabi_dict_set_span_impl"
+    frame_size = 216 if forwards_fifth else 200
+    xmm_start = 40 if forwards_fifth else 32
+    lines = [f"{adapter}:"]
+    if forwards_fifth:
+        # The C caller's fifth integer argument is above its 32-byte shadow
+        # space. Save it before changing RSP, then place it in the nested call's
+        # corresponding stack slot.
+        lines.append("    mov r10, [rsp + 40]")
+    lines.extend(
+        [
+            "    push rbx",
+            "    push rbp",
+            "    push rdi",
+            "    push rsi",
+            "    push r12",
+            "    push r13",
+            "    push r14",
+            "    push r15",
+            f"    sub rsp, {frame_size}",
+        ]
+    )
     for register in range(6, 16):
-        offset = 32 + (register - 6) * 16
+        offset = xmm_start + (register - 6) * 16
         lines.append(f"    movdqu [rsp + {offset}], xmm{register}")
+    if forwards_fifth:
+        lines.append("    mov [rsp + 32], r10")
     lines.append(f"    call {implementation}")
     for register in range(6, 16):
-        offset = 32 + (register - 6) * 16
+        offset = xmm_start + (register - 6) * 16
         lines.append(f"    movdqu xmm{register}, [rsp + {offset}]")
     lines.extend(
         [
-            "    add rsp, 200",
+            f"    add rsp, {frame_size}",
             "    pop r15",
             "    pop r14",
             "    pop r13",

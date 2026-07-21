@@ -1,8 +1,8 @@
-"""Build PortaPy using the generated general-expression native entry.
+"""Build PortaPy's generated control-flow and expression native entry.
 
 The historical filename remains as a compatibility shim for existing CI and
 release workflows. The default build statically composes the Python-authored
-boolean and scalar parser layers before invoking asmpython.
+scalar, boolean, and control-flow layers before invoking asmpython.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from tools.build_native import BuildFailure, build_native
+from tools.generate_native_control_entry import generate_native_control_entry
 from tools.generate_native_expression_entry import generate_native_expression_entry
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
@@ -30,16 +31,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     source = args.source
-    generated = False
+    generated_paths: list[Path] = []
     if source is None:
-        source = (
-            REPOSITORY_ROOT
-            / "src"
-            / "portapy"
-            / f"_native_api_generated_{args.target}.py"
+        package = REPOSITORY_ROOT / "src" / "portapy"
+        expression_module = f"_native_api_expressions_generated_{args.target}"
+        expression_source = package / f"{expression_module}.py"
+        control_source = package / f"_native_api_control_generated_{args.target}.py"
+        generate_native_expression_entry(expression_source)
+        generate_native_control_entry(
+            control_source,
+            expression_module=expression_module,
         )
-        generate_native_expression_entry(source)
-        generated = True
+        generated_paths.extend([expression_source, control_source])
+        source = control_source
 
     try:
         metadata = build_native(
@@ -49,21 +53,23 @@ def main(argv: list[str] | None = None) -> int:
             work_dir=args.work_dir,
         )
     except (BuildFailure, ValueError) as error:
-        print(f"portapy expression native build failed: {error}", file=sys.stderr)
+        print(f"portapy native build failed: {error}", file=sys.stderr)
         return 1
     finally:
-        if generated:
-            source.unlink(missing_ok=True)
+        for generated_path in generated_paths:
+            generated_path.unlink(missing_ok=True)
 
-    metadata["generated_expression_entry"] = generated
+    metadata["generated_expression_entry"] = bool(generated_paths)
+    metadata["generated_control_entry"] = bool(generated_paths)
     metadata["semantic_sources"] = [
         "src/portapy/native_api.py",
         "src/portapy/native_api_typed.py",
         "src/portapy/native_api_scalar.py",
         "src/portapy/native_api_boolean.py",
+        "src/portapy/native_api_control.py",
     ]
     metadata["python_module_exports"] = list(PYTHON_MODULE_EXPORTS)
-    metadata["python_module_entry"] = "portapy.public_api"
+    metadata["python_module_entry"] = "portapy"
     metadata_path = args.output.resolve().with_suffix(args.output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metadata, sort_keys=True))

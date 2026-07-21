@@ -69,7 +69,7 @@ def test_traceback_rewrite_instruments_function_unwind(tmp_path: Path) -> None:
     path.write_text(
         "_MAX_CALL_DEPTH = 128\n"
         "def invoke():\n"
-        + "\n".join("    " + line if line else "" for line in _EXECUTION_BLOCK.splitlines())
+        + _EXECUTION_BLOCK
         + "\n",
         encoding="utf-8",
     )

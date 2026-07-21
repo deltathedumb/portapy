@@ -165,10 +165,34 @@ int main(int argc, char **argv) {
     if (!execute_status(exec_utf8, runtime, invalid_redefinition, PORTAPY_NOT_FOUND)) return 40;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "stable()", 6)) return 41;
 
+    const char parameter_kinds[] =
+        "seed = 3\n"
+        "def route(left, /, right=2, *, scale=3):\n"
+        "    return (left + right) * scale\n"
+        "def required(value, *, offset):\n"
+        "    return value + offset\n"
+        "def marker_capture(value=seed, /, *, offset=2):\n"
+        "    return value + offset\n"
+        "seed = 100\n"
+        "qualified = route(10, scale=4)\n"
+        "marker_mixed = route(18, right=3, scale=2)\n"
+        "required_result = required(40, offset=2)\n"
+        "marker_captured = marker_capture()\n";
+    if (!execute(exec_utf8, runtime, parameter_kinds)) return 42;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "qualified", 48)) return 43;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "marker_mixed", 42)) return 44;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "required_result", 42)) return 45;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "marker_captured", 5)) return 46;
+    if (!evaluate_status(eval_utf8, runtime, "route(left=10)", PORTAPY_TYPE_ERROR)) return 47;
+    if (!evaluate_status(eval_utf8, runtime, "route(10, 2, 4)", PORTAPY_TYPE_ERROR)) return 48;
+    if (!evaluate_status(eval_utf8, runtime, "required(40)", PORTAPY_TYPE_ERROR)) return 49;
+    if (!evaluate_status(eval_utf8, runtime, "required(40, 2)", PORTAPY_TYPE_ERROR)) return 50;
+    if (!execute_status(exec_utf8, runtime, "def bad(*args):\n    return 1\n", PORTAPY_COMPILE_ERROR)) return 51;
+
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 42;
-    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 43;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 44;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 52;
+    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 53;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 54;
     puts("native-functions: ok");
     return 0;
 }

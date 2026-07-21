@@ -1,11 +1,11 @@
-"""Final scope and loop-target layer for the standalone PortaPy frontend."""
+"""Final scope, async, and loop-target layer for the standalone PortaPy frontend."""
 from __future__ import annotations
 
 from portapy.parser import ast_nodes as A
-from portapy.parser import parse_source
 
 from . import portable_frontend_unpacking as _unpacking
-from .bytecode import Op
+from .bytecode import CodeObject, Op
+from .portable_parser import parse_portable_source
 
 
 PortableFrontendError = _unpacking.PortableFrontendError
@@ -20,9 +20,24 @@ def _position_key(node: object) -> tuple[int, int]:
 
 
 class _PortableLowerer(_unpacking._PortableLowerer):
-    """Add exact lifted-function binding and unpacking ``for`` targets."""
+    """Add exact lifted binding, coroutine lowering, and unpacking loops."""
 
     lifted_functions_by_position: dict[tuple[int, int], A.FuncDef] = {}
+
+    def compile_function_code(self, node: A.FuncDef) -> CodeObject:
+        code = super().compile_function_code(node)
+        if getattr(node, "is_async", False):
+            code.is_coroutine = True
+            code.is_async_generator = bool(code.is_generator)
+            code.validate()
+        return code
+
+    def expression(self, node: A.Expr) -> None:
+        if isinstance(node, A.UnaryOp) and node.op == "await":
+            self.expression(node.operand)
+            self.emit(Op.AWAIT)
+            return
+        super().expression(node)
 
     def lower_unpacking_for(self, node: A.For) -> None:
         if node.iter is not None:
@@ -72,14 +87,45 @@ _unpacking._comprehensions._control._PortableLowerer = _PortableLowerer
 _unpacking._comprehensions._control._base._PortableLowerer = _PortableLowerer
 
 
-def compile_portable_source(source: str, filename: str = "<portapy>"):
-    parsed = parse_source(source)
+def compile_portable_source(
+    source: str,
+    filename: str = "<portapy>",
+) -> CodeObject:
+    """Parse and lower once, entirely through PortaPy-owned components."""
+    parsed = parse_portable_source(source)
+    _PortableLowerer.function_definitions = {
+        function.name: function for function in parsed.funcs
+    }
+    _PortableLowerer.function_code_cache = {}
     _PortableLowerer.lifted_functions_by_position = {
         _position_key(function): function
         for function in parsed.funcs
         if function.is_lifted
     }
-    return _unpacking.compile_portable_source(source, filename)
+    lowerer = _PortableLowerer(filename)
+
+    ordered: list[tuple[int, int, str, object]] = []
+    sequence = 0
+    for class_definition in parsed.classes:
+        ordered.append((class_definition.pos.line, sequence, "class", class_definition))
+        sequence += 1
+    for function in parsed.funcs:
+        if function.is_lifted:
+            continue
+        ordered.append((function.pos.line, sequence, "function", function))
+        sequence += 1
+    for statement in parsed.body:
+        ordered.append((statement.pos.line, sequence, "statement", statement))
+        sequence += 1
+
+    for _line, _sequence, kind, node in sorted(ordered):
+        if kind == "class":
+            lowerer.class_definition(node)
+        elif kind == "function":
+            lowerer.function(node)
+        else:
+            lowerer.statement(node)
+    return lowerer.finish()
 
 
 __all__ = ["PortableFrontendError", "compile_portable_source"]

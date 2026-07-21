@@ -23,7 +23,17 @@ extern uint64_t _portapy_cabi_host_dispatch_complete_impl(
     int64_t status,
     uint64_t result
 );
-
+extern int _portapy_environment_is_direct_callable(
+    uint64_t runtime,
+    uint64_t callable_id
+);
+extern portapy_status _portapy_environment_dispatch_direct(
+    uint64_t runtime,
+    uint64_t callable_id,
+    const portapy_value *arguments,
+    size_t argument_count,
+    portapy_value *out_result
+);
 
 typedef struct host_handler_slot {
     portapy_runtime runtime;
@@ -126,8 +136,9 @@ portapy_status PORTAPY_CALL portapy_value_get_host_callable_id(
 }
 
 uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id) {
+    int direct = _portapy_environment_is_direct_callable(runtime, callable_id);
     host_handler_slot *slot = find_slot(runtime);
-    if (slot == NULL || slot->handler == NULL) {
+    if (!direct && (slot == NULL || slot->handler == NULL)) {
         return _portapy_cabi_host_dispatch_complete_impl(
             runtime,
             PORTAPY_INTERRUPTED,
@@ -173,14 +184,24 @@ uint64_t _portapy_host_dispatch_callback(uint64_t runtime, uint64_t callable_id)
     }
 
     portapy_value result = PORTAPY_NULL_VALUE;
-    status = slot->handler(
-        slot->context,
-        runtime,
-        callable_id,
-        arguments,
-        count,
-        &result
-    );
+    if (direct) {
+        status = _portapy_environment_dispatch_direct(
+            runtime,
+            callable_id,
+            arguments,
+            count,
+            &result
+        );
+    } else {
+        status = slot->handler(
+            slot->context,
+            runtime,
+            callable_id,
+            arguments,
+            count,
+            &result
+        );
+    }
     free(arguments);
     return _portapy_cabi_host_dispatch_complete_impl(runtime, status, result);
 }

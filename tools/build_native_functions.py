@@ -23,6 +23,7 @@ from tools.generate_native_function_entry import (
 )
 from tools.namespace_generated_module import namespace_generated_module
 from tools.python_surface import PYTHON_MODULE_EXPORTS
+from tools.rewrite_generated_function import rewrite_generated_function
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,
@@ -85,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             expression_module=expression_module,
             control_module=control_module,
         )
+        rewrite_generated_function(function_source)
 
         metadata = build_native(
             target=args.target,
@@ -106,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["namespaced_expression_helpers"] = True
     metadata["namespaced_control_helpers"] = True
     metadata["native_safe_parser_rewrite"] = True
+    metadata["native_safe_function_rewrite"] = True
     metadata["semantic_sources"] = [
         "src/portapy/native_api.py",
         "src/portapy/native_api_typed.py",

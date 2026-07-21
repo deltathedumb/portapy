@@ -13,6 +13,7 @@
 #define ABI_CALL
 #endif
 
+typedef int32_t (ABI_CALL *init_fn)(void);
 typedef int64_t (ABI_CALL *probe_fn)(void);
 
 int main(int argc, char **argv) {
@@ -20,17 +21,20 @@ int main(int argc, char **argv) {
     void *library = LOAD_LIBRARY(argv[1]);
     if (library == NULL) return 3;
 
+    init_fn initialize = (init_fn)(uintptr_t)LOAD_SYMBOL(
+        library,
+        "portapy_library_initialize"
+    );
     probe_fn parse_probe = (probe_fn)(uintptr_t)LOAD_SYMBOL(
         library,
         "portapy_full_core_parse_probe"
     );
-    if (parse_probe == NULL) return 4;
-
     probe_fn probe = (probe_fn)(uintptr_t)LOAD_SYMBOL(
         library,
         "portapy_full_core_probe"
     );
-    if (probe == NULL) return 5;
+    if (initialize == NULL || parse_probe == NULL || probe == NULL) return 4;
+    if (initialize() != 0) return 5;
 
     int64_t parsed_instructions = parse_probe();
     fprintf(stderr, "full-core-parse=%lld\n", (long long)parsed_instructions);

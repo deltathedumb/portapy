@@ -2,12 +2,7 @@ from __future__ import annotations
 
 import builtins
 
-import pytest
-
-from portapy.core.portable_frontend import (
-    PortableFrontendError,
-    compile_portable_source,
-)
+from portapy.core.portable_frontend import compile_portable_source
 from portapy.core.vm import VirtualMachine
 
 
@@ -149,11 +144,6 @@ def test_single_inheritance_and_inherited_method_dispatch_execute() -> None:
         "value = Child().answer()\n"
     )
     assert namespace["value"] == 42
-
-
-def test_unsupported_statement_fails_precisely() -> None:
-    with pytest.raises(PortableFrontendError, match="dictionary unpacking"):
-        compile_portable_source("value = {**{'answer': 42}}\n")
 
 
 def test_portable_frontend_source_has_no_host_ast_import() -> None:

@@ -99,6 +99,7 @@ jobs:
       - name: Install quietly
         shell: powershell
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           $installLog = Join-Path $env:RUNNER_TEMP 'portapy-install-windows.log'
           & .\tools\install_windows_toolchain.ps1 *>> $installLog
           if ($LASTEXITCODE -ne 0) { Get-Content $installLog; exit $LASTEXITCODE }

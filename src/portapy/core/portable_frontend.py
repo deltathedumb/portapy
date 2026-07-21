@@ -20,9 +20,30 @@ def _position_key(node: object) -> tuple[int, int]:
 
 
 class _PortableLowerer(_unpacking._PortableLowerer):
-    """Add exact lifted binding, coroutine lowering, and unpacking loops."""
+    """Add exact lifted binding, coroutine lowering, and source metadata."""
 
     lifted_functions_by_position: dict[tuple[int, int], A.FuncDef] = {}
+    source_filename = "<portapy>"
+    source_lines: list[str] = []
+
+    def mark_position(self, node: object) -> None:
+        position = getattr(node, "pos", None)
+        self.current_line = int(getattr(position, "line", 0))
+        self.current_column = int(getattr(position, "column", 0))
+
+    def emit(self, op: int, arg: int = 0) -> int:
+        offset = super().emit(op, arg)
+        lines = getattr(self, "instruction_lines", None)
+        columns = getattr(self, "instruction_columns", None)
+        if lines is None:
+            lines = []
+            self.instruction_lines = lines
+        if columns is None:
+            columns = []
+            self.instruction_columns = columns
+        lines.append(int(getattr(self, "current_line", 0)))
+        columns.append(int(getattr(self, "current_column", 0)))
+        return offset
 
     def compile_function_code(self, node: A.FuncDef) -> CodeObject:
         code = super().compile_function_code(node)
@@ -32,7 +53,16 @@ class _PortableLowerer(_unpacking._PortableLowerer):
             code.validate()
         return code
 
+    def function(self, node: A.FuncDef) -> None:
+        self.mark_position(node)
+        super().function(node)
+
+    def class_definition(self, node: A.ClassDef) -> None:
+        self.mark_position(node)
+        super().class_definition(node)
+
     def expression(self, node: A.Expr) -> None:
+        self.mark_position(node)
         if isinstance(node, A.UnaryOp) and node.op == "await":
             self.expression(node.operand)
             self.emit(Op.AWAIT)
@@ -40,6 +70,7 @@ class _PortableLowerer(_unpacking._PortableLowerer):
         super().expression(node)
 
     def lower_unpacking_for(self, node: A.For) -> None:
+        self.mark_position(node)
         if node.iter is not None:
             self.expression(node.iter)
         else:
@@ -61,6 +92,7 @@ class _PortableLowerer(_unpacking._PortableLowerer):
         self.finish_loop(len(self.instructions))
 
     def statement(self, node: A.Stmt) -> None:
+        self.mark_position(node)
         if isinstance(node, A.ClosureBind):
             definition = self.lifted_functions_by_position.get(_position_key(node))
             if definition is None:
@@ -80,6 +112,16 @@ class _PortableLowerer(_unpacking._PortableLowerer):
             return
         super().statement(node)
 
+    def finish(self) -> CodeObject:
+        code = super().finish()
+        code.filename = self.source_filename
+        code.source_lines = list(self.source_lines)
+        code.instruction_lines = list(getattr(self, "instruction_lines", []))
+        code.instruction_columns = list(getattr(self, "instruction_columns", []))
+        nonzero = [line for line in code.instruction_lines if line > 0]
+        code.first_line = min(nonzero) if nonzero else 1
+        return code
+
 
 _unpacking._PortableLowerer = _PortableLowerer
 _unpacking._comprehensions._PortableLowerer = _PortableLowerer
@@ -87,7 +129,11 @@ _unpacking._comprehensions._control._PortableLowerer = _PortableLowerer
 _unpacking._comprehensions._control._base._PortableLowerer = _PortableLowerer
 
 
-def _configure_lowerer(parsed: A.Module, filename: str) -> _PortableLowerer:
+def _configure_lowerer(
+    parsed: A.Module,
+    filename: str,
+    source: str,
+) -> _PortableLowerer:
     _PortableLowerer.function_definitions = {
         function.name: function for function in parsed.funcs
     }
@@ -97,6 +143,8 @@ def _configure_lowerer(parsed: A.Module, filename: str) -> _PortableLowerer:
         for function in parsed.funcs
         if function.is_lifted
     }
+    _PortableLowerer.source_filename = filename
+    _PortableLowerer.source_lines = source.splitlines()
     return _PortableLowerer(filename)
 
 
@@ -145,7 +193,7 @@ def compile_portable_source(
         parse_source = f"{result_name} = ({source})\n"
 
     parsed = parse_portable_source(parse_source)
-    lowerer = _configure_lowerer(parsed, filename)
+    lowerer = _configure_lowerer(parsed, filename, parse_source)
 
     lone_expression = (
         mode == "single"

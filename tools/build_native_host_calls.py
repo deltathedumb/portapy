@@ -11,13 +11,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from tools.build_native import (
-    BuildFailure,
-    _run,
-    _sha256,
-    _tool,
-    build_native,
-)
+from tools.build_native import BuildFailure, _run, _sha256, _tool, build_native
 from tools.generate_native_control_entry import generate_native_control_entry
 from tools.generate_native_expression_entry import (
     generate_namespaced_scalar_entry,
@@ -33,6 +27,7 @@ from tools.nasm_exports import declare_exports
 from tools.nasm_host_call_dispatch import patch_host_call_dispatch
 from tools.namespace_generated_module import namespace_generated_module
 from tools.native_surface import (
+    ENVIRONMENT_GLUE_INTERNALS,
     HOST_CALL_GLUE_INTERNALS,
     linux_version_script,
     public_exports,
@@ -48,10 +43,11 @@ from tools.rewrite_generated_parser_safe import (
 )
 
 
-def _compile_host_call_glue(
+def _compile_bridge_glue(
     *,
     gcc: str,
     target: str,
+    source: Path,
     output: Path,
     log: Path,
 ) -> None:
@@ -65,7 +61,7 @@ def _compile_host_call_glue(
         "-I",
         str(REPOSITORY_ROOT / "include"),
         "-c",
-        str(REPOSITORY_ROOT / "native" / "host_call_glue.c"),
+        str(source),
         "-o",
         str(output),
     ]
@@ -83,7 +79,10 @@ def _upgrade_linked_artifact(
     assembly = output.with_suffix(".asm")
     source = assembly.read_text(encoding="utf-8")
     source = patch_host_call_dispatch(source, target=target)
-    source = declare_exports(source, list(HOST_CALL_GLUE_INTERNALS))
+    source = declare_exports(
+        source,
+        list(HOST_CALL_GLUE_INTERNALS + ENVIRONMENT_GLUE_INTERNALS),
+    )
     assembly.write_text(source, encoding="utf-8")
 
     nasm = _tool("nasm")
@@ -91,6 +90,7 @@ def _upgrade_linked_artifact(
     suffix = ".o" if target == "linux" else ".obj"
     python_object = work_dir / f"portapy-python{suffix}"
     call_object = work_dir / f"portapy-host-call-glue{suffix}"
+    environment_object = work_dir / f"portapy-environment-glue{suffix}"
     _run(
         [
             nasm,
@@ -103,11 +103,19 @@ def _upgrade_linked_artifact(
         ],
         log=work_dir / f"{target}-host-call-nasm.log",
     )
-    _compile_host_call_glue(
+    _compile_bridge_glue(
         gcc=gcc,
         target=target,
+        source=REPOSITORY_ROOT / "native" / "host_call_glue.c",
         output=call_object,
         log=work_dir / f"{target}-host-call-glue.log",
+    )
+    _compile_bridge_glue(
+        gcc=gcc,
+        target=target,
+        source=REPOSITORY_ROOT / "native" / "environment_glue.c",
+        output=environment_object,
+        log=work_dir / f"{target}-environment-glue.log",
     )
 
     objects = [
@@ -115,6 +123,7 @@ def _upgrade_linked_artifact(
         str(work_dir / f"portapy-glue{suffix}"),
         str(work_dir / f"portapy-host-glue{suffix}"),
         str(call_object),
+        str(environment_object),
     ]
     if target == "linux":
         version_script = work_dir / "portapy-host-calls.map"
@@ -228,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["size"] = output.stat().st_size
     metadata["sha256"] = _sha256(output)
     metadata["host_calls"] = True
+    metadata["native_environment_adapter"] = True
     metadata["generated_host_call_entry"] = True
     metadata["native_safe_host_call_rewrite"] = True
     metadata["host_call_glue_reserves_rbx"] = True
@@ -245,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         "src/portapy/native_api_functions.py",
         "src/portapy/native_api_host.py",
         "src/portapy/native_api_host_calls.py",
+        "src/portapy/native_api_environment.py",
     ]
     metadata_path = output.with_suffix(output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

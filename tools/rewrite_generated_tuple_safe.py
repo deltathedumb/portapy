@@ -3,7 +3,45 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.rewrite_generated_parser import _replace_function
 from tools.rewrite_generated_tuple import rewrite_generated_tuple as _rewrite
+
+
+def _equal() -> str:
+    return r'''def _scalar_equal(left: int, right: int) -> bool:
+    left_kind = _value_kind[left]
+    right_kind = _value_kind[right]
+    if (left_kind == PORTAPY_VALUE_INT or left_kind == PORTAPY_VALUE_BOOL) and (
+        right_kind == PORTAPY_VALUE_INT or right_kind == PORTAPY_VALUE_BOOL
+    ):
+        return _value_i64[left] == _value_i64[right]
+    if left_kind != right_kind:
+        return False
+    if left_kind == PORTAPY_VALUE_NONE:
+        return True
+    if left_kind == 3:
+        left_bits = _value_i64[left]
+        right_bits = _value_i64[right]
+        if (left_bits == 0 or left_bits == -9223372036854775808) and (
+            right_bits == 0 or right_bits == -9223372036854775808
+        ):
+            return True
+        return left_bits == right_bits
+    if left_kind == PORTAPY_VALUE_STRING or left_kind == PORTAPY_VALUE_BYTES:
+        return _scalar_data_order(left, right) == 0
+    if left_kind == PORTAPY_VALUE_TUPLE:
+        size = _scalar_tuple_size_unchecked(left)
+        if _scalar_tuple_size_unchecked(right) != size:
+            return False
+        index = 0
+        while index < size:
+            left_item = _scalar_tuple_item_unchecked(left, index)
+            right_item = _scalar_tuple_item_unchecked(right, index)
+            if left_item == 0 or right_item == 0 or not _scalar_equal(left_item, right_item):
+                return False
+            index += 1
+        return True
+    return left == right'''
 
 
 def _data_literal_helpers() -> str:
@@ -78,7 +116,7 @@ def _scalar_parse_data_literal(
                     return [0, position, status]
                 index += 1
             if kind == PORTAPY_VALUE_STRING:
-                status = _validate_utf8_value(runtime, value)
+                status = _portapy_value_validate_utf8_impl(runtime, value)
                 if status != PORTAPY_OK:
                     _value_refs[value] -= 1
                     return [0, position, status]
@@ -137,6 +175,7 @@ def _scalar_parse_data_literal(
 def rewrite_generated_tuple(path: Path) -> Path:
     _rewrite(path)
     source = path.read_text(encoding="utf-8")
+    source = _replace_function(source, "_scalar_equal", _equal())
     marker = "def _scalar_parse_atom("
     location = source.find(marker)
     if location < 0:

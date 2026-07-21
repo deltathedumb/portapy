@@ -153,38 +153,38 @@ def _portapy_traceback_function_size_impl(runtime: int, wanted: int) -> int:
     slot = _traceback_slot(runtime, wanted)
     if slot == 0:
         return 0
-    return len(_traceback_function[slot].encode("utf-8"))
+    return len(_traceback_function[slot])
 
 
-def _portapy_traceback_function_byte_impl(runtime: int, wanted: int, byte_index: int) -> int:
+def _portapy_traceback_function_byte_impl(runtime: int, wanted: int, character_index: int) -> int:
     slot = _traceback_slot(runtime, wanted)
     if slot == 0:
         return 0
-    data = _traceback_function[slot].encode("utf-8")
-    if byte_index < 0 or byte_index >= len(data):
+    data = _traceback_function[slot]
+    if character_index < 0 or character_index >= len(data):
         _set_status(PORTAPY_INVALID_ARGUMENT)
         return 0
     _set_status(PORTAPY_OK)
-    return data[byte_index]
+    return ord(data[character_index])
 
 
 def _portapy_traceback_source_size_impl(runtime: int, wanted: int) -> int:
     slot = _traceback_slot(runtime, wanted)
     if slot == 0:
         return 0
-    return len(_traceback_source[slot].encode("utf-8"))
+    return len(_traceback_source[slot])
 
 
-def _portapy_traceback_source_byte_impl(runtime: int, wanted: int, byte_index: int) -> int:
+def _portapy_traceback_source_byte_impl(runtime: int, wanted: int, character_index: int) -> int:
     slot = _traceback_slot(runtime, wanted)
     if slot == 0:
         return 0
-    data = _traceback_source[slot].encode("utf-8")
-    if byte_index < 0 or byte_index >= len(data):
+    data = _traceback_source[slot]
+    if character_index < 0 or character_index >= len(data):
         _set_status(PORTAPY_INVALID_ARGUMENT)
         return 0
     _set_status(PORTAPY_OK)
-    return data[byte_index]'''
+    return ord(data[character_index])'''
 
 
 def rewrite_generated_traceback(path: Path) -> Path:

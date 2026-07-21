@@ -27,37 +27,63 @@ _SEED_REPLACEMENT = (
     "    machine._seed_builtins(namespace)\n"
 )
 _TYPED_REPLACEMENTS = (
-    ("_full_runtime_machines = [None]", "_full_runtime_machines: list[object] = [None]", 1),
+    ("_full_runtime_machines = [None]", "_full_runtime_machines: list[object] = [None]"),
     (
         "_full_runtime_namespaces = [None]",
         "_full_runtime_namespaces: list[dict[str, object]] = [{}]",
-        1,
     ),
     (
         "_full_runtime_reserved = [None]",
         "_full_runtime_reserved: list[dict[str, object]] = [{}]",
-        1,
     ),
-    ("_full_runtime_users = [None]", "_full_runtime_users: list[list[str]] = [[]]", 1),
-    ("_full_object_value = [None]", "_full_object_value: list[object] = [None]", 1),
-    ("    namespace = {\n", "    namespace: dict[str, object] = {\n", 1),
-    ("        self.trace_frames = []", "        self.trace_frames: list[object] = []", 1),
-    ("        result = []", "        result: list[object] = []", 2),
-    ("        result = {}", "        result: dict[str, object] = {}", 1),
-    ("        _full_runtime_namespaces[slot] = None", "        _full_runtime_namespaces[slot] = {}", 1),
-    ("        _full_runtime_reserved[slot] = None", "        _full_runtime_reserved[slot] = {}", 1),
-    ("        _full_runtime_users[slot] = None", "        _full_runtime_users[slot] = []", 1),
+    ("_full_runtime_users = [None]", "_full_runtime_users: list[list[str]] = [[]]"),
+    ("_full_object_value = [None]", "_full_object_value: list[object] = [None]"),
+    (
+        "def _full_ensure_runtime(runtime: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        return 0\n"
+        "    existing = _full_runtime_slot(runtime)\n"
+        "    if existing != 0:\n"
+        "        return existing\n"
+        "    namespace = {\n",
+        "def _full_ensure_runtime(runtime: int) -> int:\n"
+        "    if not _runtime_is_valid(runtime):\n"
+        "        return 0\n"
+        "    existing = _full_runtime_slot(runtime)\n"
+        "    if existing != 0:\n"
+        "        return existing\n"
+        "    namespace: dict[str, object] = {\n",
+    ),
+    (
+        "        self.runtime = runtime\n        self.trace_frames = []",
+        "        self.runtime = runtime\n        self.trace_frames: list[object] = []",
+    ),
+    (
+        "    if kind == PORTAPY_VALUE_TUPLE:\n        result = []",
+        "    if kind == PORTAPY_VALUE_TUPLE:\n        result: list[object] = []",
+    ),
+    (
+        "    if kind == PORTAPY_VALUE_LIST:\n        result = []",
+        "    if kind == PORTAPY_VALUE_LIST:\n        result: list[object] = []",
+    ),
+    (
+        "    if kind == PORTAPY_VALUE_DICT:\n        result = {}",
+        "    if kind == PORTAPY_VALUE_DICT:\n        result: dict[str, object] = {}",
+    ),
+    ("        _full_runtime_namespaces[slot] = None", "        _full_runtime_namespaces[slot] = {}"),
+    ("        _full_runtime_reserved[slot] = None", "        _full_runtime_reserved[slot] = {}"),
+    ("        _full_runtime_users[slot] = None", "        _full_runtime_users[slot] = []"),
 )
 
 
 def _apply_typed_replacements(source: str) -> str:
-    for old, new, expected in _TYPED_REPLACEMENTS:
+    for old, new in _TYPED_REPLACEMENTS:
         count = source.count(old)
-        if count != expected:
+        if count != 1:
             raise ValueError(
                 f"generated full runtime typing target has {count} matches: {old!r}"
             )
-        source = source.replace(old, new)
+        source = source.replace(old, new, 1)
     return source
 
 

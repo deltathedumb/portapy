@@ -7,7 +7,7 @@ from tools import materialize_full_reference_entry as materializer
 from tools import normalize_full_reference_abi_helpers as normalizer
 
 
-def test_full_reference_normalization_installs_import_loader_and_utf8_spans(
+def test_full_reference_normalization_installs_runtime_support(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -35,6 +35,7 @@ def test_full_reference_normalization_installs_import_loader_and_utf8_spans(
         and node.name == "_portapy_runtime_create_impl"
     )
     runtime_source = ast.unparse(runtime_create)
+    assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
     assert "_PortaPyImportLoader(instance)" in runtime_source
     assert "__pyinbin_import__" in runtime_source
 

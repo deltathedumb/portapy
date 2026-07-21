@@ -106,21 +106,66 @@ def test_sources_without_functions_keep_existing_control_flow() -> None:
     assert _eval_int(runtime, "answer") == 8
 
 
-def test_compound_statement_inside_function_has_explicit_gate() -> None:
+def test_if_else_and_nested_return_inside_function() -> None:
     runtime = _runtime()
-    status = functions._portapy_exec_span_impl(
+    _exec(
         runtime,
         "def choose(value):\n"
-        "    if value:\n"
-        "        return 1\n"
-        "    return 0\n"
-        "answer = choose(1)\n",
-        len(
-            "def choose(value):\n"
-            "    if value:\n"
-            "        return 1\n"
-            "    return 0\n"
-            "answer = choose(1)\n"
-        ),
+        "    if value > 0:\n"
+        "        if value > 10:\n"
+        "            return 42\n"
+        "        return 7\n"
+        "    else:\n"
+        "        return -1\n"
+        "large = choose(20)\n"
+        "small = choose(2)\n"
+        "negative = choose(-2)\n",
     )
-    assert status == base.PORTAPY_COMPILE_ERROR
+    assert _eval_int(runtime, "large") == 42
+    assert _eval_int(runtime, "small") == 7
+    assert _eval_int(runtime, "negative") == -1
+
+
+def test_while_break_continue_and_nested_return_inside_function() -> None:
+    runtime = _runtime()
+    _exec(
+        runtime,
+        "def calculate(limit):\n"
+        "    count = 0\n"
+        "    total = 0\n"
+        "    while count < limit:\n"
+        "        count += 1\n"
+        "        if count == 2:\n"
+        "            continue\n"
+        "        if count > 4:\n"
+        "            break\n"
+        "        total += count\n"
+        "    return total\n"
+        "def first_over(limit):\n"
+        "    value = 0\n"
+        "    while value < limit:\n"
+        "        value += 1\n"
+        "        if value > 3:\n"
+        "            return value\n"
+        "    return -1\n"
+        "answer = calculate(10)\n"
+        "early = first_over(10)\n",
+    )
+    assert _eval_int(runtime, "answer") == 8
+    assert _eval_int(runtime, "early") == 4
+
+
+def test_return_without_expression_inside_nested_block() -> None:
+    runtime = _runtime()
+    _exec(
+        runtime,
+        "def stop(value):\n"
+        "    if value:\n"
+        "        return\n"
+        "    return 7\n"
+        "result = stop(0)\n",
+    )
+    assert _eval_int(runtime, "result") == 7
+    none_value = functions._portapy_eval_span_impl(runtime, "stop(1)", len("stop(1)"))
+    assert none_value != 0
+    assert base._portapy_value_get_kind_impl(runtime, none_value) == base.PORTAPY_VALUE_NONE

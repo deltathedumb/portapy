@@ -12,20 +12,23 @@ Native artifact names:
 
 ## High-level API
 
-The intended binary-module interface is environment-oriented:
+The native binary interface is environment-oriented and available through a real Python facade:
 
 ```python
-portapy = import_binary("portapy.dll")
-
 import math
+
+from portapy import import_binary
 from somnia import env
 
+portapy = import_binary("portapy.dll")
 environment = portapy.new()
 environment.add_modules(math)
 environment.expose(env)
+environment.set("requested_value", 41.9)
 environment.execute("""
 http_provider = game.provider.HttpProvider
-answer = math.floor(41.9) + 1
+floor_value = math.floor(requested_value)
+answer = floor_value + 1
 """)
 
 snapshot = environment.snapshot()
@@ -35,9 +38,11 @@ answer = snapshot.var["answer"]
 
 `add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
 
-Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment. Mutations inside referenced host objects are intentionally not deep-rolled back.
+The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, modules, objects, mappings, and callables into native PortaPy values. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
 
-The same API is available from the hosted package today:
+Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment and deletes globals created after the snapshot. Mutations inside referenced host objects are intentionally not deep-rolled back.
+
+The hosted implementation uses the same API:
 
 ```python
 import portapy
@@ -48,33 +53,36 @@ environment.execute("answer = seed + 1")
 assert environment.snapshot().var["answer"] == 42
 ```
 
-The native C ABI now provides the object and callable bridge required by the same model:
+The native C ABI underneath the facade provides:
 
-- `portapy_value_from_host_object()` creates an opaque object value from a stable host ID.
-- `portapy_value_from_host_callable()` creates a callable value from a stable callable ID.
-- `portapy_set_global_utf8()` injects retained globals such as `game` or `math`.
-- `portapy_host_set_attr_utf8()` builds host-owned attribute graphs.
-- PortaPy source can traverse paths such as `game.provider.HttpProvider`.
-- `portapy_host_set_call_handler()` installs one synchronous dispatcher per runtime.
-- Callback arguments are borrowed PortaPy handles; callback results transfer one owned handle back to the interpreter.
-- Qualified and flattened calls, including nested calls, work on Linux and Windows.
-- `portapy_value_get_host_id()` maps evaluated or snapshotted object handles back to host objects.
-
-Artifact metadata records `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, and the public exception/status types as the stable Python-module surface. The remaining adapter work is making `import_binary()` automatically map `add_modules()` and `expose()` onto the C object/callable bridge.
+- `portapy_value_from_host_object()` for opaque objects with stable host IDs.
+- `portapy_value_from_host_callable()` for callables with stable callable IDs.
+- `portapy_set_global_utf8()` and `portapy_delete_global_utf8()` for namespace management.
+- `portapy_global_count()` and `portapy_global_name_copy_utf8()` for exact snapshot enumeration.
+- `portapy_host_set_attr_utf8()` for host-owned attribute graphs.
+- dotted traversal such as `game.provider.HttpProvider`.
+- `portapy_host_set_call_handler()` for one synchronous dispatcher per runtime.
+- borrowed callback arguments and one owned callback result.
+- qualified and flattened calls, including nested calls, on Linux and Windows.
+- `portapy_value_get_host_id()` for mapping evaluated values back to Python objects.
 
 ## 3.14 Developer Preview 1
 
-`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, positional functions, host-object graph, and host-call parser are Python-authored and compiled by asmpython. Linux and Windows artifacts are loaded and exercised from independent C processes before publication.
+`3.14-dev.1` is the first genuine native-library preview. Its runtime state, value ownership, text storage, source parsing, UTF-8 validation, structured error state, control flow, positional functions, host-object graph, host-call parser, and namespace management are Python-authored and compiled by asmpython. Linux and Windows artifacts are exercised from independent C hosts and from the high-level Python binary facade before publication.
 
 Implemented native ABI and source surface:
 
 - isolated runtime handles
 - `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
-- retained native global injection
+- retained native global injection, enumeration, replacement, and deletion
 - host attribute graph registration, replacement, lookup, and dotted traversal
 - synchronous qualified, flattened, and nested host calls
 - borrowed callback arguments, owned callback results, and structured callback failures
+- `import_binary()` / `load_native()` module facades
+- native `new()`, `add_modules()`, `expose()`, `set()`, `get()`, `remove()`, `execute()`, `evaluate()`, and snapshots
+- automatic Python scalar, module, object, mapping, and callable adaptation
+- exact native snapshot restoration with post-snapshot global cleanup
 - checked value-kind/conversion and buffer-copy operations
 - per-runtime structured error status, type, message, line, and column
 - retain/release and runtime-owned teardown
@@ -93,10 +101,10 @@ Implemented native ABI and source surface:
 - quote-aware comments and separators
 - exact public export allowlists
 - Linux position-independent linking with no text relocations
-- independent Linux and Windows C conformance hosts
+- independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include compound statements inside functions, defaults/keyword arguments, closures, classes, broader object/container syntax, automatic binary-module environment adaptation, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include compound statements inside functions, defaults/keyword arguments, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

@@ -5,10 +5,21 @@ from .core.frontend import compile_source
 from .core.vm import VirtualMachine
 
 
-_PROBE_SOURCE = """def outer():
+class _ProbeModule:
+    def __init__(self) -> None:
+        self.offset = 2
+
+
+def _probe_import(name: str) -> object:
+    return _ProbeModule()
+
+
+_PROBE_SOURCE = """import demo
+
+def outer():
     value = 40
     def inner():
-        return value + 2
+        return value + demo.offset
     return inner()
 
 class Box:
@@ -26,6 +37,7 @@ def portapy_abi_version() -> int:
 
 def portapy_full_core_probe() -> int:
     namespace: dict[str, object] = {}
+    namespace["__pyinbin_import__"] = _probe_import
     code = compile_source(_PROBE_SOURCE, "<native-full-core-probe>")
     machine = VirtualMachine()
     machine.run(code, namespace)

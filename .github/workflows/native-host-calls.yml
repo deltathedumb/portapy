@@ -63,18 +63,38 @@ jobs:
           ./dist/native_full_environment_host ./dist/libportapy.so \
             | tee dist/full-environment-output.txt
           grep -qx 'native-full-environment: ok' dist/full-environment-output.txt
-      - name: Execute public tuple ABI from C
+      - name: Execute public container ABI from C
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_tuple_host.c -ldl -o dist/native_tuple_host
           ./dist/native_tuple_host ./dist/libportapy.so | tee dist/tuple-output.txt
           grep -qx 'native-tuples: ok' dist/tuple-output.txt
-      - name: Execute public dictionary ABI from C
-        run: |
           cc -std=c11 -Wall -Wextra -Werror -Iinclude \
             tests/native_dict_host.c -ldl -o dist/native_dict_host
           ./dist/native_dict_host ./dist/libportapy.so | tee dist/dict-output.txt
           grep -qx 'native-dicts: ok' dist/dict-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_list_host.c -ldl -o dist/native_list_host
+          ./dist/native_list_host ./dist/libportapy.so | tee dist/list-output.txt
+          grep -qx 'native-lists: ok' dist/list-output.txt
+      - name: Execute remaining standalone release matrix from C
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_handle_host.c -ldl -o dist/native_handle_host
+          ./dist/native_handle_host ./dist/libportapy.so | tee dist/handle-output.txt
+          grep -qx 'opaque-floats: ok' dist/handle-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_import_host.c -ldl -o dist/native_import_host
+          ./dist/native_import_host ./dist/libportapy.so | tee dist/import-output.txt
+          grep -qx 'native-host-imports: ok' dist/import-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_traceback_host.c -ldl -o dist/native_traceback_host
+          ./dist/native_traceback_host ./dist/libportapy.so | tee dist/traceback-output.txt
+          grep -qx 'native-traceback-frames: ok' dist/traceback-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_full_runtime_host.c -ldl -o dist/native_full_runtime_host
+          ./dist/native_full_runtime_host ./dist/libportapy.so | tee dist/full-runtime-output.txt
+          grep -qx 'native-full-runtime: ok' dist/full-runtime-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -147,24 +167,47 @@ jobs:
           if ($output -ne 'native-full-environment: ok') {
             throw "unexpected full environment output: $output"
           }
-      - name: Execute public tuple ABI from C
+      - name: Execute public container ABI from C
         shell: powershell
         run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_tuple_host.c -o dist/native_tuple_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_tuple_host.c -o dist/native_tuple_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $output = & dist/native_tuple_host.exe dist/portapy.dll
-          $output | Out-File -Encoding utf8 dist/tuple-output.txt
-          if ($output -ne 'native-tuples: ok') { throw "unexpected tuple output: $output" }
-      - name: Execute public dictionary ABI from C
+          $tupleOutput = & dist/native_tuple_host.exe dist/portapy.dll
+          $tupleOutput | Out-File -Encoding utf8 dist/tuple-output.txt
+          if ($tupleOutput -ne 'native-tuples: ok') { throw "unexpected tuple output: $tupleOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_dict_host.c -o dist/native_dict_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dictOutput = & dist/native_dict_host.exe dist/portapy.dll
+          $dictOutput | Out-File -Encoding utf8 dist/dict-output.txt
+          if ($dictOutput -ne 'native-dicts: ok') { throw "unexpected dictionary output: $dictOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_list_host.c -o dist/native_list_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $listOutput = & dist/native_list_host.exe dist/portapy.dll
+          $listOutput | Out-File -Encoding utf8 dist/list-output.txt
+          if ($listOutput -ne 'native-lists: ok') { throw "unexpected list output: $listOutput" }
+      - name: Execute remaining standalone release matrix from C
         shell: powershell
         run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_dict_host.c -o dist/native_dict_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -o dist/native_handle_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $output = & dist/native_dict_host.exe dist/portapy.dll
-          $output | Out-File -Encoding utf8 dist/dict-output.txt
-          if ($output -ne 'native-dicts: ok') { throw "unexpected dictionary output: $output" }
+          $handleOutput = & dist/native_handle_host.exe dist/portapy.dll
+          $handleOutput | Out-File -Encoding utf8 dist/handle-output.txt
+          if ($handleOutput -ne 'opaque-floats: ok') { throw "unexpected handle output: $handleOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_import_host.c -o dist/native_import_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $importOutput = & dist/native_import_host.exe dist/portapy.dll
+          $importOutput | Out-File -Encoding utf8 dist/import-output.txt
+          if ($importOutput -ne 'native-host-imports: ok') { throw "unexpected import output: $importOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_traceback_host.c -o dist/native_traceback_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tracebackOutput = & dist/native_traceback_host.exe dist/portapy.dll
+          $tracebackOutput | Out-File -Encoding utf8 dist/traceback-output.txt
+          if ($tracebackOutput -ne 'native-traceback-frames: ok') { throw "unexpected traceback output: $tracebackOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_full_runtime_host.c -o dist/native_full_runtime_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $runtimeOutput = & dist/native_full_runtime_host.exe dist/portapy.dll
+          $runtimeOutput | Out-File -Encoding utf8 dist/full-runtime-output.txt
+          if ($runtimeOutput -ne 'native-full-runtime: ok') { throw "unexpected full-runtime output: $runtimeOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,12 +1,14 @@
 """Normalize CPython-valid shorthand unsupported by the pinned asmpython parser.
 
 This tool mutates only the CI checkout used by the full-core transition probe.
-Each replacement is exact and fails closed when no matching source remains, so
-the probe cannot silently rewrite unrelated code.
+Exact semantic rewrites fail closed, while compact one-line suites and
+semicolon-separated statements are expanded mechanically before compilation.
 """
 from __future__ import annotations
 
+import io
 from pathlib import Path
+import tokenize
 
 
 REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -92,6 +94,94 @@ REPLACEMENTS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 
+_COMPOUND_PREFIXES = (
+    "if ",
+    "elif ",
+    "else:",
+    "for ",
+    "while ",
+    "try:",
+    "except",
+    "finally:",
+    "with ",
+    "async with ",
+    "async for ",
+    "def ",
+    "async def ",
+    "class ",
+    "match ",
+    "case ",
+)
+
+
+def _top_level_operator_columns(source: str, operator: str) -> list[int]:
+    columns: list[int] = []
+    depth = 0
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for token in tokens:
+            if token.type != tokenize.OP:
+                continue
+            if token.string in "([{":
+                depth += 1
+            elif token.string in ")]}":
+                if depth > 0:
+                    depth -= 1
+            elif token.string == operator and depth == 0:
+                columns.append(token.start[1])
+    except (IndentationError, tokenize.TokenError):
+        return []
+    return columns
+
+
+def _split_semicolons(source: str) -> list[str]:
+    columns = _top_level_operator_columns(source, ";")
+    if not columns:
+        return [source.strip()]
+    parts: list[str] = []
+    start = 0
+    for column in columns:
+        part = source[start:column].strip()
+        if part:
+            parts.append(part)
+        start = column + 1
+    final = source[start:].strip()
+    if final:
+        parts.append(final)
+    return parts
+
+
+def _expand_compact_line(line: str) -> list[str]:
+    newline = "\n" if line.endswith("\n") else ""
+    raw = line[:-1] if newline else line
+    stripped = raw.lstrip()
+    indent = raw[: len(raw) - len(stripped)]
+    if not stripped or stripped.startswith("#"):
+        return [line]
+
+    if stripped.startswith(_COMPOUND_PREFIXES):
+        colons = _top_level_operator_columns(raw, ":")
+        if colons:
+            colon = colons[0]
+            suite = raw[colon + 1 :].strip()
+            if suite and not suite.startswith("#"):
+                expanded = [raw[: colon + 1].rstrip() + "\n"]
+                for statement in _split_semicolons(suite):
+                    expanded.append(indent + "    " + statement + "\n")
+                return expanded
+
+    statements = _split_semicolons(stripped)
+    if len(statements) > 1:
+        return [indent + statement + "\n" for statement in statements]
+    return [line]
+
+
+def _expand_compact_statements(source: str) -> str:
+    expanded: list[str] = []
+    for line in source.splitlines(keepends=True):
+        expanded.extend(_expand_compact_line(line))
+    return "".join(expanded)
+
 
 def normalize(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
     source = path.read_text(encoding="utf-8")
@@ -104,6 +194,7 @@ def normalize(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
             )
         source = source.replace(old, new)
         print("REPLACED", path, count)
+    source = _expand_compact_statements(source)
     path.write_text(source, encoding="utf-8")
     print("NORMALIZED", path)
 

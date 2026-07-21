@@ -12,19 +12,19 @@ extern int64_t _portapy_traceback_function_size_impl(uint64_t runtime, int64_t i
 extern int64_t _portapy_traceback_function_byte_impl(
     uint64_t runtime,
     int64_t index,
-    int64_t byte_index
+    int64_t character_index
 );
 extern int64_t _portapy_traceback_source_size_impl(uint64_t runtime, int64_t index);
 extern int64_t _portapy_traceback_source_byte_impl(
     uint64_t runtime,
     int64_t index,
-    int64_t byte_index
+    int64_t character_index
 );
 
 static const uint8_t DEFAULT_FILENAME[] = "<portapy>";
 
 typedef int64_t (*traceback_size_impl)(uint64_t, int64_t);
-typedef int64_t (*traceback_byte_impl)(uint64_t, int64_t, int64_t);
+typedef int64_t (*traceback_codepoint_impl)(uint64_t, int64_t, int64_t);
 
 static portapy_status checked_index(size_t index, int64_t *out_index) {
     if (out_index == NULL || index > (size_t)INT64_MAX) {
@@ -54,26 +54,132 @@ static portapy_status checked_frame_index(
     return PORTAPY_OK;
 }
 
-static portapy_status generated_size(
+static portapy_status generated_character_count(
     portapy_runtime runtime,
     int64_t index,
     traceback_size_impl function,
+    size_t *out_count
+) {
+    if (out_count == NULL) {
+        return PORTAPY_INVALID_ARGUMENT;
+    }
+    *out_count = 0;
+    int64_t raw_count = function(runtime, index);
+    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    if (status != PORTAPY_OK) {
+        return status;
+    }
+    if (raw_count < 0) {
+        return PORTAPY_RUNTIME_ERROR;
+    }
+    *out_count = (size_t)raw_count;
+    return PORTAPY_OK;
+}
+
+static portapy_status generated_codepoint(
+    portapy_runtime runtime,
+    int64_t index,
+    size_t character_index,
+    traceback_codepoint_impl function,
+    uint32_t *out_codepoint
+) {
+    if (out_codepoint == NULL || character_index > (size_t)INT64_MAX) {
+        return PORTAPY_INVALID_ARGUMENT;
+    }
+    int64_t raw = function(runtime, index, (int64_t)character_index);
+    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    if (status != PORTAPY_OK) {
+        return status;
+    }
+    if (
+        raw < 0
+        || raw > INT64_C(0x10ffff)
+        || (raw >= INT64_C(0xd800) && raw <= INT64_C(0xdfff))
+    ) {
+        return PORTAPY_TYPE_ERROR;
+    }
+    *out_codepoint = (uint32_t)raw;
+    return PORTAPY_OK;
+}
+
+static size_t utf8_width(uint32_t codepoint) {
+    if (codepoint <= UINT32_C(0x7f)) {
+        return 1;
+    }
+    if (codepoint <= UINT32_C(0x7ff)) {
+        return 2;
+    }
+    if (codepoint <= UINT32_C(0xffff)) {
+        return 3;
+    }
+    return 4;
+}
+
+static portapy_status generated_utf8_size(
+    portapy_runtime runtime,
+    int64_t index,
+    traceback_size_impl size_function,
+    traceback_codepoint_impl codepoint_function,
     size_t *out_size
 ) {
     if (out_size == NULL) {
         return PORTAPY_INVALID_ARGUMENT;
     }
     *out_size = 0;
-    int64_t raw_size = function(runtime, index);
-    portapy_status status = (portapy_status)_portapy_last_status_impl();
+    size_t characters = 0;
+    portapy_status status = generated_character_count(
+        runtime,
+        index,
+        size_function,
+        &characters
+    );
     if (status != PORTAPY_OK) {
         return status;
     }
-    if (raw_size < 0) {
-        return PORTAPY_RUNTIME_ERROR;
+    size_t total = 0;
+    for (size_t character_index = 0; character_index < characters; ++character_index) {
+        uint32_t codepoint = 0;
+        status = generated_codepoint(
+            runtime,
+            index,
+            character_index,
+            codepoint_function,
+            &codepoint
+        );
+        if (status != PORTAPY_OK) {
+            return status;
+        }
+        size_t width = utf8_width(codepoint);
+        if (total > SIZE_MAX - width) {
+            return PORTAPY_RUNTIME_ERROR;
+        }
+        total += width;
     }
-    *out_size = (size_t)raw_size;
+    *out_size = total;
     return PORTAPY_OK;
+}
+
+static size_t write_utf8(uint8_t *buffer, size_t offset, uint32_t codepoint) {
+    if (codepoint <= UINT32_C(0x7f)) {
+        buffer[offset] = (uint8_t)codepoint;
+        return offset + 1;
+    }
+    if (codepoint <= UINT32_C(0x7ff)) {
+        buffer[offset] = (uint8_t)(UINT32_C(0xc0) | (codepoint >> 6));
+        buffer[offset + 1] = (uint8_t)(UINT32_C(0x80) | (codepoint & UINT32_C(0x3f)));
+        return offset + 2;
+    }
+    if (codepoint <= UINT32_C(0xffff)) {
+        buffer[offset] = (uint8_t)(UINT32_C(0xe0) | (codepoint >> 12));
+        buffer[offset + 1] = (uint8_t)(UINT32_C(0x80) | ((codepoint >> 6) & UINT32_C(0x3f)));
+        buffer[offset + 2] = (uint8_t)(UINT32_C(0x80) | (codepoint & UINT32_C(0x3f)));
+        return offset + 3;
+    }
+    buffer[offset] = (uint8_t)(UINT32_C(0xf0) | (codepoint >> 18));
+    buffer[offset + 1] = (uint8_t)(UINT32_C(0x80) | ((codepoint >> 12) & UINT32_C(0x3f)));
+    buffer[offset + 2] = (uint8_t)(UINT32_C(0x80) | ((codepoint >> 6) & UINT32_C(0x3f)));
+    buffer[offset + 3] = (uint8_t)(UINT32_C(0x80) | (codepoint & UINT32_C(0x3f)));
+    return offset + 4;
 }
 
 static portapy_status copy_generated_text(
@@ -83,7 +189,7 @@ static portapy_status copy_generated_text(
     size_t capacity,
     size_t *out_size,
     traceback_size_impl size_function,
-    traceback_byte_impl byte_function
+    traceback_codepoint_impl codepoint_function
 ) {
     if (out_size == NULL || (capacity != 0 && buffer == NULL)) {
         return PORTAPY_INVALID_ARGUMENT;
@@ -95,7 +201,13 @@ static portapy_status copy_generated_text(
         return status;
     }
     size_t required = 0;
-    status = generated_size(runtime, raw_index, size_function, &required);
+    status = generated_utf8_size(
+        runtime,
+        raw_index,
+        size_function,
+        codepoint_function,
+        &required
+    );
     *out_size = required;
     if (status != PORTAPY_OK) {
         return status;
@@ -103,15 +215,32 @@ static portapy_status copy_generated_text(
     if (capacity < required) {
         return PORTAPY_INVALID_ARGUMENT;
     }
-    for (size_t byte_index = 0; byte_index < required; ++byte_index) {
-        int64_t byte = byte_function(runtime, raw_index, (int64_t)byte_index);
-        status = (portapy_status)_portapy_last_status_impl();
+    size_t characters = 0;
+    status = generated_character_count(
+        runtime,
+        raw_index,
+        size_function,
+        &characters
+    );
+    if (status != PORTAPY_OK) {
+        return status;
+    }
+    size_t offset = 0;
+    for (size_t character_index = 0; character_index < characters; ++character_index) {
+        uint32_t codepoint = 0;
+        status = generated_codepoint(
+            runtime,
+            raw_index,
+            character_index,
+            codepoint_function,
+            &codepoint
+        );
         if (status != PORTAPY_OK) {
             return status;
         }
-        buffer[byte_index] = (uint8_t)byte;
+        offset = write_utf8(buffer, offset, codepoint);
     }
-    return PORTAPY_OK;
+    return offset == required ? PORTAPY_OK : PORTAPY_RUNTIME_ERROR;
 }
 
 portapy_status PORTAPY_CALL portapy_error_traceback_count(
@@ -162,19 +291,21 @@ portapy_status PORTAPY_CALL portapy_error_traceback_get_frame(
     }
     size_t function_size = 0;
     size_t source_size = 0;
-    status = generated_size(
+    status = generated_utf8_size(
         runtime,
         raw_index,
         _portapy_traceback_function_size_impl,
+        _portapy_traceback_function_byte_impl,
         &function_size
     );
     if (status != PORTAPY_OK) {
         return status;
     }
-    status = generated_size(
+    status = generated_utf8_size(
         runtime,
         raw_index,
         _portapy_traceback_source_size_impl,
+        _portapy_traceback_source_byte_impl,
         &source_size
     );
     if (status != PORTAPY_OK) {

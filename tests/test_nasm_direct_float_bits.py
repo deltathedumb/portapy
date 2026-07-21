@@ -21,7 +21,9 @@ def test_linux_float_wrappers_move_ieee_bits_through_gprs() -> None:
     assert "call _portapy_value_from_f64_bits_impl" in result
     assert "call _portapy_value_as_f64_bits_impl" in result
     assert "movsd" not in result
-    assert "mov [rdx], rax" in result
+    assert "mov rcx, [rsp + 8]" in result
+    assert "mov [rdx], rcx" in result
+    assert "mov [rdx], rax" not in result
 
 
 def test_windows_float_wrappers_move_ieee_bits_through_gprs() -> None:

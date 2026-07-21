@@ -33,7 +33,9 @@ http_provider = snapshot.var["http_provider"]
 answer = snapshot.var["answer"]
 ```
 
-`add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly, which is the role previously described as `add_builtin`. Snapshots are detached, read-only shallow views exposed through `snapshot.var`.
+`add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
+
+Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment. Mutations inside referenced host objects are intentionally not deep-rolled back.
 
 The same API is available from the hosted package today:
 
@@ -46,7 +48,7 @@ environment.execute("answer = seed + 1")
 assert environment.snapshot().var["answer"] == 42
 ```
 
-The artifact metadata records `new`, `Environment`, `Snapshot`, and the public exception/status types as the stable Python-module export surface. Native arbitrary-object injection still depends on the host-callback ABI gate; scalar execution continues to use the existing opaque-handle C ABI.
+Artifact metadata records `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, and the public exception/status types as the stable Python-module surface. Native arbitrary-object injection still depends on the host-object bridge gate; scalar and control-flow execution use the existing opaque-handle C ABI.
 
 ## 3.14 Developer Preview 1
 
@@ -67,13 +69,15 @@ Implemented native ABI and source surface:
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
 - typed global assignment, lookup, aliasing, augmented assignment, and `eval`
 - newline/semicolon statement blocks, bare expressions, and `pass`
+- indented `if`/`else`, nested blocks, and `while`
+- `break` and `continue`
 - quote-aware comments and separators
 - exact public export allowlists
 - Linux position-independent linking with no text relocations
 - independent Linux and Windows C conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on compound statements, functions and calls, full traceback-frame retrieval, native host callbacks, and module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Final source execution remains gated on native functions/classes and calls, broader object/container syntax, full traceback-frame retrieval, the native host-object bridge, and module imports.
 
 ## Relationship to pyinbin
 

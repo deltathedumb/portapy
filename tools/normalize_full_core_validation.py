@@ -27,6 +27,27 @@ from tools.normalize_full_reference_abi_helpers import (
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
 
 
+def _normalize_nested_code_introspection() -> None:
+    source = BYTECODE_PATH.read_text(encoding="utf-8")
+    old = '''def _unwrap_nested_code(item: object) -> object:
+    if isinstance(item, tuple) and len(item) in (2, 3) and isinstance(item[0], CodeObject):
+        return item[0]
+    if isinstance(item, tuple) and len(item) in (3, 4) and isinstance(item[1], CodeObject):
+        return item[1]
+    return item
+'''
+    new = '''def _unwrap_nested_code(item: object) -> object:
+    return item
+'''
+    count = source.count(old)
+    if count != 1:
+        raise RuntimeError(
+            f"expected one nested-code introspection helper, found {count}"
+        )
+    BYTECODE_PATH.write_text(source.replace(old, new, 1), encoding="utf-8")
+    print("DISABLED HOST-ONLY NESTED CODE INTROSPECTION", count)
+
+
 def _normalize_opcode_validation() -> None:
     source = BYTECODE_PATH.read_text(encoding="utf-8")
     old = "            if type(instr.op) is not int or instr.op not in _VALID_OPS:"
@@ -50,6 +71,7 @@ def main() -> int:
     normalize_extended_semantics()
     normalize_collections()
     normalize_builtins()
+    _normalize_nested_code_introspection()
     _normalize_opcode_validation()
     return 0
 

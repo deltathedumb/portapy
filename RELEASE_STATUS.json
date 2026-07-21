@@ -126,10 +126,23 @@
     "read-only snapshot.var access and shallow snapshot restore",
     "module injection and flattened expose API in the hosted runtime",
     "declared Python binary-module export metadata",
-    "Linux and Windows external C and Python conformance hosts"
+    "Linux and Windows external C and Python conformance hosts",
+    "PortaPy-owned lexer parser AST diagnostics and no-host-ast portable frontend",
+    "portable module lowering in original source order",
+    "portable classes class variables inheritance constructors attributes and methods",
+    "portable typed exceptions try else finally and context managers",
+    "portable generators and resumable yield execution",
+    "portable structural pattern matching",
+    "portable list generator and dictionary comprehensions",
+    "portable starred container call and mapping unpacking",
+    "portable positional and keyword variadic functions",
+    "portable lexical closures with persistent nonlocal state",
+    "portable ordinary and tuple-unpacking for loops"
   ],
   "release_blockers": [
-    "closures classes and complete standalone frontend bytecode VM execution",
-    "broader object syntax in the standalone native source parser"
+    "replace the incremental exported execute and evaluate path with the standalone frontend and VM",
+    "complete async coroutine descriptor-heavy class and remaining parser-edge semantics",
+    "prove final Windows and Linux artifacts run without CPython or a Python installation",
+    "pass the final release matrix and publish checksums headers examples export tables and build metadata"
   ]
 }

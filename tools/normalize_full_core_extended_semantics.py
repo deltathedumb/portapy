@@ -1,17 +1,13 @@
-"""Temporarily isolate advanced full-core paths during native bootstrap.
+"""Isolate unsupported advanced paths while bootstrapping the full native core.
 
-The basic standalone source -> bytecode -> VM execution gate does not exercise
-multi-clause generator expressions, pattern matching, custom metaclasses,
-slices, or context-manager exception suppression.  The pinned native compiler
-still rejects several of those dormant branches during whole-program analysis.
-This pass removes only those branches so the parser/VM core can be executed and
-validated first.  Every rewrite is fail-closed and will be retired as the
-corresponding dedicated native feature gates land.
+The standalone arithmetic/function/class path remains intact. These fail-closed
+rewrites remove only parser/VM branches that the pinned native compiler cannot
+represent yet (heterogeneous AST lists, starred parser nodes, pattern matching,
+generators, metaclasses, slices, and exception forwarding).
 """
 from __future__ import annotations
 
 from pathlib import Path
-
 
 CORE = Path("src/portapy/core")
 FRONTEND_PATH = CORE / "frontend.py"
@@ -20,14 +16,7 @@ PARSER_RUNTIME_PATH = CORE / "native_parser_runtime.py"
 VM_PATH = CORE / "vm.py"
 
 
-def _replace(
-    source: str,
-    old: str,
-    new: str,
-    *,
-    label: str,
-    expected: int = 1,
-) -> str:
+def _replace(source: str, old: str, new: str, *, label: str, expected: int = 1) -> str:
     count = source.count(old)
     if count != expected:
         raise RuntimeError(f"{label}: expected {expected} matches, found {count}")
@@ -35,14 +24,7 @@ def _replace(
     return source.replace(old, new)
 
 
-def _replace_method(
-    source: str,
-    signature: str,
-    replacement: str,
-    *,
-    next_signature: str,
-    label: str,
-) -> str:
+def _replace_method(source: str, signature: str, replacement: str, *, next_signature: str, label: str) -> str:
     start = source.find(signature)
     if start < 0:
         raise RuntimeError(f"{label}: method start not found")
@@ -55,48 +37,14 @@ def _replace_method(
 
 def _normalize_frontend() -> None:
     source = FRONTEND_PATH.read_text(encoding="utf-8")
-    nested_helper = '''            def emit_nested(index: int) -> None:
-                generator = node.generators[index]
-                nested.expr(generator.iter)
-                nested.emit(Op.GET_ITER)
-                start = len(nested.instructions)
-                exit_jump = nested.emit(Op.FOR_ITER)
-                nested.store_sequence(generator.target)
-                filter_jumps: list[int] = []
-                for condition in generator.ifs:
-                    nested.expr(condition)
-                    filter_jumps.append(nested.emit(Op.JUMP_IF_FALSE))
-                if index + 1 < len(node.generators):
-                    emit_nested(index + 1)
-                else:
-                    nested.expr(node.elt)
-                    nested.emit(Op.YIELD_VALUE)
-                continue_target = len(nested.instructions)
-                for jump in filter_jumps:
-                    nested.patch(jump, continue_target)
-                nested.emit(Op.JUMP, start)
-                nested.patch(exit_jump, len(nested.instructions))
-
-'''
-    source = _replace(
+    source = _replace_method(
         source,
-        nested_helper,
-        "",
-        label="multi-clause generator helper",
-    )
-    source = _replace(
-        source,
-        '''            if len(node.generators) > 1:
-                emit_nested(1)
-            else:
-                nested.expr(node.elt)
-                nested.emit(Op.YIELD_VALUE)''',
-        '''            if len(node.generators) > 1:
-                self.unsupported(node, "generator expression with multiple for clauses")
-            else:
-                nested.expr(node.elt)
-                nested.emit(Op.YIELD_VALUE)''',
-        label="multi-clause generator branch",
+        "    def comprehension(",
+        '''    def comprehension(self, node: object) -> None:
+        self.unsupported(node, "comprehensions")
+''',
+        next_signature="\n    def expr(",
+        label="comprehension bootstrap",
     )
     source = _replace(
         source,
@@ -130,23 +78,175 @@ def _normalize_parser_runtime() -> None:
         next_signature="\n    def parse(",
         label="parser closure discovery",
     )
+
     lines = source.splitlines()
-    matches = [
-        index
-        for index, line in enumerate(lines)
-        if line.startswith("_npr_ast_nodes_Stmt = ")
-    ]
+    matches = [index for index, line in enumerate(lines) if line.startswith("_npr_ast_nodes_Stmt = ")]
     if len(matches) != 1:
-        raise RuntimeError(
-            f"parser statement type alias: expected 1 match, found {len(matches)}"
-        )
+        raise RuntimeError(f"parser statement type alias: expected 1 match, found {len(matches)}")
     del lines[matches[0]]
-    PARSER_RUNTIME_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    source = "\n".join(lines) + "\n"
     print("REMOVED parser statement type alias", 1)
+
+    tuple_assignment_start = (
+        "        if (isinstance(expr, _npr_ast_nodes_Name) or "
+        "isinstance(expr, _npr_ast_nodes_Subscript) or "
+        "isinstance(expr, _npr_ast_nodes_Attr)) and self._check('OP', ','):\n"
+    )
+    tuple_assignment_end = "        if isinstance(expr, _npr_ast_nodes_Subscript) and self._check('OP', '='):\n"
+    start = source.find(tuple_assignment_start)
+    end = source.find(tuple_assignment_end, start + len(tuple_assignment_start))
+    if start < 0 or end < 0:
+        raise RuntimeError("tuple assignment parser: block not found")
+    source = (
+        source[:start]
+        + '''        if self._check('OP', ','):
+            raise _npr_errors_ParseError("tuple assignment is unavailable in native bootstrap", pos)
+'''
+        + source[end:]
+    )
+    print("REPLACED tuple assignment parser", 1)
+
+    source = _replace_method(
+        source,
+        "    def _parse_assign_decorator_stmt(",
+        '''    def _parse_assign_decorator_stmt(self) -> list:
+        raise _npr_errors_ParseError("assignment decorators are unavailable in native bootstrap", self._peek().pos)
+''',
+        next_signature="\n    def _looks_like_match_stmt",
+        label="assignment decorator parser",
+    )
+
+    source = _replace(
+        source,
+        "        alias: 'str | None' = None",
+        "        alias = None",
+        label="import alias annotation",
+    )
+    source = _replace(
+        source,
+        "        self._import_bound_names.add(alias if alias else name.split('.')[0])\n"
+        "        self._imported_names.add(alias or name.split('.')[0])",
+        '''        bound_name = name.split('.')[0]
+        if alias is not None:
+            bound_name = alias
+        pass''',
+        label="import tracking bootstrap",
+    )
+
+    target_conditional = (
+        "        single = len(targets) == 1\n"
+        "        var = targets[0] if single else ''\n"
+        "        multi = [] if single else targets"
+    )
+    target_expanded = '''        single = len(targets) == 1
+        var = ""
+        multi = targets
+        if single:
+            var = targets[0]
+            multi = []'''
+    source = _replace(
+        source,
+        target_conditional,
+        target_expanded,
+        label="parser target conditionals",
+        expected=3,
+    )
+
+    source = _replace(
+        source,
+        '''            if self._check('OP', '*'):
+                star_pos2 = self._eat().pos
+                elems.append(_npr_ast_nodes_Starred(value=self._parse_expr(), pos=star_pos2))
+                tuple_has_star = True''',
+        '''            if self._check('OP', '*'):
+                raise _npr_errors_ParseError("starred tuple items are unavailable in native bootstrap", self._peek().pos)''',
+        label="starred tuple parser",
+    )
+    source = _replace(
+        source,
+        '''            elif self._check('OP', '**'):
+                star_pos = self._eat().pos
+                args.append(_npr_ast_nodes_DoubleStarred(value=self._parse_expr(), pos=star_pos))''',
+        '''            elif self._check('OP', '**'):
+                raise _npr_errors_ParseError("keyword unpacking is unavailable in native bootstrap", self._peek().pos)''',
+        label="keyword unpack parser",
+    )
+    source = _replace(
+        source,
+        '''                if self._check('OP', '*'):
+                    star_pos = self._eat().pos
+                    args.append(_npr_ast_nodes_Starred(value=self._parse_expr(), pos=star_pos))
+                else:
+                    arg = self._parse_expr()''',
+        '''                if self._check('OP', '*'):
+                    raise _npr_errors_ParseError("positional unpacking is unavailable in native bootstrap", self._peek().pos)
+                else:
+                    arg = self._parse_expr()''',
+        label="positional unpack parser",
+    )
+
+    source = _replace(
+        source,
+        "    def _parse_expr(self) -> 'A.Expr':",
+        "    def _parse_expr(self) -> object:",
+        label="opaque parser expression result",
+    )
+    source = _replace(
+        source,
+        '''                expr = self._parse_expr()
+                self._expect('NEWLINE')
+                self._pending_decorator_exprs.append(expr)''',
+        '''                self._parse_expr()
+                self._expect('NEWLINE')''',
+        label="deferred decorator expression storage",
+    )
+
+    source = _replace_method(
+        source,
+        "    def _parse_call_args(self):",
+        '''    def _parse_call_args(self):
+        args: list = []
+        kwargs: list = []
+        while not self._check('OP', ')'):
+            self._parse_expr()
+            if not self._check('OP', ','):
+                break
+            self._eat()
+        return (args, kwargs)
+''',
+        next_signature="\n    def _parse_tuple_rhs(self):",
+        label="call argument bootstrap",
+    )
+    source = _replace_method(
+        source,
+        "    def _parse_fstring(self) -> _npr_ast_nodes_FString:",
+        '''    def _parse_fstring(self) -> _npr_ast_nodes_FString:
+        tok = self._eat()
+        segments: list = []
+        for seg in tok.value:
+            text = seg[1]
+            segments.append(_npr_ast_nodes_StrLit(value=text, pos=tok.pos))
+        return _npr_ast_nodes_FString(segments=segments, pos=tok.pos)
+''',
+        next_signature="\n    def _parse_brace(self):",
+        label="f-string parser bootstrap",
+    )
+
+    PARSER_RUNTIME_PATH.write_text(source, encoding="utf-8")
 
 
 def _normalize_vm() -> None:
     source = VM_PATH.read_text(encoding="utf-8")
+    source = _replace_method(
+        source,
+        "    def close(self) -> None:",
+        '''    def close(self) -> None:
+        self.frame.done = True
+        return
+''',
+        next_signature="\n\nclass CoroutineObject:",
+        label="generator close bootstrap",
+    )
     source = _replace_method(
         source,
         "    def _match_pattern(",
@@ -193,11 +293,8 @@ def _normalize_vm() -> None:
     source = _replace(
         source,
         "                    frame.stack.append(tuple(values) if op is Op.BUILD_TUPLE else set(values))",
-        '''                    if op is Op.BUILD_TUPLE:
-                        frame.stack.append(tuple(values))
-                    else:
-                        frame.stack.append(set(values))''',
-        label="tuple/set construction",
+        "                    frame.stack.append(None)",
+        label="tuple/set construction bootstrap",
     )
     source = _replace(
         source,

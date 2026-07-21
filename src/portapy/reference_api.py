@@ -127,6 +127,71 @@ class Runtime:
         self._globals[name] = value
         return Status.OK
 
+    def delete_global(self, name: str) -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if name not in self._globals:
+            return self._capture(Status.NOT_FOUND, KeyError(name))
+        del self._globals[name]
+        return Status.OK
+
+    def read_global(self, name: str) -> tuple[Status, object]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, None
+        if name not in self._globals:
+            return self._capture(Status.NOT_FOUND, KeyError(name)), None
+        return Status.OK, self._globals[name]
+
+    def snapshot_globals(self) -> tuple[Status, dict[str, object]]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, {}
+        return Status.OK, dict(self._globals)
+
+    def restore_globals(self, bindings: dict[str, object]) -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        if not isinstance(bindings, dict):
+            return self._capture(
+                Status.INVALID_ARGUMENT,
+                TypeError("snapshot bindings must be a dict"),
+            )
+        self._globals.clear()
+        self._globals.update(bindings)
+        return Status.OK
+
+    def exec_utf8(self, source: str, filename: str = "<portapy>") -> Status:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked
+        try:
+            code = compile_source(source, filename)
+        except BaseException as error:
+            return self._capture(Status.COMPILE_ERROR, error)
+        try:
+            self._vm.run(code, self._globals)
+        except BaseException as error:
+            return self._capture(Status.RUNTIME_ERROR, error)
+        return Status.OK
+
+    def eval_utf8(
+        self,
+        expression: str,
+        filename: str = "<portapy-eval>",
+    ) -> tuple[Status, int]:
+        blocked = self._ready()
+        if blocked is not None:
+            return blocked, 0
+        self._eval_counter += 1
+        name = f"__portapy_result_{self._eval_counter}"
+        status = self.exec_utf8(f"{name} = ({expression})\n", filename)
+        if status is not Status.OK:
+            return status, 0
+        return Status.OK, self._store(self._globals.pop(name))
+
     def get_global(self, name: str) -> tuple[Status, int]:
         blocked = self._ready()
         if blocked is not None:
@@ -135,66 +200,7 @@ class Runtime:
             return self._capture(Status.NOT_FOUND, KeyError(name)), 0
         return Status.OK, self._store(self._globals[name])
 
-    def exec(self, source: str, filename: str = "<portapy>") -> Status:
-        blocked = self._ready()
-        if blocked is not None:
-            return blocked
-        try:
-            code = compile_source(source, filename, "exec")
-            self._vm.run_code(code, self._globals)
-        except SyntaxError as error:
-            return self._capture(Status.COMPILE_ERROR, error)
-        except BaseException as error:
-            return self._capture(Status.RUNTIME_ERROR, error)
-        return Status.OK
-
-    def eval(self, source: str, filename: str = "<portapy>") -> tuple[Status, int]:
-        blocked = self._ready()
-        if blocked is not None:
-            return blocked, 0
-        self._eval_counter += 1
-        result_name = f"__portapy_eval_result_{self._eval_counter}"
-        try:
-            code = compile_source(f"{result_name} = ({source})", filename, "exec")
-            self._vm.run_code(code, self._globals)
-            result = self._globals.pop(result_name)
-        except SyntaxError as error:
-            self._globals.pop(result_name, None)
-            return self._capture(Status.COMPILE_ERROR, error), 0
-        except BaseException as error:
-            self._globals.pop(result_name, None)
-            return self._capture(Status.RUNTIME_ERROR, error), 0
-        return Status.OK, self._store(result)
-
-    def kind(self, handle: int) -> tuple[Status, ValueKind]:
-        blocked = self._ready()
-        if blocked is not None:
-            return blocked, ValueKind.OBJECT
-        slot = self._values.get(handle)
-        if slot is None:
-            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), ValueKind.OBJECT
-        value = slot.value
-        if value is None:
-            kind = ValueKind.NONE
-        elif isinstance(value, bool):
-            kind = ValueKind.BOOL
-        elif isinstance(value, int):
-            kind = ValueKind.INT
-        elif isinstance(value, float):
-            kind = ValueKind.FLOAT
-        elif isinstance(value, str):
-            kind = ValueKind.STRING
-        elif isinstance(value, bytes):
-            kind = ValueKind.BYTES
-        elif isinstance(value, tuple):
-            kind = ValueKind.TUPLE
-        elif callable(value):
-            kind = ValueKind.CALLABLE
-        else:
-            kind = ValueKind.OBJECT
-        return Status.OK, kind
-
-    def value(self, handle: int) -> tuple[Status, object]:
+    def unbox(self, handle: int) -> tuple[Status, object]:
         blocked = self._ready()
         if blocked is not None:
             return blocked, None
@@ -203,10 +209,30 @@ class Runtime:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), None
         return Status.OK, slot.value
 
-    def retain(self, handle: int) -> Status:
+    def call(
+        self,
+        callable_handle: int,
+        args: list[int] | None = None,
+    ) -> tuple[Status, int]:
         blocked = self._ready()
         if blocked is not None:
-            return blocked
+            return blocked, 0
+        target = self._values.get(callable_handle)
+        if target is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(callable_handle)), 0
+        values: list[object] = []
+        for handle in args or []:
+            slot = self._values.get(handle)
+            if slot is None:
+                return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0
+            values.append(slot.value)
+        try:
+            result = self._vm._call(target.value, values)
+        except BaseException as error:
+            return self._capture(Status.RUNTIME_ERROR, error), 0
+        return Status.OK, self._store(result)
+
+    def retain(self, handle: int) -> Status:
         slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle))
@@ -214,9 +240,6 @@ class Runtime:
         return Status.OK
 
     def release(self, handle: int) -> Status:
-        blocked = self._ready()
-        if blocked is not None:
-            return blocked
         slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle))
@@ -224,3 +247,70 @@ class Runtime:
         if slot.refs <= 0:
             del self._values[handle]
         return Status.OK
+
+    def box_none(self) -> tuple[Status, int]:
+        return Status.OK, self._store(None)
+
+    def box_bool(self, value: bool) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_int(self, value: int) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_float(self, value: float) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_utf8(self, value: str) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def box_bytes(self, value: bytes) -> tuple[Status, int]:
+        return Status.OK, self._store(value)
+
+    def value_kind(self, handle: int) -> tuple[Status, ValueKind]:
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), ValueKind.OBJECT
+        value = slot.value
+        if value is None:
+            kind = ValueKind.NONE
+        elif type(value) is bool:
+            kind = ValueKind.BOOL
+        elif type(value) is int:
+            kind = ValueKind.INT
+        elif type(value) is float:
+            kind = ValueKind.FLOAT
+        elif type(value) is str:
+            kind = ValueKind.STRING
+        elif type(value) is bytes:
+            kind = ValueKind.BYTES
+        elif type(value) is tuple:
+            kind = ValueKind.TUPLE
+        elif callable(value):
+            kind = ValueKind.CALLABLE
+        else:
+            kind = ValueKind.OBJECT
+        return Status.OK, kind
+
+    def as_int(self, handle: int) -> tuple[Status, int]:
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0
+        if type(slot.value) is not int:
+            return self._capture(Status.TYPE_ERROR, TypeError("value is not int")), 0
+        return Status.OK, slot.value
+
+    def as_float(self, handle: int) -> tuple[Status, float]:
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0.0
+        if type(slot.value) is not float:
+            return self._capture(Status.TYPE_ERROR, TypeError("value is not float")), 0.0
+        return Status.OK, slot.value
+
+    def as_utf8(self, handle: int) -> tuple[Status, bytes]:
+        slot = self._values.get(handle)
+        if slot is None:
+            return self._capture(Status.INVALID_HANDLE, KeyError(handle)), b""
+        if type(slot.value) is not str:
+            return self._capture(Status.TYPE_ERROR, TypeError("value is not str")), b""
+        return Status.OK, slot.value.encode("utf-8")

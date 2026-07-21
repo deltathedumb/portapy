@@ -19,6 +19,7 @@
 typedef portapy_status (ABI_CALL *initialize_fn)(void);
 typedef portapy_status (ABI_CALL *runtime_create_fn)(const portapy_config *, portapy_runtime *);
 typedef portapy_status (ABI_CALL *runtime_destroy_fn)(portapy_runtime);
+typedef portapy_status (ABI_CALL *exec_fn)(portapy_runtime, const uint8_t *, size_t, const uint8_t *, size_t);
 typedef portapy_status (ABI_CALL *eval_fn)(portapy_runtime, const uint8_t *, size_t, const uint8_t *, size_t, portapy_value *);
 typedef portapy_status (ABI_CALL *from_i64_fn)(portapy_runtime, int64_t, portapy_value *);
 typedef portapy_status (ABI_CALL *from_dict_fn)(portapy_runtime, portapy_value *);
@@ -70,6 +71,7 @@ int main(int argc, char **argv) {
     RESOLVE(initialize_fn, initialize, "portapy_library_initialize");
     RESOLVE(runtime_create_fn, runtime_create, "portapy_runtime_create");
     RESOLVE(runtime_destroy_fn, runtime_destroy, "portapy_runtime_destroy");
+    RESOLVE(exec_fn, exec_utf8, "portapy_exec_utf8");
     RESOLVE(eval_fn, eval_utf8, "portapy_eval_utf8");
     RESOLVE(from_i64_fn, from_i64, "portapy_value_from_i64");
     RESOLVE(from_dict_fn, from_dict, "portapy_value_from_dict");
@@ -130,26 +132,27 @@ int main(int argc, char **argv) {
     if (!expect_i64(as_i64, release, runtime, item, 24)) return 39;
     if (release(runtime, retained) != PORTAPY_OK) return 40;
 
-    const char source[] =
+    const char definition[] =
         "def capture(**values):\n"
-        "    return values\n"
-        "capture(left=18, right=24)";
+        "    return values\n";
+    if (exec_utf8(runtime, (const uint8_t *)definition, strlen(definition), NULL, 0) != PORTAPY_OK) return 41;
+    const char expression[] = "capture(left=18, right=24)";
     portapy_value evaluated = PORTAPY_NULL_VALUE;
-    if (eval_utf8(runtime, (const uint8_t *)source, strlen(source), NULL, 0, &evaluated) != PORTAPY_OK) return 41;
-    if (dict_size(runtime, evaluated, &size) != PORTAPY_OK || size != 2) return 42;
-    if (dict_item(runtime, evaluated, (const uint8_t *)"right", 5, &item) != PORTAPY_OK) return 43;
-    if (!expect_i64(as_i64, release, runtime, item, 24)) return 44;
-    if (release(runtime, evaluated) != PORTAPY_OK) return 45;
+    if (eval_utf8(runtime, (const uint8_t *)expression, strlen(expression), NULL, 0, &evaluated) != PORTAPY_OK) return 42;
+    if (dict_size(runtime, evaluated, &size) != PORTAPY_OK || size != 2) return 43;
+    if (dict_item(runtime, evaluated, (const uint8_t *)"right", 5, &item) != PORTAPY_OK) return 44;
+    if (!expect_i64(as_i64, release, runtime, item, 24)) return 45;
+    if (release(runtime, evaluated) != PORTAPY_OK) return 46;
 
     const uint8_t non_ascii[] = {0xc3, 0xa9};
     portapy_value empty = PORTAPY_NULL_VALUE;
-    if (from_dict(runtime, &empty) != PORTAPY_OK) return 46;
-    if (from_i64(runtime, 1, &item) != PORTAPY_OK) return 47;
-    if (dict_set(runtime, empty, non_ascii, sizeof(non_ascii), item) != PORTAPY_INVALID_ARGUMENT) return 48;
-    if (release(runtime, item) != PORTAPY_OK) return 49;
-    if (release(runtime, empty) != PORTAPY_OK) return 50;
+    if (from_dict(runtime, &empty) != PORTAPY_OK) return 47;
+    if (from_i64(runtime, 1, &item) != PORTAPY_OK) return 48;
+    if (dict_set(runtime, empty, non_ascii, sizeof(non_ascii), item) != PORTAPY_INVALID_ARGUMENT) return 49;
+    if (release(runtime, item) != PORTAPY_OK) return 50;
+    if (release(runtime, empty) != PORTAPY_OK) return 51;
 
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 51;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 52;
     puts("native-dicts: ok");
     return 0;
 }

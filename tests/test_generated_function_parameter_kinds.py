@@ -87,6 +87,7 @@ def test_generated_source_contains_parameter_kind_helpers(tmp_path: Path) -> Non
         assert "_PARAMETER_POSITIONAL_ONLY = 1" in source
         assert "_PARAMETER_KEYWORD_ONLY = 2" in source
         assert "_PARAMETER_VAR_POSITIONAL = 3" in source
+        assert "_PARAMETER_VAR_KEYWORD = 4" in source
         assert "def _parameter_kind(" in source
         assert "def _next_positional_parameter(" in source
         assert "positional-only argument passed as keyword" in source
@@ -146,14 +147,14 @@ def test_marker_defaults_are_captured_at_definition(tmp_path: Path) -> None:
             sys.modules.pop(f"portapy.{name}", None)
 
 
-def test_named_varargs_are_valid_parameter_markers(tmp_path: Path) -> None:
+def test_named_variadics_are_valid_parameter_markers(tmp_path: Path) -> None:
     api, names, _ = _api(tmp_path)
     try:
         runtime = api._portapy_runtime_create_impl()
         source = (
-            "def collect(*args):\n"
-            "    return len(args)\n"
-            "answer = collect(1, 2, 3)\n"
+            "def collect(*args, **kwargs):\n"
+            "    return len(args) + len(kwargs)\n"
+            "answer = collect(1, 2, first=3)\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK
         assert _eval_int(api, runtime, "answer") == 3
@@ -171,7 +172,7 @@ def test_invalid_parameter_markers_report_compile_error(tmp_path: Path) -> None:
             "def bad(/, value):\n    return value\n",
             "def bad(value, /, /):\n    return value\n",
             "def bad(value=1, /, other):\n    return other\n",
-            "def bad(**kwargs):\n    return 1\n",
+            "def bad(**):\n    return 1\n",
         )
         for source in invalid_definitions:
             assert _exec(api, runtime, source) == base.PORTAPY_COMPILE_ERROR

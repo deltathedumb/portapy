@@ -26,6 +26,9 @@ from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_reference_abi_helpers import (
     main as normalize_reference_abi_helpers,
 )
+from tools.normalize_full_reference_runtime import (
+    main as normalize_reference_runtime,
+)
 
 
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
@@ -64,13 +67,12 @@ def _normalize_opcode_validation() -> None:
 
 
 def main() -> int:
-    # These four passes were historically run only by the probe workflow.
-    # Keeping them here makes clean production builds use the same proven
-    # compiler-safe source preparation as the full-core transition probe.
+    # These passes prepare the source modules imported by the generated entry.
     normalize_probe()
     normalize_lambdas()
     normalize_native_semantics()
     normalize_opcode_maps()
+    normalize_reference_runtime()
 
     materialize_reference_entry()
     normalize_reference_abi_helpers()

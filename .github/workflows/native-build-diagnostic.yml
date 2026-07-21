@@ -1,0 +1,63 @@
+name: Native build diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: native-build-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    outputs:
+      status: ${{ steps.build.outputs.status }}
+      tail: ${{ steps.build.outputs.tail }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install quietly
+        shell: bash
+        run: |
+          sudo apt-get update > /tmp/install.log 2>&1
+          sudo apt-get install --yes nasm gcc binutils >> /tmp/install.log 2>&1
+          python -m pip install -e '.[test]' >> /tmp/install.log 2>&1
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1' \
+            >> /tmp/install.log 2>&1
+      - name: Capture compiler tail
+        id: build
+        shell: bash
+        run: |
+          set +e
+          python tools/build_native_typed.py \
+            --target linux \
+            --output /tmp/libportapy.so \
+            --work-dir /tmp/build-linux \
+            > /tmp/build.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo 'tail<<PORTAPY_BUILD_TAIL' >> "$GITHUB_OUTPUT"
+          tail -n 90 /tmp/build.log >> "$GITHUB_OUTPUT"
+          echo 'PORTAPY_BUILD_TAIL' >> "$GITHUB_OUTPUT"
+          exit 0
+
+  report-linux:
+    needs: build-linux
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Report compiler tail
+        env:
+          BUILD_TAIL: ${{ needs.build-linux.outputs.tail }}
+          BUILD_STATUS: ${{ needs.build-linux.outputs.status }}
+        shell: bash
+        run: |
+          printf '%s\n' "$BUILD_TAIL"
+          exit "$BUILD_STATUS"

@@ -18,6 +18,7 @@ _REQUIRED_IMPLS = (
     "_portapy_exec_span_impl",
     "_portapy_get_global_span_impl",
 )
+_TRACEBACK_FILENAME_BRIDGE = "_portapy_traceback_set_filename_utf8_bridge"
 
 
 def _labels(source: str) -> set[str]:
@@ -27,6 +28,13 @@ def _labels(source: str) -> set[str]:
         if match is not None:
             result.add(match.group("label"))
     return result
+
+
+def _declare_traceback_bridge(source: str) -> str:
+    declaration = f"extern {_TRACEBACK_FILENAME_BRIDGE}"
+    if declaration in source:
+        return source.rstrip()
+    return source.rstrip() + "\n" + declaration
 
 
 def _linux_wrappers() -> str:
@@ -44,10 +52,12 @@ portapy_exec_utf8:
     cmp rdx, -1
     je .exec_invalid
     push rbx
-    sub rsp, 48
+    sub rsp, 64
     mov [rsp], rdi
     mov [rsp + 8], rsi
     mov [rsp + 16], rdx
+    mov [rsp + 24], rcx
+    mov [rsp + 32], r8
 
     xor rcx, rcx
 .exec_nul_scan:
@@ -60,18 +70,25 @@ portapy_exec_utf8:
     jmp .exec_nul_scan
 .exec_nul_scan_done:
 
+    mov rdi, [rsp]
+    mov rsi, [rsp + 24]
+    mov rdx, [rsp + 32]
+    call _portapy_traceback_set_filename_utf8_bridge
+    test eax, eax
+    jnz .exec_bridge_failed
+
     mov rdx, [rsp + 16]
     lea rdi, [rdx + 1]
     call malloc
     test rax, rax
     jz .exec_alloc_failed
-    mov [rsp + 24], rax
+    mov [rsp + 40], rax
 
     mov rdi, rax
     mov rsi, [rsp + 8]
     mov rdx, [rsp + 16]
     call memcpy
-    mov rax, [rsp + 24]
+    mov rax, [rsp + 40]
     mov rcx, [rsp + 16]
     mov byte [rax + rcx], 0
 
@@ -79,21 +96,25 @@ portapy_exec_utf8:
     mov rsi, rax
     mov rdx, [rsp + 16]
     call _portapy_exec_span_impl
-    mov [rsp + 32], rax
+    mov [rsp + 48], rax
 
-    mov rdi, [rsp + 24]
+    mov rdi, [rsp + 40]
     call free
-    mov rax, [rsp + 32]
-    add rsp, 48
+    mov rax, [rsp + 48]
+    add rsp, 64
+    pop rbx
+    ret
+.exec_bridge_failed:
+    add rsp, 64
     pop rbx
     ret
 .exec_embedded_nul:
-    add rsp, 48
+    add rsp, 64
     pop rbx
     mov eax, 2
     ret
 .exec_alloc_failed:
-    add rsp, 48
+    add rsp, 64
     pop rbx
     mov eax, 3
     ret
@@ -194,11 +215,14 @@ portapy_exec_utf8:
 .exec_filename_ok:
     cmp r8, -1
     je .exec_invalid
+    mov r11, [rsp + 40]
     push rbx
-    sub rsp, 64
+    sub rsp, 96
     mov [rsp + 32], rcx
     mov [rsp + 40], rdx
     mov [rsp + 48], r8
+    mov [rsp + 56], r9
+    mov [rsp + 64], r11
 
     xor r10, r10
 .exec_nul_scan:
@@ -211,18 +235,25 @@ portapy_exec_utf8:
     jmp .exec_nul_scan
 .exec_nul_scan_done:
 
+    mov rcx, [rsp + 32]
+    mov rdx, [rsp + 56]
+    mov r8, [rsp + 64]
+    call _portapy_traceback_set_filename_utf8_bridge
+    test eax, eax
+    jnz .exec_bridge_failed
+
     mov rcx, [rsp + 48]
     inc rcx
     call malloc
     test rax, rax
     jz .exec_alloc_failed
-    mov [rsp + 56], rax
+    mov [rsp + 72], rax
 
     mov rcx, rax
     mov rdx, [rsp + 40]
     mov r8, [rsp + 48]
     call memcpy
-    mov rax, [rsp + 56]
+    mov rax, [rsp + 72]
     mov r10, [rsp + 48]
     mov byte [rax + r10], 0
 
@@ -230,21 +261,25 @@ portapy_exec_utf8:
     mov rdx, rax
     mov r8, [rsp + 48]
     call _portapy_exec_span_impl
-    mov [rsp + 40], rax
+    mov [rsp + 80], rax
 
-    mov rcx, [rsp + 56]
+    mov rcx, [rsp + 72]
     call free
-    mov rax, [rsp + 40]
-    add rsp, 64
+    mov rax, [rsp + 80]
+    add rsp, 96
+    pop rbx
+    ret
+.exec_bridge_failed:
+    add rsp, 96
     pop rbx
     ret
 .exec_embedded_nul:
-    add rsp, 64
+    add rsp, 96
     pop rbx
     mov eax, 2
     ret
 .exec_alloc_failed:
-    add rsp, 64
+    add rsp, 96
     pop rbx
     mov eax, 3
     ret
@@ -345,7 +380,8 @@ def append_state_abi(source: str, *, target: str) -> str:
         wrappers = _windows_wrappers()
     else:
         raise ValueError(f"unsupported ABI target: {target}")
-    return source.rstrip() + "\n" + wrappers.strip() + "\n"
+    source = _declare_traceback_bridge(source)
+    return source + "\n" + wrappers.strip() + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:

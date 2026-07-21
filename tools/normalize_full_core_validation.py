@@ -11,7 +11,7 @@ from tools.normalize_full_core_calls_closures import (
 )
 from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_collections import main as normalize_collections
-from tools.normalize_full_core_extended_semantics import (
+from tools.normalize_full_core_extended_semantics_compat import (
     main as normalize_extended_semantics,
 )
 from tools.normalize_full_core_keyword_calls import (

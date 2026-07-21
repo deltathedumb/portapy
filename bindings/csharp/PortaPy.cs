@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
@@ -44,16 +43,25 @@ public sealed class Environment : IDisposable
         out ulong result
     );
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl,
+        ExactSpelling = true
+    )]
     private static extern Status portapy_environment_create(out IntPtr environment);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl,
+        ExactSpelling = true
+    )]
     private static extern Status portapy_environment_destroy(IntPtr environment);
 
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true
     )]
     private static extern Status portapy_environment_add_callback_utf16(
         IntPtr environment,
@@ -66,7 +74,8 @@ public sealed class Environment : IDisposable
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true
     )]
     private static extern Status portapy_environment_execute_utf16(
         IntPtr environment,
@@ -74,7 +83,11 @@ public sealed class Environment : IDisposable
         nuint sourceLength
     );
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl,
+        ExactSpelling = true
+    )]
     private static extern Status portapy_value_from_none(
         ulong runtime,
         out ulong value
@@ -151,8 +164,6 @@ public sealed class Environment : IDisposable
             )
         );
 
-        // Native code stores the function pointer, not the managed delegate.
-        // Root it for at least as long as the environment can call it.
         callbackRoots.Add(nativeCallback);
     }
 

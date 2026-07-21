@@ -30,6 +30,12 @@ _ENVIRONMENT_IMPORT = """from .native_api_environment import (
     _portapy_global_name_size_impl,
 )
 """
+_FULL_RUNTIME_IMPORT = """from .native_api import (
+    _append_data_value,
+    _set_data_byte,
+    _validate_utf8_value,
+)
+"""
 _TRACEBACK_FORWARDERS = '''
 
 
@@ -213,7 +219,9 @@ def generate_native_host_call_entry(
     source = source.replace(_SCALAR_IMPORT, scalar_import, 1)
     source = source.replace(
         "from __future__ import annotations\n",
-        "from __future__ import annotations\n\n" + _ENVIRONMENT_IMPORT,
+        "from __future__ import annotations\n\n"
+        + _ENVIRONMENT_IMPORT
+        + _FULL_RUNTIME_IMPORT,
         1,
     )
     source = _rename(

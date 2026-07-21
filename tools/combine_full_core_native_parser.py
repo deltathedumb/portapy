@@ -86,6 +86,8 @@ def _prepare_runtime(module: ast.Module) -> list[ast.stmt]:
 def _rename_ast_arg_class(module: ast.Module) -> None:
     class_count = 0
     call_count = 0
+    existing_class_count = 0
+    existing_call_count = 0
 
     class _AnnotationRenamer(ast.NodeTransformer):
         def visit_Name(self, node: ast.Name) -> ast.AST:
@@ -95,16 +97,18 @@ def _rename_ast_arg_class(module: ast.Module) -> None:
 
     renamer = _AnnotationRenamer()
     for node in ast.walk(module):
-        if isinstance(node, ast.ClassDef) and node.name == "arg":
-            node.name = "AstArg"
-            class_count += 1
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "arg"
-        ):
-            node.func.id = "AstArg"
-            call_count += 1
+        if isinstance(node, ast.ClassDef):
+            if node.name == "arg":
+                node.name = "AstArg"
+                class_count += 1
+            elif node.name == "AstArg":
+                existing_class_count += 1
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "arg":
+                node.func.id = "AstArg"
+                call_count += 1
+            elif node.func.id == "AstArg":
+                existing_call_count += 1
 
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             arguments = [
@@ -124,12 +128,27 @@ def _rename_ast_arg_class(module: ast.Module) -> None:
         elif isinstance(node, ast.AnnAssign):
             node.annotation = renamer.visit(node.annotation)
 
-    if class_count != 1 or call_count < 1:
-        raise RuntimeError(
-            "native AST arg rename failed: "
-            f"classes={class_count}, calls={call_count}"
+    if class_count == 1 and call_count >= 1:
+        print("RENAMED NATIVE AST ARG CLASS", class_count, call_count)
+        return
+    if (
+        class_count == 0
+        and call_count == 0
+        and existing_class_count == 1
+        and existing_call_count >= 1
+    ):
+        print(
+            "PRESERVED RENAMED NATIVE AST ARG CLASS",
+            existing_class_count,
+            existing_call_count,
         )
-    print("RENAMED NATIVE AST ARG CLASS", class_count, call_count)
+        return
+    raise RuntimeError(
+        "native AST arg rename failed: "
+        f"classes={class_count}, calls={call_count}, "
+        f"existing_classes={existing_class_count}, "
+        f"existing_calls={existing_call_count}"
+    )
 
 
 def _prepare_bridge(module: ast.Module) -> list[ast.stmt]:

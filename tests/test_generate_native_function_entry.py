@@ -92,6 +92,7 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "native_api_scalar import" not in function_source
     assert "_ctrl_portapy_exec_span_impl," in function_source
     assert "_expr_parse_boolean_expression," in function_source
+    assert "_expr_truthy," in function_source
     assert "_scalar_binary," in function_source
     assert " as _control_exec_span" not in function_source
     assert " as _parse_boolean_expression" not in function_source
@@ -103,6 +104,8 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "from .native_api import _last_status" not in function_source
     assert 'elif char == "\\\\":' in function_source
     assert "_call_argument_top: list[int] = [1]" in function_source
+    assert "_FUNCTION_FLOW_RETURN = 3" in function_source
+    assert "def _execute_function_block(" in function_source
 
 
 def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> None:
@@ -130,6 +133,47 @@ def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> N
         assert base._portapy_value_as_i64_impl(runtime, zero) == 7
         nested = api._portapy_eval_span_impl(runtime, "add(add(10, 11), 21)", len("add(add(10, 11), 21)"))
         assert base._portapy_value_as_i64_impl(runtime, nested) == 42
+    finally:
+        for name in reversed(names):
+            sys.modules.pop(f"portapy.{name}", None)
+
+
+def test_generated_function_entry_executes_nested_control_flow(tmp_path: Path) -> None:
+    generated = _generate(tmp_path)
+    names = generated[:4]
+    paths = generated[4:]
+    _load(paths[0], names[0])
+    _load(paths[1], names[1])
+    _load(paths[2], names[2])
+    api = _load(paths[3], names[3])
+    try:
+        runtime = api._portapy_runtime_create_impl()
+        source = (
+            "def classify(value):\n"
+            "    if value == 0:\n"
+            "        return 100\n"
+            "    else:\n"
+            "        total = 0\n"
+            "        current = 0\n"
+            "        while current < value:\n"
+            "            current += 1\n"
+            "            if current == 2:\n"
+            "                continue\n"
+            "            total += current\n"
+            "            if total > 6:\n"
+            "                break\n"
+            "        return total\n"
+            "zero = classify(0)\n"
+            "small = classify(3)\n"
+            "large = classify(5)\n"
+        )
+        assert api._portapy_exec_span_impl(runtime, source, len(source)) == base.PORTAPY_OK
+        zero = api._portapy_eval_span_impl(runtime, "zero", len("zero"))
+        small = api._portapy_eval_span_impl(runtime, "small", len("small"))
+        large = api._portapy_eval_span_impl(runtime, "large", len("large"))
+        assert base._portapy_value_as_i64_impl(runtime, zero) == 100
+        assert base._portapy_value_as_i64_impl(runtime, small) == 4
+        assert base._portapy_value_as_i64_impl(runtime, large) == 8
     finally:
         for name in reversed(names):
             sys.modules.pop(f"portapy.{name}", None)

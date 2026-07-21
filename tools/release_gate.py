@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact does not include environment management: {metadata_path}")
         if metadata.get("public_environment_api") is not True:
             raise SystemExit(f"artifact does not include the public environment API: {metadata_path}")
+        if metadata.get("public_traceback_abi") is not True:
+            raise SystemExit(f"artifact does not include the public traceback ABI: {metadata_path}")
         if metadata.get("generated_host_call_entry") is not True:
             raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
@@ -141,18 +143,21 @@ def main(argv: list[str] | None = None) -> int:
             "The DLL/SO exports first-class `new`, `add`, `add_all`, `execute`, "
             "`evaluate`, and `destroy` helpers through a language-neutral C ABI. "
             "The same environment handle can be used with the lower-level runtime, "
-            "value, global, callback, container, and structured-error functions.",
+            "value, global, callback, container, traceback, and structured-error functions.",
             "",
-            "The Python package exposes the same contract through hosted and native "
-            "`Environment.add()` / `Environment.add_all()` methods. Host languages "
-            "load their own modules; PortaPy does not expose `import_module`.",
+            "Executed source can use `import` and `from ... import ...` for modules "
+            "already added by the host. Host languages still own module loading; "
+            "PortaPy does not expose `import_module`.",
+            "",
+            "Tracebacks are available as indexed filename, function, line, column, "
+            "and source-line frames through C and as `NativeTracebackFrame` objects "
+            "through the native Python facade.",
             "",
             "## Not yet included",
             "",
             "This is not the final Python 3.14 interpreter release. Remaining "
-            "gates include closures, classes, the complete frontend/bytecode VM "
-            "transition, broader object syntax, native imports inside executed "
-            "PortaPy source, and full traceback-frame retrieval.",
+            "gates include closures, classes, the complete standalone frontend/bytecode "
+            "VM transition, and broader object syntax.",
             "",
         ]
     )
@@ -162,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         [
             "",
             "The release includes `portapy.dll`, `libportapy.so`, the public "
-            "header, build metadata, FFI examples, and SHA-256 checksums.",
+            "headers, build metadata, FFI examples, and SHA-256 checksums.",
             "",
         ]
     )

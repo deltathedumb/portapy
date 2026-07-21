@@ -96,6 +96,8 @@ Implemented native ABI and source surface:
 - indented `if`/`else`, nested blocks, and `while`
 - `break` and `continue`
 - positional `def` functions, zero/multi-argument calls, nested calls, and `return`
+- recursive `if`/`else` and `while` blocks inside native functions
+- nested `break`, `continue`, and early `return` propagation inside functions
 - callable value handles and cross-`exec` function persistence
 - local call-frame save/restore without leaking local bindings
 - quote-aware comments and separators
@@ -104,7 +106,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include compound statements inside functions, defaults/keyword arguments, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include defaults/keyword arguments, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

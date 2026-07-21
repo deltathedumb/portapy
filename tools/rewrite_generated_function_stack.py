@@ -1,8 +1,12 @@
-"""Stack-safe native function rewrite entry."""
+"""Stack-safe native function rewrite entry with recursive control flow."""
 from __future__ import annotations
 
 from pathlib import Path
 
+from tools.generated_function_control_source import (
+    FUNCTION_FLOW_CONSTANTS,
+    execute_function_body_source,
+)
 from tools.rewrite_generated_function_safe import rewrite_generated_function as _rewrite
 from tools.rewrite_generated_parser import _replace_function
 
@@ -57,10 +61,31 @@ def rewrite_generated_function(path: Path) -> Path:
         marker + "_call_argument_top: list[int] = [1]\n",
         1,
     )
+    expression_import = "    _expr_record_expression_failure,\n)"
+    if expression_import not in source:
+        raise ValueError("generated function entry has an unexpected expression import")
+    source = source.replace(
+        expression_import,
+        "    _expr_record_expression_failure,\n    _expr_truthy,\n)",
+        1,
+    )
+    constant_marker = "_MAX_CALL_DEPTH = 128\n"
+    if constant_marker not in source:
+        raise ValueError("generated function entry is missing call-depth configuration")
+    source = source.replace(
+        constant_marker,
+        constant_marker + FUNCTION_FLOW_CONSTANTS,
+        1,
+    )
     source = _replace_function(
         source,
         "_parse_call_or_expression",
         _parse_call_or_expression(),
+    )
+    source = _replace_function(
+        source,
+        "_execute_function_body",
+        execute_function_body_source(),
     )
     path.write_text(source, encoding="utf-8")
     return path

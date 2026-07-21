@@ -1,9 +1,7 @@
 """Build PortaPy's asmpython-generated native shared library.
 
-Interpreter/runtime semantics remain in ``src/portapy/native_api.py``. This tool
-only orchestrates asmpython, audited ABI transformations, NASM, the public C ABI
-boundary, and the platform linker. It deliberately fails closed when generated
-assembly or required tools are missing.
+Interpreter/runtime semantics remain Python-authored. This tool only orchestrates
+asmpython, audited ABI transformations, NASM, optional C ABI glue, and linking.
 """
 from __future__ import annotations
 
@@ -30,7 +28,12 @@ from tools.nasm_handle_abi import append_handle_abi
 from tools.nasm_module_init import make_module_initializer
 from tools.nasm_scalar_abi import append_scalar_abi
 from tools.nasm_state_abi import append_state_abi
-from tools.native_surface import ASSEMBLY_EXPORTS, PUBLIC_EXPORTS, linux_version_script, windows_definition
+from tools.native_surface import (
+    assembly_exports,
+    linux_version_script,
+    public_exports,
+    windows_definition,
+)
 
 
 class BuildFailure(RuntimeError):
@@ -118,14 +121,15 @@ def _compile_python_source(
             f"asmpython did not emit assembly (exit {completed.returncode}): "
             f"{rendered}\n{completed.stdout}"
         )
-
-    # The legacy driver has historically reached complete NASM emission before
-    # failing in its own process-spawn step. Assembly presence is the boundary
-    # that matters here because this tool performs NASM/linking itself.
     return assembly
 
 
-def _transform_assembly(assembly: Path, *, target: str) -> None:
+def _transform_assembly(
+    assembly: Path,
+    *,
+    target: str,
+    host_bridge: bool,
+) -> None:
     source = assembly.read_text(encoding="utf-8")
     source = make_module_initializer(
         source,
@@ -137,10 +141,39 @@ def _transform_assembly(assembly: Path, *, target: str) -> None:
     source = append_float_abi(source, target=target)
     source = append_eval_abi(source, target=target)
     source = append_state_abi(source, target=target)
-    source = declare_exports(source, list(ASSEMBLY_EXPORTS))
+    source = declare_exports(
+        source,
+        list(assembly_exports(host_bridge=host_bridge)),
+    )
     if target == "linux":
         source = make_elf_pic(source)
     assembly.write_text(source, encoding="utf-8")
+
+
+def _compile_glue(
+    *,
+    gcc: str,
+    target: str,
+    source: Path,
+    output: Path,
+    log: Path,
+) -> None:
+    command = [
+        gcc,
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        str(REPOSITORY_ROOT / "include"),
+        "-c",
+        str(source),
+        "-o",
+        str(output),
+    ]
+    if target == "linux":
+        command.insert(1, "-fPIC")
+    _run(command, log=log)
 
 
 def build_native(
@@ -149,15 +182,19 @@ def build_native(
     output: Path,
     source: Path,
     work_dir: Path,
+    host_bridge: bool = False,
 ) -> dict[str, object]:
     if target not in {"linux", "windows"}:
         raise BuildFailure(f"unsupported native target: {target}")
     if not source.is_file():
         raise BuildFailure(f"Python native API source does not exist: {source}")
 
-    glue_source = REPOSITORY_ROOT / "native" / "text_error_glue.c"
-    if not glue_source.is_file():
-        raise BuildFailure(f"public C ABI glue does not exist: {glue_source}")
+    base_glue = REPOSITORY_ROOT / "native" / "text_error_glue.c"
+    if not base_glue.is_file():
+        raise BuildFailure(f"public C ABI glue does not exist: {base_glue}")
+    host_glue = REPOSITORY_ROOT / "native" / "host_object_glue.c"
+    if host_bridge and not host_glue.is_file():
+        raise BuildFailure(f"host-object C ABI glue does not exist: {host_glue}")
 
     output = output.resolve()
     work_dir = work_dir.resolve()
@@ -171,13 +208,17 @@ def build_native(
         output=output,
         build_log=build_log,
     )
-    _transform_assembly(assembly, target=target)
+    _transform_assembly(
+        assembly,
+        target=target,
+        host_bridge=host_bridge,
+    )
 
     nasm = _tool("nasm")
     gcc = _tool("gcc")
     object_suffix = ".o" if target == "linux" else ".obj"
     object_path = work_dir / f"portapy-python{object_suffix}"
-    glue_object = work_dir / f"portapy-glue{object_suffix}"
+    base_glue_object = work_dir / f"portapy-glue{object_suffix}"
     nasm_format = "elf64" if target == "linux" else "win64"
     _run(
         [
@@ -192,43 +233,49 @@ def build_native(
         log=work_dir / f"{target}-nasm.log",
     )
 
-    compile_glue = [
-        gcc,
-        "-std=c11",
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        "-I",
-        str(REPOSITORY_ROOT / "include"),
-        "-c",
-        str(glue_source),
-        "-o",
-        str(glue_object),
-    ]
-    if target == "linux":
-        compile_glue.insert(1, "-fPIC")
-    _run(compile_glue, log=work_dir / f"{target}-glue.log")
+    _compile_glue(
+        gcc=gcc,
+        target=target,
+        source=base_glue,
+        output=base_glue_object,
+        log=work_dir / f"{target}-glue.log",
+    )
+    link_objects = [str(object_path), str(base_glue_object)]
+    if host_bridge:
+        host_glue_object = work_dir / f"portapy-host-glue{object_suffix}"
+        _compile_glue(
+            gcc=gcc,
+            target=target,
+            source=host_glue,
+            output=host_glue_object,
+            log=work_dir / f"{target}-host-glue.log",
+        )
+        link_objects.append(str(host_glue_object))
 
     if target == "linux":
         version_script = work_dir / "portapy.map"
-        version_script.write_text(linux_version_script(), encoding="utf-8")
+        version_script.write_text(
+            linux_version_script(host_bridge=host_bridge),
+            encoding="utf-8",
+        )
         link_command = [
             gcc,
             "-shared",
-            str(object_path),
-            str(glue_object),
+            *link_objects,
             f"-Wl,--version-script={version_script}",
             "-o",
             str(output),
         ]
     else:
         definition = work_dir / "portapy.def"
-        definition.write_text(windows_definition(), encoding="ascii")
+        definition.write_text(
+            windows_definition(host_bridge=host_bridge),
+            encoding="ascii",
+        )
         link_command = [
             gcc,
             "-shared",
-            str(object_path),
-            str(glue_object),
+            *link_objects,
             str(definition),
             "-o",
             str(output),
@@ -246,11 +293,15 @@ def build_native(
         "sha256": _sha256(output),
         "source": str(source.resolve().relative_to(REPOSITORY_ROOT)),
         "source_sha256": _sha256(source),
-        "abi_glue": str(glue_source.relative_to(REPOSITORY_ROOT)),
-        "abi_glue_sha256": _sha256(glue_source),
-        "public_exports": list(PUBLIC_EXPORTS),
+        "abi_glue": str(base_glue.relative_to(REPOSITORY_ROOT)),
+        "abi_glue_sha256": _sha256(base_glue),
+        "host_bridge": host_bridge,
+        "public_exports": list(public_exports(host_bridge=host_bridge)),
         "python_built_runtime": True,
     }
+    if host_bridge:
+        metadata["host_abi_glue"] = str(host_glue.relative_to(REPOSITORY_ROOT))
+        metadata["host_abi_glue_sha256"] = _sha256(host_glue)
     metadata_path = output.with_suffix(output.suffix + ".json")
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return metadata
@@ -266,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         default=REPOSITORY_ROOT / "src" / "portapy" / "native_api.py",
     )
     parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument("--host-bridge", action="store_true")
     args = parser.parse_args(argv)
     try:
         metadata = build_native(
@@ -273,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             source=args.source,
             work_dir=args.work_dir,
+            host_bridge=args.host_bridge,
         )
     except BuildFailure as error:
         print(f"portapy native build failed: {error}", file=sys.stderr)

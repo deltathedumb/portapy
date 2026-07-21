@@ -45,6 +45,7 @@ jobs:
               dist/build-linux/linux-asmpython-build.log \
               dist/build-linux/linux-nasm.log \
               dist/build-linux/linux-glue.log \
+              dist/build-linux/linux-host-glue.log \
               dist/build-linux/linux-link.log; do
               if [ -f "$file" ]; then
                 echo "===== $file ====="
@@ -65,9 +66,9 @@ jobs:
           awk '{print $3}' dist/linux-exports.txt | grep '^portapy_' | sort > dist/actual-symbols.txt
           python - <<'PY'
           from pathlib import Path
-          from tools.native_surface import PUBLIC_EXPORTS
+          from tools.native_surface import public_exports
           Path('dist/expected-symbols.txt').write_text(
-              '\n'.join(sorted(PUBLIC_EXPORTS)) + '\n',
+              '\n'.join(sorted(public_exports(host_bridge=True))) + '\n',
               encoding='utf-8',
           )
           PY
@@ -100,6 +101,14 @@ jobs:
             tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
           ./dist/native_control_flow_host ./dist/libportapy.so | tee dist/control-flow-output.txt
           grep -qx 'control-flow: ok' dist/control-flow-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_function_host.c -ldl -o dist/native_function_host
+          ./dist/native_function_host ./dist/libportapy.so | tee dist/function-output.txt
+          grep -qx 'native-functions: ok' dist/function-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_host_object_host.c -ldl -o dist/native_host_object_host
+          ./dist/native_host_object_host ./dist/libportapy.so | tee dist/host-object-output.txt
+          grep -qx 'native-host-objects: ok' dist/host-object-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -145,6 +154,7 @@ jobs:
             'dist/build-windows/windows-asmpython-build.log',
             'dist/build-windows/windows-nasm.log',
             'dist/build-windows/windows-glue.log',
+            'dist/build-windows/windows-host-glue.log',
             'dist/build-windows/windows-link.log'
           )) {
             if (Test-Path $file) {
@@ -160,7 +170,7 @@ jobs:
         shell: powershell
         run: |
           objdump -p dist/portapy.dll | Out-File -Encoding utf8 dist/windows-exports.txt
-          $symbols = python -c "from tools.native_surface import PUBLIC_EXPORTS; print(' '.join(PUBLIC_EXPORTS))"
+          $symbols = python -c "from tools.native_surface import public_exports; print(' '.join(public_exports(host_bridge=True)))"
           foreach ($symbol in $symbols.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
             if (-not (Select-String -Path dist/windows-exports.txt -Pattern "\b$symbol\b" -Quiet)) {
               throw "missing export: $symbol"
@@ -169,48 +179,42 @@ jobs:
           if (Select-String -Path dist/windows-exports.txt -Pattern 'portapy_internal_' -Quiet) {
             throw 'internal Python symbols must not be exported'
           }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_handle_host.c -o dist/native_handle_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -o dist/native_handle_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $output = & dist/native_handle_host.exe dist/portapy.dll
-          $output | Out-File -Encoding utf8 dist/host-output.txt
           if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_statement_host.c -o dist/native_statement_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_statement_host.c -o dist/native_statement_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $statementOutput = & dist/native_statement_host.exe dist/portapy.dll
-          $statementOutput | Out-File -Encoding utf8 dist/statement-output.txt
           if ($statementOutput -ne 'statement-blocks: ok') { throw "unexpected statement output: $statementOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_text_error_host.c -o dist/native_text_error_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_text_error_host.c -o dist/native_text_error_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $textErrorOutput = & dist/native_text_error_host.exe dist/portapy.dll
-          $textErrorOutput | Out-File -Encoding utf8 dist/text-error-output.txt
           if ($textErrorOutput -ne 'native-text-errors: ok') { throw "unexpected text/error output: $textErrorOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_typed_literal_host.c -o dist/native_typed_literal_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_typed_literal_host.c -o dist/native_typed_literal_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $typedLiteralOutput = & dist/native_typed_literal_host.exe dist/portapy.dll
-          $typedLiteralOutput | Out-File -Encoding utf8 dist/typed-literal-output.txt
           if ($typedLiteralOutput -ne 'typed-literals: ok') { throw "unexpected typed literal output: $typedLiteralOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
-          $booleanExpressionOutput | Out-File -Encoding utf8 dist/boolean-expression-output.txt
           if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_expression_host.c -o dist/native_expression_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_expression_host.c -o dist/native_expression_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $expressionOutput = & dist/native_expression_host.exe dist/portapy.dll
-          $expressionOutput | Out-File -Encoding utf8 dist/expression-output.txt
           if ($expressionOutput -ne 'general-expressions: ok') { throw "unexpected expression output: $expressionOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $controlFlowOutput = & dist/native_control_flow_host.exe dist/portapy.dll
-          $controlFlowOutput | Out-File -Encoding utf8 dist/control-flow-output.txt
           if ($controlFlowOutput -ne 'control-flow: ok') { throw "unexpected control-flow output: $controlFlowOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_function_host.c -o dist/native_function_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $functionOutput = & dist/native_function_host.exe dist/portapy.dll
+          if ($functionOutput -ne 'native-functions: ok') { throw "unexpected function output: $functionOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_object_host.c -o dist/native_host_object_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostObjectOutput = & dist/native_host_object_host.exe dist/portapy.dll
+          if ($hostObjectOutput -ne 'native-host-objects: ok') { throw "unexpected host-object output: $hostObjectOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

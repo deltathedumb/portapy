@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from tools.native_surface import PUBLIC_EXPORTS
+from tools.native_surface import public_exports
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 from tools.release_gate import main
 
@@ -16,6 +16,7 @@ def _sha256(path: Path) -> str:
 def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
+    expected_exports = list(public_exports(host_bridge=True))
     for target, name in (("linux", "libportapy.so"), ("windows", "portapy.dll")):
         artifact = dist / name
         artifact.write_bytes((target.encode("ascii") + b"\0") * 1024)
@@ -27,12 +28,14 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "artifact": name,
             "size": artifact.stat().st_size,
             "sha256": _sha256(artifact),
-            "source": "src/portapy/native_api_control.py",
+            "source": "src/portapy/native_api_host.py",
             "source_sha256": "0" * 64,
-            "public_exports": list(PUBLIC_EXPORTS),
+            "public_exports": expected_exports,
             "python_module_exports": list(PYTHON_MODULE_EXPORTS),
             "python_module_entry": "portapy",
             "python_built_runtime": True,
+            "host_bridge": True,
+            "generated_host_entry": True,
         }
         artifact.with_suffix(artifact.suffix + ".json").write_text(
             json.dumps(metadata),
@@ -60,7 +63,7 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
     assert (dist / "checksums.json").is_file()
     manifest = json.loads((dist / "release-manifest.json").read_text(encoding="utf-8"))
     assert manifest["release"]["stage"] == "developer-preview"
-    assert manifest["public_exports"] == list(PUBLIC_EXPORTS)
+    assert manifest["public_exports"] == expected_exports
     assert manifest["python_module_exports"] == list(PYTHON_MODULE_EXPORTS)
     assert manifest["python_module_entry"] == "portapy"
     notes = (dist / "RELEASE_NOTES.md").read_text(encoding="utf-8")

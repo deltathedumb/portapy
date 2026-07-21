@@ -9,6 +9,11 @@ VM_PATH = Path("src/portapy/core/vm.py")
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 
 
+def _normalize_ascii(source: str) -> tuple[str, int]:
+    count = source.count("ascii(")
+    return source.replace("ascii(", "str("), count
+
+
 def main() -> int:
     source = VM_PATH.read_text(encoding="utf-8")
     source, noop_lambda_count = re.subn(
@@ -23,9 +28,11 @@ def main() -> int:
     )
     matrix_count = source.count("left @ right")
     source = source.replace("left @ right", "_full_core_probe_noop()")
+    source, vm_ascii_count = _normalize_ascii(source)
     print("REPLACED NOOP LAMBDAS", noop_lambda_count)
     print("REPLACED RETURNED LAMBDAS", returned_lambda_count)
     print("REPLACED MATRIX EXPRESSIONS", matrix_count)
+    print("REPLACED VM ASCII CALLS", vm_ascii_count)
     VM_PATH.write_text(source, encoding="utf-8")
 
     frontend = FRONTEND_PATH.read_text(encoding="utf-8")
@@ -39,8 +46,11 @@ def main() -> int:
     count = frontend.count(old)
     if count != 1:
         raise RuntimeError(f"expected one starred lambda argument list, found {count}")
-    FRONTEND_PATH.write_text(frontend.replace(old, new, 1), encoding="utf-8")
+    frontend = frontend.replace(old, new, 1)
+    frontend, frontend_ascii_count = _normalize_ascii(frontend)
+    FRONTEND_PATH.write_text(frontend, encoding="utf-8")
     print("REPLACED STARRED LAMBDA ARGUMENT LIST", count)
+    print("REPLACED FRONTEND ASCII CALLS", frontend_ascii_count)
     return 0
 
 

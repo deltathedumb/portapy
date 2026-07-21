@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from portapy.parser import ast_nodes as A
+from portapy.parser import parse_source
 
 from . import portable_frontend_comprehensions as _comprehensions
 from .bytecode import CodeObject, Op
@@ -160,8 +161,40 @@ _comprehensions._control._PortableLowerer = _PortableLowerer
 _comprehensions._control._base._PortableLowerer = _PortableLowerer
 
 
-def compile_portable_source(source: str, filename: str = "<portapy>"):
-    return _comprehensions.compile_portable_source(source, filename)
+def compile_portable_source(
+    source: str,
+    filename: str = "<portapy>",
+) -> CodeObject:
+    """Lower a module in its original source order without host ``ast``."""
+    module = parse_source(source)
+    _PortableLowerer.function_definitions = {
+        function.name: function for function in module.funcs
+    }
+    _PortableLowerer.function_code_cache = {}
+    lowerer = _PortableLowerer(filename)
+
+    ordered: list[tuple[int, int, str, object]] = []
+    sequence = 0
+    for class_definition in module.classes:
+        ordered.append((class_definition.pos.line, sequence, "class", class_definition))
+        sequence += 1
+    for function in module.funcs:
+        if function.is_lifted:
+            continue
+        ordered.append((function.pos.line, sequence, "function", function))
+        sequence += 1
+    for statement in module.body:
+        ordered.append((statement.pos.line, sequence, "statement", statement))
+        sequence += 1
+
+    for _line, _sequence, kind, node in sorted(ordered):
+        if kind == "class":
+            lowerer.class_definition(node)
+        elif kind == "function":
+            lowerer.function(node)
+        else:
+            lowerer.statement(node)
+    return lowerer.finish()
 
 
 __all__ = ["PortableFrontendError", "compile_portable_source"]

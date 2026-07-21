@@ -20,7 +20,6 @@ _DATA_LOAD_RE = re.compile(
 _EXTERNAL_MEMORY_RE = re.compile(
     r"\[(?:rel\s+)?(?P<symbol>[A-Za-z_.$?][\w.$?@]*)[^\]]*\]"
 )
-_MALLOC_CALLS = {"call malloc", "call malloc wrt ..plt"}
 
 
 def _extern_symbols(lines: list[str]) -> set[str]:
@@ -33,29 +32,6 @@ def _extern_symbols(lines: list[str]) -> set[str]:
         for symbol in payload.replace(",", " ").split():
             symbols.add(symbol)
     return symbols
-
-
-def _fix_malloc_argument_registers(lines: list[str]) -> tuple[list[str], int]:
-    output: list[str] = []
-    rewrites = 0
-    for raw in lines:
-        if raw.strip() in _MALLOC_CALLS and output:
-            previous = output[-1].strip()
-            if previous.startswith("shl rcx,"):
-                indent = output[-1][: len(output[-1]) - len(output[-1].lstrip())]
-                output[-1] = output[-1].replace("rcx", "rdi")
-                output.insert(len(output) - 1, indent + "mov rdi, rcx")
-                rewrites += 1
-            elif previous.startswith("mov rcx,"):
-                output[-1] = output[-1].replace("rcx", "rdi", 1)
-                rewrites += 1
-        output.append(raw)
-    if rewrites < 10:
-        raise ValueError(
-            "generated ELF runtime exposed fewer malloc ABI mismatches than "
-            f"expected: {rewrites}"
-        )
-    return output, rewrites
 
 
 def make_elf_pic(source: str) -> str:
@@ -94,8 +70,6 @@ def make_elf_pic(source: str) -> str:
 
         output.append(raw)
 
-    output, malloc_rewrites = _fix_malloc_argument_registers(output)
-    print("FIXED ELF MALLOC ABI", malloc_rewrites)
     if not any(line.strip() == 'section .note.GNU-stack noalloc noexec nowrite progbits' for line in output):
         output.extend(["", "section .note.GNU-stack noalloc noexec nowrite progbits"])
     return "\n".join(output) + "\n"

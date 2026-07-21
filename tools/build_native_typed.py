@@ -1,9 +1,9 @@
-"""Build PortaPy's full parser/VM runtime by default.
+"""Build PortaPy's current native interpreter entry.
 
-The historical filename remains the stable CI and release command. Default
-builds now emit the complete standalone parser, frontend, VM, host bridge, and
-public environment ABI. Passing ``--source`` retains focused source-entry
-compiler probes without running the full-runtime normalization pipeline.
+The historical filename remains the stable CI/release command. Default builds
+now use the generated host-call entry, including scalar expressions, control
+flow, positional functions, opaque host graphs, and synchronous callbacks.
+Passing ``--source`` retains focused source-entry compiler probes.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from tools.build_native import BuildFailure, build_native
-from tools.build_native_full_runtime import main as build_full_runtime_entry
+from tools.build_native_host_calls import main as build_host_call_entry
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
@@ -45,8 +45,6 @@ def _build_explicit_source(argv: list[str]) -> int:
     metadata["generated_function_entry"] = False
     metadata["generated_host_entry"] = False
     metadata["generated_host_call_entry"] = False
-    metadata["full_frontend_vm"] = False
-    metadata["standalone_parser"] = False
     metadata["python_module_exports"] = list(PYTHON_MODULE_EXPORTS)
     metadata["python_module_entry"] = "portapy"
     metadata_path = args.output.resolve().with_suffix(args.output.suffix + ".json")
@@ -59,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if "--source" in arguments:
         return _build_explicit_source(arguments)
-    return build_full_runtime_entry(arguments)
+    return build_host_call_entry(arguments)
 
 
 if __name__ == "__main__":

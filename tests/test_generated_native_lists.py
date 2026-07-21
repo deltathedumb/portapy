@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 from portapy import native_api as base
+from portapy.native_api_host import _portapy_set_global_span_impl
 from tools.generate_native_control_entry import generate_native_control_entry
 from tools.generate_native_expression_entry import (
     generate_namespaced_scalar_entry,
@@ -140,7 +141,7 @@ def test_list_storage_supports_replacement_and_append(tmp_path: Path) -> None:
             assert scalar._scalar_list_set(runtime, value, 1, replacement) == base.PORTAPY_OK
             assert scalar._scalar_list_append(runtime, value, appended) == base.PORTAPY_OK
             name = "values"
-            assert base._portapy_set_global_span_impl(runtime, name, len(name), value) == base.PORTAPY_OK
+            assert _portapy_set_global_span_impl(runtime, name, len(name), value) == base.PORTAPY_OK
             assert _eval_int(api, runtime, "values[0] + values[1] + values[2]") == 60
             assert _eval_int(api, runtime, "len(values)") == 3
         finally:

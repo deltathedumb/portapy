@@ -1,8 +1,8 @@
 """Build PortaPy's generated control-flow and expression native entry.
 
 The historical filename remains as a compatibility shim for existing CI and
-release workflows. The default build statically composes the Python-authored
-scalar, boolean, and control-flow layers before invoking asmpython.
+release workflows. The default build statically composes namespace-safe scalar,
+boolean, and control-flow layers before invoking asmpython.
 """
 from __future__ import annotations
 
@@ -18,7 +18,10 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from tools.build_native import BuildFailure, build_native
 from tools.generate_native_control_entry import generate_native_control_entry
-from tools.generate_native_expression_entry import generate_native_expression_entry
+from tools.generate_native_expression_entry import (
+    generate_namespaced_scalar_entry,
+    generate_native_expression_entry,
+)
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
@@ -34,15 +37,22 @@ def main(argv: list[str] | None = None) -> int:
     generated_paths: list[Path] = []
     if source is None:
         package = REPOSITORY_ROOT / "src" / "portapy"
+        scalar_module = f"_native_api_scalar_generated_{args.target}"
         expression_module = f"_native_api_expressions_generated_{args.target}"
+        scalar_source = package / f"{scalar_module}.py"
         expression_source = package / f"{expression_module}.py"
         control_source = package / f"_native_api_control_generated_{args.target}.py"
-        generate_native_expression_entry(expression_source)
+        generate_namespaced_scalar_entry(scalar_source)
+        generate_native_expression_entry(
+            expression_source,
+            scalar_module=scalar_module,
+        )
         generate_native_control_entry(
             control_source,
             expression_module=expression_module,
+            scalar_module=scalar_module,
         )
-        generated_paths.extend([expression_source, control_source])
+        generated_paths.extend([scalar_source, expression_source, control_source])
         source = control_source
 
     try:
@@ -59,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         for generated_path in generated_paths:
             generated_path.unlink(missing_ok=True)
 
+    metadata["generated_scalar_entry"] = bool(generated_paths)
     metadata["generated_expression_entry"] = bool(generated_paths)
     metadata["generated_control_entry"] = bool(generated_paths)
     metadata["semantic_sources"] = [

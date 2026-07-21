@@ -23,7 +23,7 @@ from tools.generate_native_expression_entry import (
     generate_native_expression_entry,
 )
 from tools.python_surface import PYTHON_MODULE_EXPORTS
-from tools.rewrite_generated_parser import (
+from tools.rewrite_generated_parser_safe import (
     rewrite_generated_expression,
     rewrite_generated_scalar,
 )

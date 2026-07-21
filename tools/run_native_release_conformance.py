@@ -20,6 +20,9 @@ HOSTS = (
     ("native_host_object_host.c", "native-host-objects: ok"),
     ("native_host_call_host.c", "native-host-calls: ok"),
     ("native_environment_api_host.c", "universal-environment-api: ok"),
+    ("native_tuple_host.c", "native-tuples: ok"),
+    ("native_dict_host.c", "native-dicts: ok"),
+    ("native_list_host.c", "native-lists: ok"),
 )
 
 

@@ -23,6 +23,8 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
           python -m pip install -e '.[test]'
+      - name: Test generated traceback semantics
+        run: python -m pytest tests/test_rewrite_generated_traceback.py
       - name: Build native library
         run: |
           python tools/build_native_host_calls.py \
@@ -36,6 +38,11 @@ jobs:
           ./dist/native_traceback_host ./dist/libportapy.so \
             | tee dist/traceback-output.txt
           grep -qx 'native-traceback-frames: ok' dist/traceback-output.txt
+      - name: Exercise traceback Python facade
+        run: |
+          python tests/native_traceback_adapter_probe.py ./dist/libportapy.so \
+            | tee dist/traceback-adapter-output.txt
+          grep -qx 'native-traceback-adapter: ok' dist/traceback-adapter-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -56,6 +63,9 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
           python -m pip install -e '.[test]'
+      - name: Test generated traceback semantics
+        shell: powershell
+        run: python -m pytest tests/test_rewrite_generated_traceback.py
       - name: Build native library
         shell: powershell
         run: |
@@ -75,6 +85,15 @@ jobs:
           $output | Out-File -Encoding utf8 dist/traceback-output.txt
           if ($output[-1] -ne 'native-traceback-frames: ok') {
             throw "unexpected traceback output: $($output -join [Environment]::NewLine)"
+          }
+      - name: Exercise traceback Python facade
+        shell: powershell
+        run: |
+          $output = @(python tests/native_traceback_adapter_probe.py dist/portapy.dll)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output | Out-File -Encoding utf8 dist/traceback-adapter-output.txt
+          if ($output[-1] -ne 'native-traceback-adapter: ok') {
+            throw "unexpected traceback adapter output: $($output -join [Environment]::NewLine)"
           }
       - uses: actions/upload-artifact@v4
         if: always()

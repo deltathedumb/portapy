@@ -58,16 +58,16 @@ class _PortaPyImportLoader:
     def __call__(self, name: str) -> object:
         parts = name.split(".")
         if len(parts) == 0 or parts[0] == "":
-            raise ModuleNotFoundError(name)
+            raise ImportError(name)
         status, value = self.instance.read_global(parts[0])
         if status is not Status.OK:
-            raise ModuleNotFoundError(name)
+            raise ImportError(name)
         index = 1
         while index < len(parts):
             try:
                 value = getattr(value, parts[index])
             except AttributeError:
-                raise ModuleNotFoundError(name)
+                raise ImportError(name)
             index += 1
         return value
 '''

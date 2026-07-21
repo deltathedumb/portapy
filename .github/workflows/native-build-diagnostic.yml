@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       status: ${{ steps.build.outputs.status }}
-      tail: ${{ steps.build.outputs.tail }}
+      report: ${{ steps.build.outputs.report }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,7 +32,7 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1' \
             >> /tmp/install.log 2>&1
-      - name: Capture compiler tail
+      - name: Capture compiler diagnostic
         id: build
         shell: bash
         run: |
@@ -43,21 +43,32 @@ jobs:
             --work-dir /tmp/build-linux \
             > /tmp/build.log 2>&1
           status=$?
+          {
+            echo '=== FIRST 35 LINES ==='
+            head -n 35 /tmp/build.log
+            echo
+            echo '=== ERROR-LIKE LINES ==='
+            grep -Ein 'error|failed|failure|unsupported|traceback|exception|undefined|invalid' \
+              /tmp/build.log | tail -n 120 || true
+            echo
+            echo '=== FINAL 120 LINES ==='
+            tail -n 120 /tmp/build.log
+          } > /tmp/report.log
           echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo 'tail<<PORTAPY_BUILD_TAIL' >> "$GITHUB_OUTPUT"
-          tail -n 90 /tmp/build.log >> "$GITHUB_OUTPUT"
-          echo 'PORTAPY_BUILD_TAIL' >> "$GITHUB_OUTPUT"
+          echo 'report<<PORTAPY_BUILD_REPORT' >> "$GITHUB_OUTPUT"
+          cat /tmp/report.log >> "$GITHUB_OUTPUT"
+          echo 'PORTAPY_BUILD_REPORT' >> "$GITHUB_OUTPUT"
           exit 0
 
   report-linux:
     needs: build-linux
     runs-on: ubuntu-22.04
     steps:
-      - name: Report compiler tail
+      - name: Report compiler diagnostic
         env:
-          BUILD_TAIL: ${{ needs.build-linux.outputs.tail }}
+          BUILD_REPORT: ${{ needs.build-linux.outputs.report }}
           BUILD_STATUS: ${{ needs.build-linux.outputs.status }}
         shell: bash
         run: |
-          printf '%s\n' "$BUILD_TAIL"
+          printf '%s\n' "$BUILD_REPORT"
           exit "$BUILD_STATUS"

@@ -30,15 +30,17 @@ def main() -> int:
         game = Game()
         environment.add_modules(math)
         environment.expose({"game": game, "add": add})
+        environment.set("input_value", 41.9)
         environment.execute(
             "http_provider = game.provider.HttpProvider\n"
-            "floor_value = math.floor(41.9)\n"
+            "floor_value = math.floor(input_value)\n"
             "answer = floor_value + 1\n"
             "nested = add(20, add(1, 21))\n"
         )
 
         snapshot = environment.snapshot()
         assert snapshot.var["http_provider"] is game.provider.HttpProvider
+        assert snapshot.var["input_value"] == 41.9
         assert snapshot.var["floor_value"] == 41
         assert snapshot.var["answer"] == 42
         assert snapshot.var["nested"] == 42

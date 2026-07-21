@@ -12,15 +12,22 @@ _SOURCE = '''class VirtualMachine:
         self._synthetic_tracebacks: dict[int, "_PyTBProxy"] = {}
 
     def read(self, target):
-        return self._synthetic_tracebacks.get(id(target), target.__traceback__)
+        value = self._synthetic_tracebacks.get(id(target), target.__traceback__)
+        return value
 
-    def write(self, exc, tb_frame):
-        prior = self._synthetic_tracebacks.get(id(exc))
-        self._synthetic_tracebacks[id(exc)] = _PyTBProxy(tb_frame, prior)
+    def write(self, frame, exc):
+        try:
+            pass
+        except BaseException as exc:
+            if isinstance(exc, BaseException) and not isinstance(exc, PyException):
+                tb_frame = _PyTBFrameProxy(frame.code, frame.globals, None)
+                prior = self._synthetic_tracebacks.get(id(exc))
+                self._synthetic_tracebacks[id(exc)] = _PyTBProxy(tb_frame, prior)
+            return exc
 '''
 
 
-def test_uses_string_keys_for_native_tracebacks(
+def test_disables_host_style_native_traceback_storage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "vm.py"
@@ -30,11 +37,10 @@ def test_uses_string_keys_for_native_tracebacks(
     assert normalizer.main() == 0
 
     result = path.read_text(encoding="utf-8")
-    assert 'dict[str, "_PyTBProxy"]' in result
-    assert "get(str(id(target))" in result
-    assert "get(str(id(exc)))" in result
-    assert "[str(id(exc))]" in result
-    assert "[id(exc)]" not in result
+    assert "_synthetic_tracebacks" not in result
+    assert "value = None" in result
+    assert "_PyTBProxy(tb_frame, prior)" not in result
+    assert "return exc" in result
 
 
 def test_rejects_missing_traceback_storage_shape(

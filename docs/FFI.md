@@ -5,7 +5,9 @@ functions can use the same `portapy.dll`, `libportapy.so`, or
 `libportapy.dylib` without a language-specific runtime inside PortaPy.
 
 PortaPy does **not** provide `import_module`. The host language loads or imports
-its own modules and then adds selected objects to an environment.
+its own modules and then adds selected objects to an environment. Executed
+PortaPy source may then use normal `import` and `from ... import ...` statements
+to resolve those already-added module objects.
 
 ## Two public layers
 
@@ -33,6 +35,7 @@ The fine-grained layer remains public and includes:
 - retain/release ownership
 - host object attributes and raw callback dispatch
 - structured error status, type, message, line, and column
+- indexed traceback frames declared by `portapy_traceback.h`
 
 ## `add` and `add_all`
 
@@ -51,6 +54,49 @@ callback returns one owned `portapy_value` through `out_result`.
 
 `PORTAPY_BINDING_REPLACE` permits replacement of an existing global. Without
 that flag, a collision fails.
+
+## Host-registered imports
+
+Suppose the host adds a module object under the name `helpers`. Executed source
+may then use:
+
+```python
+import helpers
+import helpers as h
+from helpers import answer
+from helpers import answer as imported_answer
+```
+
+Imports only resolve objects already present in the environment. Missing modules
+produce `ModuleNotFoundError`; missing members produce `ImportError`.
+`from helpers import *` is intentionally unavailable because the host can call
+`add_all(helpers)` explicitly.
+
+## Traceback frames
+
+After failed execution or evaluation, hosts can inspect frames without parsing a
+formatted string:
+
+```c
+#include "portapy_traceback.h"
+
+size_t count = 0;
+portapy_error_traceback_count(environment, &count);
+
+for (size_t index = 0; index < count; ++index) {
+    portapy_traceback_frame_info frame = {0};
+    frame.struct_size = sizeof(frame);
+    portapy_error_traceback_get_frame(environment, index, &frame);
+
+    /* Allocate frame.function_size bytes, then call:
+       portapy_error_traceback_copy_function_utf8(...). */
+}
+```
+
+Frames are ordered like Python tracebacks: outermost first and innermost last.
+Each frame exposes a filename, function name, line, column, and source line.
+Traceback state is cleared by the next execution/evaluation, explicit error
+clearing, or runtime destruction.
 
 ## C example
 

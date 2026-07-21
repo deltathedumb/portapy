@@ -38,6 +38,40 @@ def _read_json(path: Path) -> dict[str, object]:
     return value
 
 
+def _validate_release_status(status: dict[str, object], expected_tag: str) -> None:
+    if status.get("release_tag") != expected_tag:
+        raise SystemExit(
+            f"release tag mismatch: expected {expected_tag!r}, "
+            f"status declares {status.get('release_tag')!r}"
+        )
+    stage = status.get("stage")
+    prerelease = status.get("prerelease")
+    ready = status.get("source_execution_ready")
+    blockers = status.get("release_blockers")
+    if stage == "developer-preview":
+        if prerelease is not True:
+            raise SystemExit("developer preview must be marked as a prerelease")
+    elif stage == "final":
+        if prerelease is not False:
+            raise SystemExit("final release must not be marked as a prerelease")
+        if ready is not True:
+            raise SystemExit("final release must assert standalone source execution readiness")
+        if blockers not in ([], None):
+            raise SystemExit("final release status still declares release blockers")
+    else:
+        raise SystemExit(f"unsupported release stage: {stage!r}")
+    if status.get("python_built_runtime") is not True:
+        raise SystemExit("release status does not assert a Python-built runtime")
+
+
+def _require(metadata: dict[str, object], key: str, expected: object, path: Path) -> None:
+    if metadata.get(key) != expected:
+        raise SystemExit(
+            f"artifact metadata mismatch for {key!r} in {path}: "
+            f"expected {expected!r}, got {metadata.get(key)!r}"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist", type=Path)
@@ -46,20 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     status = _read_json(args.status)
-    if status.get("release_tag") != args.expected_tag:
-        raise SystemExit(
-            f"release tag mismatch: expected {args.expected_tag!r}, "
-            f"status declares {status.get('release_tag')!r}"
-        )
-    if status.get("stage") != "developer-preview" or status.get("prerelease") is not True:
-        raise SystemExit("3.14-dev.1 must remain explicitly marked as a prerelease")
-    if status.get("python_built_runtime") is not True:
-        raise SystemExit("release status does not assert a Python-built runtime")
-    if status.get("source_execution_ready") is not False:
-        raise SystemExit(
-            "developer preview must state that source execution is not ready; "
-            "use a new final-release status when the full PortaPy parser lands"
-        )
+    _validate_release_status(status, args.expected_tag)
 
     args.dist.mkdir(parents=True, exist_ok=True)
     records: dict[str, dict[str, object]] = {}
@@ -72,34 +93,23 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"missing or implausibly small native artifact: {path}")
         metadata = _read_json(metadata_path)
         actual_digest = sha256(path)
-        if metadata.get("target") != target:
-            raise SystemExit(f"target mismatch in {metadata_path}")
-        if metadata.get("artifact") != name:
-            raise SystemExit(f"artifact-name mismatch in {metadata_path}")
-        if metadata.get("size") != path.stat().st_size:
-            raise SystemExit(f"artifact-size mismatch in {metadata_path}")
-        if metadata.get("sha256") != actual_digest:
-            raise SystemExit(f"artifact digest mismatch in {metadata_path}")
-        if metadata.get("python_built_runtime") is not True:
-            raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
-        if metadata.get("host_bridge") is not True:
-            raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
-        if metadata.get("host_calls") is not True:
-            raise SystemExit(f"artifact does not include host-call dispatch: {metadata_path}")
-        if metadata.get("native_environment_adapter") is not True:
-            raise SystemExit(f"artifact does not include environment management: {metadata_path}")
-        if metadata.get("public_environment_api") is not True:
-            raise SystemExit(f"artifact does not include the public environment API: {metadata_path}")
-        if metadata.get("public_traceback_abi") is not True:
-            raise SystemExit(f"artifact does not include the public traceback ABI: {metadata_path}")
-        if metadata.get("generated_host_call_entry") is not True:
-            raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
-        if metadata.get("public_exports") != expected_exports:
-            raise SystemExit(f"public export surface mismatch in {metadata_path}")
-        if metadata.get("python_module_exports") != expected_python_exports:
-            raise SystemExit(f"Python module surface mismatch in {metadata_path}")
-        if metadata.get("python_module_entry") != PYTHON_MODULE_ENTRY:
-            raise SystemExit(f"Python module entry mismatch in {metadata_path}")
+        _require(metadata, "target", target, metadata_path)
+        _require(metadata, "artifact", name, metadata_path)
+        _require(metadata, "size", path.stat().st_size, metadata_path)
+        _require(metadata, "sha256", actual_digest, metadata_path)
+        _require(metadata, "python_built_runtime", True, metadata_path)
+        _require(metadata, "host_bridge", True, metadata_path)
+        _require(metadata, "host_calls", True, metadata_path)
+        _require(metadata, "native_environment_adapter", True, metadata_path)
+        _require(metadata, "public_environment_api", True, metadata_path)
+        _require(metadata, "public_traceback_abi", True, metadata_path)
+        _require(metadata, "generated_host_call_entry", True, metadata_path)
+        _require(metadata, "standalone_frontend", True, metadata_path)
+        _require(metadata, "full_virtual_machine", True, metadata_path)
+        _require(metadata, "incremental_executor", False, metadata_path)
+        _require(metadata, "public_exports", expected_exports, metadata_path)
+        _require(metadata, "python_module_exports", expected_python_exports, metadata_path)
+        _require(metadata, "python_module_entry", PYTHON_MODULE_ENTRY, metadata_path)
         records[name] = {
             "platform": target,
             "sha256": actual_digest,
@@ -124,11 +134,12 @@ def main(argv: list[str] | None = None) -> int:
 
     completed = status.get("completed_surface")
     blockers = status.get("release_blockers")
+    title = status.get("display_name") or f"PortaPy {args.expected_tag}"
     notes = [
-        "# PortaPy 3.14 Developer Preview 1",
+        f"# {title}",
         "",
-        "This prerelease contains genuine native libraries generated from "
-        "PortaPy's Python-authored runtime state by asmpython.",
+        "This release contains native libraries generated from PortaPy's "
+        "Python-authored portable frontend and full virtual machine by asmpython.",
         "",
         "## Implemented native surface",
         "",
@@ -153,19 +164,14 @@ def main(argv: list[str] | None = None) -> int:
             "and source-line frames through C and as `NativeTracebackFrame` objects "
             "through the native Python facade.",
             "",
-            "## Not yet included",
-            "",
-            "This is not the final Python 3.14 interpreter release. Remaining "
-            "gates include closures, classes, the complete standalone frontend/bytecode "
-            "VM transition, and broader object syntax.",
-            "",
         ]
     )
-    if isinstance(blockers, list):
+    if isinstance(blockers, list) and blockers:
+        notes.extend(["## Remaining gates", ""])
         notes.extend(f"- {item}" for item in blockers)
+        notes.append("")
     notes.extend(
         [
-            "",
             "The release includes `portapy.dll`, `libportapy.so`, the public "
             "headers, build metadata, FFI examples, and SHA-256 checksums.",
             "",

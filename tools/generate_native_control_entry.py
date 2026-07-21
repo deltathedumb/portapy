@@ -1,4 +1,4 @@
-"""Generate PortaPy's native control-flow entry over a static expression module."""
+"""Generate PortaPy's native control-flow entry over static parser modules."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ def _replace_function(source: str, name: str, replacement: str) -> str:
 def _execute_assignment() -> str:
     return '''def _execute_assignment(runtime: int, source: str, start: int, end: int) -> int:
     statement = source[start:end]
-    assignment = _find_scalar_assignment(statement, len(statement))
+    assignment = _scalar_find_assignment(statement, len(statement))
     if not assignment[0]:
         parsed = _parse_boolean_expression(runtime, source, start, end)
         if parsed[2] != PORTAPY_OK:
@@ -56,7 +56,7 @@ def _execute_assignment() -> str:
             _release_value(runtime, parsed[0])
             return _record_expression_failure(runtime, current[2], start)
         operator = str(assignment[0])[:-1]
-        combined = _apply_scalar_binary(
+        combined = _scalar_binary(
             runtime,
             current[0],
             parsed[0],
@@ -73,9 +73,12 @@ def generate_native_control_entry(
     output: Path,
     *,
     expression_module: str,
+    scalar_module: str,
 ) -> Path:
     if not expression_module.isidentifier():
         raise ValueError(f"invalid generated expression module: {expression_module!r}")
+    if not scalar_module.isidentifier():
+        raise ValueError(f"invalid generated scalar module: {scalar_module!r}")
     source = CONTROL_SOURCE.read_text(encoding="utf-8")
     old_import = """from .native_api_expressions import (
     _parse_boolean_expression,
@@ -84,14 +87,18 @@ def generate_native_control_entry(
     _word_at,
 )"""
     new_import = f"""from .{expression_module} import (
-    _binary as _apply_scalar_binary,
-    _find_assignment as _find_scalar_assignment,
     _parse_boolean_expression,
     _record_expression_failure,
-    _release as _release_value,
-    _retain_global as _retain_scalar_global,
     _truthy,
     _word_at,
+)
+from .{scalar_module} import (
+    _scalar_binary,
+    _scalar_find_assignment,
+)
+from .native_api import (
+    _release as _release_value,
+    _retain_global as _retain_scalar_global,
 )"""
     if old_import not in source:
         raise ValueError("control-flow source has an unexpected expression import")
@@ -111,10 +118,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--expression-module", required=True)
+    parser.add_argument("--scalar-module", required=True)
     args = parser.parse_args(argv)
     generate_native_control_entry(
         args.output,
         expression_module=args.expression_module,
+        scalar_module=args.scalar_module,
     )
     return 0
 

@@ -15,7 +15,7 @@ from tools.generate_native_function_entry import (
     rewrite_control_expression_imports,
 )
 from tools.namespace_generated_module import namespace_generated_module
-from tools.rewrite_generated_function_safe import rewrite_generated_function
+from tools.rewrite_generated_function_stack import rewrite_generated_function
 from tools.rewrite_generated_parser_safe import (
     rewrite_generated_control,
     rewrite_generated_expression,
@@ -102,6 +102,7 @@ def test_generated_function_entry_has_only_named_static_dependencies(tmp_path: P
     assert "str(assignment[0])" not in function_source
     assert "from .native_api import _last_status" not in function_source
     assert 'elif char == "\\\\":' in function_source
+    assert "_call_argument_top: list[int] = [1]" in function_source
 
 
 def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> None:
@@ -115,6 +116,8 @@ def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> N
     try:
         runtime = api._portapy_runtime_create_impl()
         source = (
+            "def zero():\n"
+            "    return 7\n"
             "def add(left, right):\n"
             "    total = left + right\n"
             "    return total\n"
@@ -123,6 +126,8 @@ def test_generated_function_entry_executes_positional_calls(tmp_path: Path) -> N
         assert api._portapy_exec_span_impl(runtime, source, len(source)) == base.PORTAPY_OK
         answer = api._portapy_eval_span_impl(runtime, "answer", len("answer"))
         assert base._portapy_value_as_i64_impl(runtime, answer) == 42
+        zero = api._portapy_eval_span_impl(runtime, "zero()", len("zero()"))
+        assert base._portapy_value_as_i64_impl(runtime, zero) == 7
         nested = api._portapy_eval_span_impl(runtime, "add(add(10, 11), 21)", len("add(add(10, 11), 21)"))
         assert base._portapy_value_as_i64_impl(runtime, nested) == 42
     finally:

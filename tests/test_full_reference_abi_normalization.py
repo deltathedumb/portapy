@@ -44,10 +44,16 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
     assert "_PortaPyImportLoader(instance)" in runtime_source
     assert "__pyinbin_import__" in runtime_source
+    assert "_set_status(Status.OK)" in runtime_source
+
+    set_status_source = _source(module, "_set_status")
+    assert "status.value" in set_status_source
+    assert "int(status)" not in set_status_source
 
     kind_source = _source(module, "_portapy_value_get_kind_impl")
     assert "instance.value_kind(value)" in kind_source
-    assert "return int(kind)" in kind_source
+    assert "return kind.value" in kind_source
+    assert "int(kind)" not in kind_source
     assert "instance.unbox(value)" not in kind_source
     assert "_value_kind(" not in kind_source
 
@@ -56,6 +62,7 @@ def test_full_reference_normalization_installs_runtime_support(
     assert "kind is not ValueKind.BOOL" in bool_source
     assert "instance.unbox(value)" in bool_source
     assert "type(target)" not in bool_source
+    assert "PORTAPY_" not in bool_source
 
     assert "instance._store(_DataBuilder(kind, size), kind)" in _source(
         module, "_portapy_value_from_data_begin_impl"

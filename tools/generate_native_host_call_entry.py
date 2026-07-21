@@ -82,6 +82,11 @@ def generate_native_host_call_entry(
     _scalar_tuple_item_value,
     _scalar_tuple_size_unchecked,
     _scalar_tuple_item_unchecked,
+    _scalar_dict_entry_owner,
+    _scalar_dict_entry_key,
+    _scalar_dict_entry_value,
+    _scalar_dict_size_unchecked,
+    _scalar_dict_item_unchecked,
 )"""
     source = source.replace(_HOST_IMPORT, host_import, 1)
     source = source.replace(_SCALAR_IMPORT, scalar_import, 1)

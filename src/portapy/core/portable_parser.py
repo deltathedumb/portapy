@@ -20,6 +20,8 @@ class PortableParser(Parser):
         self._async_function_context: list[bool] = []
 
     def _at_async_def(self) -> bool:
+        if self.i + 1 >= len(self.toks):
+            return False
         token = self._peek()
         following = self._peek(1)
         return (
@@ -31,7 +33,7 @@ class PortableParser(Parser):
 
     def _check(self, kind: str, value: str = None) -> bool:
         # Existing top-level and class-body dispatch asks whether the current
-        # token is ``def`` before calling _parse_funcdef.  Treat ``async def``
+        # token is ``def`` before calling _parse_funcdef. Treat ``async def``
         # as that same shape; _parse_funcdef consumes the leading ``async``.
         if kind == "KEYWORD" and value == "def" and self._at_async_def():
             return True
@@ -46,6 +48,9 @@ class PortableParser(Parser):
             function = super()._parse_funcdef(decorators=decorators)
         finally:
             self._async_function_context.pop()
+        # FuncDef is deliberately a dumb, non-slotted data carrier. PortaPy's
+        # final lowering layer consumes this portable-only marker; the shared
+        # asmpython parser and semantic pipeline remain unchanged.
         function.is_async = is_async
         return function
 

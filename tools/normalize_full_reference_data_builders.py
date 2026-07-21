@@ -4,7 +4,8 @@ Native local empty lists expose a sentinel slot in the pinned compiler runtime, 
 ``len([])`` is not a safe byte cursor. Builders instead append to one module-owned
 byte arena and retain a start/size pair. Materialization uses a one-item seed list,
 which avoids both indexed writes and the empty-list sentinel while preserving every
-byte exactly.
+byte exactly. UTF-8 is validated explicitly because the compiler's decode stub does
+not reject malformed byte sequences.
 """
 from __future__ import annotations
 
@@ -67,19 +68,77 @@ if instance is None:
 status, raw = instance.unbox(value)
 if status is not Status.OK:
     return _set_status(status)
-try:
-    _data_bytes(raw).decode("utf-8")
-except UnicodeDecodeError:
-    status = instance._capture_native(
-        Status.TYPE_ERROR,
-        "UnicodeDecodeError",
-        "invalid UTF-8",
-        0,
-        1,
-    )
-    return _set_status(status)
-except TypeError:
+if not isinstance(raw, _DataBuilder):
     return _set_status(Status.TYPE_ERROR)
+if raw.written != raw.size:
+    return _set_status(Status.INVALID_ARGUMENT)
+index = 0
+while index < raw.size:
+    first = _native_byte_data[raw.start + index]
+    needed = 0
+    minimum = 0
+    codepoint = 0
+    if first < 128:
+        index += 1
+        continue
+    if first >= 194 and first <= 223:
+        needed = 1
+        minimum = 128
+        codepoint = first - 192
+    elif first >= 224 and first <= 239:
+        needed = 2
+        minimum = 2048
+        codepoint = first - 224
+    elif first >= 240 and first <= 244:
+        needed = 3
+        minimum = 65536
+        codepoint = first - 240
+    else:
+        status = instance._capture_native(
+            Status.TYPE_ERROR,
+            "UnicodeDecodeError",
+            "invalid UTF-8 leading byte",
+            0,
+            index + 1,
+        )
+        return _set_status(status)
+    if index + needed >= raw.size:
+        status = instance._capture_native(
+            Status.TYPE_ERROR,
+            "UnicodeDecodeError",
+            "truncated UTF-8 sequence",
+            0,
+            index + 1,
+        )
+        return _set_status(status)
+    offset = 1
+    while offset <= needed:
+        continuation = _native_byte_data[raw.start + index + offset]
+        if continuation < 128 or continuation > 191:
+            status = instance._capture_native(
+                Status.TYPE_ERROR,
+                "UnicodeDecodeError",
+                "invalid UTF-8 continuation byte",
+                0,
+                index + offset + 1,
+            )
+            return _set_status(status)
+        codepoint = codepoint * 64 + continuation - 128
+        offset += 1
+    if (
+        codepoint < minimum
+        or codepoint > 1114111
+        or (codepoint >= 55296 and codepoint <= 57343)
+    ):
+        status = instance._capture_native(
+            Status.TYPE_ERROR,
+            "UnicodeDecodeError",
+            "invalid UTF-8 code point",
+            0,
+            index + 1,
+        )
+        return _set_status(status)
+    index += needed + 1
 return _set_status(Status.OK)
 '''
 
@@ -186,12 +245,14 @@ def main() -> int:
         "index != target.written",
         "_native_byte_data.append(byte)",
         "data: list[int] = [_native_byte_data[value.start]]",
-        "_data_bytes(raw).decode('utf-8')",
+        "while index < raw.size",
+        "invalid UTF-8 continuation byte",
+        "codepoint > 1114111",
     )
     absent = [marker for marker in required if marker not in text]
     if absent:
         raise RuntimeError(f"native data-builder validation failed: {absent}")
-    print("NORMALIZED NATIVE DATA BUILDERS", 5)
+    print("NORMALIZED NATIVE DATA BUILDERS", 6)
     return 0
 
 

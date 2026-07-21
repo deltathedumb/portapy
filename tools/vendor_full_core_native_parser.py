@@ -156,6 +156,106 @@ class _AdaptNativeAst(ast.NodeTransformer):
         return node
 
 
+def _rename_ast_arg_class(module: ast.Module) -> None:
+    class_count = 0
+    call_count = 0
+
+    class _AnnotationRenamer(ast.NodeTransformer):
+        def visit_Name(self, node: ast.Name) -> ast.AST:
+            if node.id == "arg":
+                return ast.copy_location(ast.Name(id="AstArg", ctx=node.ctx), node)
+            return node
+
+    annotation_renamer = _AnnotationRenamer()
+    for node in ast.walk(module):
+        if isinstance(node, ast.ClassDef) and node.name == "arg":
+            node.name = "AstArg"
+            class_count += 1
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "arg":
+            node.func.id = "AstArg"
+            call_count += 1
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            arguments = [
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            ]
+            if node.args.vararg is not None:
+                arguments.append(node.args.vararg)
+            if node.args.kwarg is not None:
+                arguments.append(node.args.kwarg)
+            for argument in arguments:
+                if argument.annotation is not None:
+                    argument.annotation = annotation_renamer.visit(argument.annotation)
+            if node.returns is not None:
+                node.returns = annotation_renamer.visit(node.returns)
+        elif isinstance(node, ast.AnnAssign):
+            node.annotation = annotation_renamer.visit(node.annotation)
+
+    if class_count != 1:
+        raise RuntimeError(f"native AST arg class: expected 1, found {class_count}")
+    if call_count < 1:
+        raise RuntimeError("native AST arg constructor calls were not found")
+    print("RENAMED NATIVE AST ARG CLASS", class_count, call_count)
+
+
+def _expand_parser_bootstrap(
+    module: ast.Module,
+    lexer_name: str,
+    parser_name: str,
+) -> None:
+    matches = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "parse"
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"native AST parse function: expected 1, found {len(matches)}")
+    function = matches[0]
+    if not function.body:
+        raise RuntimeError("native AST parse function has no body")
+    first = function.body[0]
+    if not (
+        isinstance(first, ast.Assign)
+        and len(first.targets) == 1
+        and isinstance(first.targets[0], ast.Name)
+        and first.targets[0].id == "parsed"
+    ):
+        raise RuntimeError("native AST parse bootstrap has an unexpected shape")
+    bootstrap = ast.parse(
+        f"lexer = {lexer_name}(source)\n"
+        "tokens = lexer.tokenize()\n"
+        f"parser = {parser_name}(tokens)\n"
+        "parsed = parser.parse()\n"
+    ).body
+    function.body[:1] = bootstrap
+    print("EXPANDED NATIVE PARSER BOOTSTRAP", 1)
+
+
+def _remove_integer_exception_table(
+    module: ast.Module,
+    exception_table_name: str,
+) -> None:
+    matches = 0
+    for node in module.body:
+        target: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        if isinstance(target, ast.Name) and target.id == exception_table_name:
+            node.value = ast.Dict(keys=[], values=[])
+            if isinstance(node, ast.AnnAssign):
+                node.annotation = ast.parse("dict[str, str]", mode="eval").body
+            matches += 1
+    if matches != 1:
+        raise RuntimeError(
+            f"parser exception-name table: expected 1, found {matches}"
+        )
+    print("REMOVED INTEGER PARSER EXCEPTION TABLE", matches)
+
+
 def _strip_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
     if (
         body
@@ -184,6 +284,10 @@ def vendor_native_parser() -> tuple[int, int]:
         runtime_body.extend(_strip_docstring(transformed.body))
 
     runtime = ast.Module(body=runtime_body, type_ignores=[])
+    _remove_integer_exception_table(
+        runtime,
+        names["errors"]["_PYTHON_EXCEPTION_NAME"],
+    )
     ast.fix_missing_locations(runtime)
     RUNTIME_PATH.write_text(
         "from __future__ import annotations\n\n" + ast.unparse(runtime) + "\n",
@@ -201,11 +305,17 @@ def vendor_native_parser() -> tuple[int, int]:
         }
     )
     native_ast = _AdaptNativeAst(names).visit(native_ast)
+    _rename_ast_arg_class(native_ast)
+    _expand_parser_bootstrap(
+        native_ast,
+        names["lexer"]["Lexer"],
+        names["parser"]["Parser"],
+    )
     ast.fix_missing_locations(native_ast)
 
     imports = [
-        ast.alias(name=names["lexer"]["Lexer"], asname="Lexer"),
-        ast.alias(name=names["parser"]["Parser"], asname="Parser"),
+        ast.alias(name=names["lexer"]["Lexer"], asname=None),
+        ast.alias(name=names["parser"]["Parser"], asname=None),
     ]
     for name in ast_node_names:
         renamed = names["ast_nodes"].get(name)

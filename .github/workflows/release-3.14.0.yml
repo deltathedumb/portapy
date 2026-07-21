@@ -83,6 +83,7 @@ jobs:
       - name: Install package and native toolchain
         shell: powershell
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           & .\tools\install_windows_toolchain.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -e '.[test]'

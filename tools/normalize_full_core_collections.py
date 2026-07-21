@@ -6,16 +6,20 @@ from pathlib import Path
 
 PATH = Path("src/portapy/core/vm.py")
 
-
-def main() -> int:
-    source = PATH.read_text(encoding="utf-8")
-    old = '''                elif op in (Op.BUILD_TUPLE, Op.BUILD_SET):
+_CANONICAL_BOOTSTRAP = '''                elif op in (Op.BUILD_TUPLE, Op.BUILD_SET):
                     if len(frame.stack) < instr.arg:
                         _raise_typed("RuntimeError: collection stack underflow")
                     values = _full_core_probe_pop_tail(frame.stack, instr.arg)
                     frame.stack.append(None)
 '''
-    new = '''                elif op in (Op.BUILD_TUPLE, Op.BUILD_SET):
+
+_COMPACT_BOOTSTRAP = '''                elif op in (Op.BUILD_TUPLE, Op.BUILD_SET):
+                    if len(frame.stack) < instr.arg: _raise_typed("RuntimeError: collection stack underflow")
+                    values = _full_core_probe_pop_tail(frame.stack, instr.arg)
+                    frame.stack.append(None)
+'''
+
+_RESTORED = '''                elif op in (Op.BUILD_TUPLE, Op.BUILD_SET):
                     if len(frame.stack) < instr.arg:
                         _raise_typed("RuntimeError: collection stack underflow")
                     values = _full_core_probe_pop_tail(frame.stack, instr.arg)
@@ -24,13 +28,27 @@ def main() -> int:
                     else:
                         frame.stack.append(set(values))
 '''
-    count = source.count(old)
-    if count != 1:
+
+
+def main() -> int:
+    source = PATH.read_text(encoding="utf-8")
+    matches = [
+        candidate
+        for candidate in (_CANONICAL_BOOTSTRAP, _COMPACT_BOOTSTRAP)
+        if source.count(candidate) == 1
+    ]
+    if len(matches) != 1:
+        counts = {
+            "canonical": source.count(_CANONICAL_BOOTSTRAP),
+            "compact": source.count(_COMPACT_BOOTSTRAP),
+        }
         raise RuntimeError(
-            f"native tuple/set bootstrap: expected 1 match, found {count}"
+            "native tuple/set bootstrap: expected one verified source form, "
+            f"found {counts}"
         )
-    PATH.write_text(source.replace(old, new, 1), encoding="utf-8")
-    print("RESTORED NATIVE TUPLE AND SET CONSTRUCTION", count)
+    source = source.replace(matches[0], _RESTORED, 1)
+    PATH.write_text(source, encoding="utf-8")
+    print("RESTORED NATIVE TUPLE AND SET CONSTRUCTION", 1)
     return 0
 
 

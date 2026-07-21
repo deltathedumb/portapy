@@ -177,7 +177,7 @@ def test_varargs_call_and_definition_errors_are_structured(tmp_path: Path) -> No
         invalid = (
             "def bad(*left, *right):\n    return 1\n",
             "def bad(value, *):\n    return value\n",
-            "def bad(**values):\n    return 1\n",
+            "def bad(**):\n    return 1\n",
             "def bad(*items=1):\n    return 1\n",
         )
         for source in invalid:

@@ -1,0 +1,118 @@
+name: Native standalone runtime
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and verified asmpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize implementation sources for the pinned compiler
+        run: |
+          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
+          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
+          python tools/normalize_full_core_lambdas.py
+          python tools/normalize_full_core_native_semantics.py
+          python tools/normalize_full_core_opcode_maps.py
+          python tools/normalize_full_core_validation.py
+          cp src/portapy/core/vm.py src/portapy/core/vm_impl.py
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+      - name: Build stable ABI over standalone VM
+        shell: bash
+        run: |
+          mkdir -p dist
+          set -o pipefail
+          python tools/build_native_full_runtime.py \
+            --target linux \
+            --output dist/libportapy-full-runtime.so \
+            --work-dir dist/build-full-runtime-linux \
+            2>&1 | tee dist/linux-full-runtime-build.log
+      - name: Execute standalone runtime from C
+        run: |
+          if readelf -dW dist/libportapy-full-runtime.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_full_runtime_host.c -ldl \
+            -o dist/native_full_runtime_host
+          ./dist/native_full_runtime_host dist/libportapy-full-runtime.so \
+            | tee dist/linux-full-runtime-output.txt
+          grep -qx 'native-full-runtime: ok' dist/linux-full-runtime-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-native-full-runtime
+          path: dist
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native toolchain and verified asmpython
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize implementation sources for the pinned compiler
+        shell: powershell
+        run: |
+          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
+          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
+          python tools/normalize_full_core_lambdas.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_native_semantics.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_validation.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item src/portapy/core/vm.py src/portapy/core/vm_impl.py -Force
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+      - name: Build stable ABI over standalone VM
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/build_native_full_runtime.py `
+            --target windows `
+            --output dist/portapy-full-runtime.dll `
+            --work-dir dist/build-full-runtime-windows `
+            *>&1 | Tee-Object -FilePath dist/windows-full-runtime-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute standalone runtime from C
+        shell: powershell
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_full_runtime_host.c `
+            -o dist/native_full_runtime_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_full_runtime_host.exe dist/portapy-full-runtime.dll
+          $output | Out-File -Encoding utf8 dist/windows-full-runtime-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-full-runtime: ok') {
+            throw "unexpected standalone runtime output: $output"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-native-full-runtime
+          path: dist

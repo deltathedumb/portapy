@@ -79,7 +79,7 @@ def _traceback_body_line(slot: int, absolute_line: int) -> str:
 
 def _portapy_traceback_add_function_impl(runtime: int, slot: int) -> int:
     line = _runtime_error_line[runtime]
-    column = _runtime_error_column[runtime]
+    column = _portapy_error_column_impl(runtime)
     source_line = _traceback_body_line(slot, line)
     if source_line == "":
         line = _function_definition_line[slot]

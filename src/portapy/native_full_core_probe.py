@@ -14,12 +14,8 @@ def _probe_import(name: str) -> object:
     return _ProbeModule()
 
 
-def portapy_abi_version() -> int:
-    return 1
-
-
-def portapy_full_core_probe() -> int:
-    source = (
+def _probe_source() -> str:
+    return (
         "def outer(base):\n"
         "    def inner(value):\n"
         "        return base + value\n"
@@ -40,10 +36,22 @@ def portapy_full_core_probe() -> int:
         "    traced = exc.__traceback__ is not None\n"
         "answer = box.get() + probe.value - 42 if traced else -1\n"
     )
+
+
+def portapy_abi_version() -> int:
+    return 1
+
+
+def portapy_full_core_parse_probe() -> int:
+    code = compile_source(_probe_source(), "<native-full-core-parse-probe>")
+    return len(code.instructions)
+
+
+def portapy_full_core_probe() -> int:
     namespace: dict[str, object] = {}
     namespace["__pyinbin_import__"] = _probe_import
     namespace["Exception"] = Exception
-    code = compile_source(source, "<native-full-core-probe>")
+    code = compile_source(_probe_source(), "<native-full-core-probe>")
     machine = VirtualMachine()
     machine.run(code, namespace)
     return namespace.get("answer", -1)

@@ -10,6 +10,9 @@ from .environment import (
 )
 from .reference_api import ErrorInfo, Runtime, Status, ValueKind
 
+Snapshot = EnvironmentSnapshot
+PortaPyExecutionError = ExecutionError
+
 __version__ = "3.14.0-dev"
 
 __all__ = [
@@ -20,7 +23,9 @@ __all__ = [
     "ErrorInfo",
     "ExecutionError",
     "PortaPyError",
+    "PortaPyExecutionError",
     "Runtime",
+    "Snapshot",
     "Status",
     "ValueKind",
     "new",

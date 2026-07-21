@@ -21,6 +21,15 @@ PortaPy interpreter. A probe library is not a PortaPy release.
   the environment helper surface.
 - Module loading belongs to the host language. PortaPy intentionally does not
   expose an embedding-level `import_module` helper.
+- Native `import` and `from ... import ...` statements resolve host-added module
+  objects, including aliases and dotted object paths.
+- Missing native modules and members produce structured `ModuleNotFoundError` and
+  `ImportError` state.
+- The public traceback ABI exposes indexed filename, function, line, column, and
+  source-line frames. Native Python exposes the same data as
+  `NativeTracebackFrame` objects.
+- Traceback frames are reset on new execution/evaluation, error clearing, and
+  runtime destruction.
 - Build-only passes are independently tested:
   - executable module initialization becomes an explicit returning library call,
   - public labels are declared from an explicit allowlist,
@@ -32,21 +41,22 @@ PortaPy interpreter. A probe library is not a PortaPy release.
 
 ## Release-blocking work
 
-The `3.14` release workflow must remain blocked until all of these are true:
+The remaining blockers for a final standalone `3.14` release are:
 
-1. `portapy.dll` and `libportapy.so` contain the complete Python-built interpreter,
-   not only the bytecode/native-build probe.
-2. The frontend no longer imports host `ast`; source parsing must be part of the
-   compiled PortaPy Python source.
-3. Runtime create/destroy and opaque value handles are implemented through the
-   public header.
-4. UTF-8 source execution and evaluation work through external C hosts.
-5. Function calls, checked primitive conversions, structured errors, and
-   retain/release work through the public ABI.
-6. The libraries execute on machines without CPython or a Python installation.
-7. Export tables exactly match the documented ABI.
-8. Linux has no `TEXTREL`; Windows and Linux hosts pass independently.
-9. Checksums, header, examples, and machine-readable build metadata are attached.
+1. Replace the temporary standalone parser/executor path with the complete
+   Python-authored frontend and bytecode VM.
+2. Remove the compiled frontend's dependency on host `ast`; source parsing must
+   be fully contained in PortaPy's compiled Python source.
+3. Carry the mature hosted closure, class, descriptor, exception, generator, and
+   async semantics through that standalone native frontend/VM path.
+4. Complete broader native object syntax and object-model conformance.
+5. Prove the final libraries execute without CPython or a Python installation.
+6. Run the final release matrix, verify exact export tables and no Linux
+   `TEXTREL`, and attach checksums, headers, examples, and build metadata.
+
+Runtime handles, values, UTF-8 execution, functions, imports, callbacks,
+containers, structured errors, and traceback frames are already implemented and
+must remain gated while the architectural transition proceeds.
 
 ## Non-negotiable implementation rule
 

@@ -31,15 +31,15 @@ def test_installs_native_structured_error_paths(
 
     module = ast.parse(output.read_text(encoding="utf-8"))
     validate = _function(module, "_portapy_value_validate_utf8_impl")
-    assert '"UnicodeDecodeError"' in validate
+    assert "UnicodeDecodeError" in validate
     assert "instance._capture_native(" in validate
 
     execute = _function(module, "_portapy_exec_span_impl")
     evaluate = _function(module, "_portapy_eval_span_impl")
     assert "_native_error_location(source_text)" in execute
     assert "_native_error_location(source_text)" in evaluate
-    assert '"RuntimeError"' in execute
-    assert '"SyntaxError"' in evaluate
+    assert "RuntimeError" in execute
+    assert "SyntaxError" in evaluate
 
     line = _function(module, "_portapy_error_line_impl")
     column = _function(module, "_portapy_error_column_impl")

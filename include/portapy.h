@@ -108,6 +108,12 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_get_global_utf8(
     size_t name_size,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_set_global_utf8(
+    portapy_runtime runtime,
+    const uint8_t *name,
+    size_t name_size,
+    portapy_value value
+);
 
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_none(
     portapy_runtime runtime,
@@ -140,6 +146,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_bytes(
     size_t size,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_host_object(
+    portapy_runtime runtime,
+    uint64_t host_id,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_kind(
     portapy_runtime runtime,
     portapy_value value,
@@ -160,6 +171,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_as_f64(
     portapy_value value,
     double *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_host_id(
+    portapy_runtime runtime,
+    portapy_value value,
+    uint64_t *out_host_id
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_size(
     portapy_runtime runtime,
     portapy_value value,
@@ -179,6 +195,21 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_retain(
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_release(
     portapy_runtime runtime,
     portapy_value value
+);
+
+PORTAPY_API portapy_status PORTAPY_CALL portapy_host_set_attr_utf8(
+    portapy_runtime runtime,
+    portapy_value owner,
+    const uint8_t *name,
+    size_t name_size,
+    portapy_value value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_host_get_attr_utf8(
+    portapy_runtime runtime,
+    portapy_value owner,
+    const uint8_t *name,
+    size_t name_size,
+    portapy_value *out_value
 );
 
 PORTAPY_API portapy_status PORTAPY_CALL portapy_error_get_info(

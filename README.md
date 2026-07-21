@@ -25,20 +25,23 @@ environment = portapy.new()
 environment.add_modules(math)
 environment.expose(env)
 environment.set("requested_value", 41.9)
+environment.set("coordinates", (10, 20, (30, 40)))
 environment.execute("""
 http_provider = game.provider.HttpProvider
 floor_value = math.floor(requested_value)
 answer = floor_value + 1
+first_coordinate = coordinates[0]
 """)
 
 snapshot = environment.snapshot()
 http_provider = snapshot.var["http_provider"]
 answer = snapshot.var["answer"]
+coordinates = snapshot.var["coordinates"]
 ```
 
 `add_modules()` preserves qualified access such as `math.floor`. `expose()` is the flattened-namespace operation: it makes public values from a module, object, or mapping available directly. `add_builtin()` remains a compatibility alias, but `expose()` is the preferred name.
 
-The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, modules, objects, mappings, and callables into native PortaPy values. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
+The adapter automatically converts Python `None`, booleans, signed 64-bit integers, floats, strings, bytes, tuples, modules, objects, mappings, and callables into native PortaPy values. Tuples are converted recursively and remain ordinary immutable PortaPy values across globals, snapshots, and host callback arguments/results. Object members become host attribute graphs, while callables are routed through the synchronous callback ABI.
 
 Snapshots capture a shallow, detached set of global bindings. `snapshot.var` is a read-only mapping, while `snapshot.restore()` restores those bindings to the originating environment and deletes globals created after the snapshot. Mutations inside referenced host objects are intentionally not deep-rolled back.
 
@@ -57,6 +60,8 @@ The native C ABI underneath the facade provides:
 
 - `portapy_value_from_host_object()` for opaque objects with stable host IDs.
 - `portapy_value_from_host_callable()` for callables with stable callable IDs.
+- `portapy_value_from_tuple()` for immutable tuples built from borrowed item handles.
+- `portapy_tuple_get_size()` and `portapy_tuple_get_item()` for retained tuple extraction.
 - `portapy_set_global_utf8()` and `portapy_delete_global_utf8()` for namespace management.
 - `portapy_global_count()` and `portapy_global_name_copy_utf8()` for exact snapshot enumeration.
 - `portapy_host_set_attr_utf8()` for host-owned attribute graphs.
@@ -73,7 +78,7 @@ The native C ABI underneath the facade provides:
 Implemented native ABI and source surface:
 
 - isolated runtime handles
-- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, callable, and opaque object handles
+- `None`, normalized `bool`, signed 64-bit integer, bit-exact binary64, string, bytes, tuple, callable, and opaque object handles
 - stable 64-bit host object and callable IDs
 - retained native global injection, enumeration, replacement, and deletion
 - host attribute graph registration, replacement, lookup, and dotted traversal
@@ -81,9 +86,11 @@ Implemented native ABI and source surface:
 - borrowed callback arguments, owned callback results, and structured callback failures
 - `import_binary()` / `load_native()` module facades
 - native `new()`, `add_modules()`, `expose()`, `set()`, `get()`, `remove()`, `execute()`, `evaluate()`, and snapshots
-- automatic Python scalar, module, object, mapping, and callable adaptation
+- automatic Python scalar, tuple, module, object, mapping, and callable adaptation
 - exact native snapshot restoration with post-snapshot global cleanup
 - checked value-kind/conversion and buffer-copy operations
+- public tuple construction, size, and retained item extraction
+- recursive tuple release through normal value ownership
 - per-runtime structured error status, type, message, line, and column
 - retain/release and runtime-owned teardown
 - precedence-aware integer arithmetic, powers, shifts, and bitwise expressions
@@ -94,6 +101,7 @@ Implemented native ABI and source surface:
 - tuple-aware `len()`, truthiness, and recursive structural equality
 - UTF-8 source literals across hosted Unicode and native byte-oriented source boundaries
 - tuple values passed through native functions and control flow
+- tuple globals, snapshots, and host callback round-trips
 - equality, ordering, `is`, and `is not` comparisons
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
 - typed global assignment, lookup, aliasing, augmented assignment, and `eval`
@@ -116,7 +124,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Tuple support in this slice is source-facing; public tuple extraction and automatic high-level tuple boxing remain separate ABI work. Other remaining gates include variadic parameters, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include variadic parameters, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

@@ -70,8 +70,8 @@ portapy_value_as_f64:
     test eax, eax
     jnz .value_as_f64_done
     mov rdx, [rsp]
-    mov rax, [rsp + 8]
-    mov [rdx], rax
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
 .value_as_f64_done:
     add rsp, 32
     pop rbx

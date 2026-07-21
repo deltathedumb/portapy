@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import re
 import tokenize
 
 
@@ -158,6 +159,11 @@ _COMPOUND_PREFIXES = (
 )
 
 
+def _remove_positional_only_markers(source: str) -> str:
+    source = re.sub(r",\s*/\s*,", ", ", source)
+    return re.sub(r",\s*/\s*\)", ")", source)
+
+
 def _top_level_operator_columns(source: str, operator: str) -> list[int]:
     columns: list[int] = []
     depth = 0
@@ -238,6 +244,7 @@ def normalize(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
             )
         source = source.replace(old, new)
         print("REPLACED", path, count)
+    source = _remove_positional_only_markers(source)
     source = _expand_compact_statements(source)
     path.write_text(source, encoding="utf-8")
     print("NORMALIZED", path)

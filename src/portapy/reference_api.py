@@ -1,8 +1,8 @@
 """Python-authored reference model for the PortaPy shared-library ABI.
 
-Interpreter semantics live in ``portapy.core``, a source fork of pyinbin's
-Python-written bytecode/frontend/VM/import core. No native-language interpreter
-implementation is introduced here.
+Interpreter semantics live in ``portapy.core``: PortaPy's own parser, bytecode
+frontend, VM, and object model. No native-language interpreter implementation is
+introduced here.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 import traceback
 
-from .core.frontend import compile_source
+from .core.portable_frontend import compile_portable_source as compile_source
 from .core.vm import VirtualMachine
 
 

@@ -36,6 +36,9 @@ from tools.normalize_full_reference_float_bits import (
 from tools.normalize_full_reference_runtime import (
     main as normalize_reference_runtime,
 )
+from tools.normalize_full_reference_source_preprocess import (
+    main as normalize_reference_source_preprocess,
+)
 from tools.normalize_full_reference_value_kinds import (
     main as normalize_reference_value_kinds,
 )
@@ -89,6 +92,7 @@ def main() -> int:
     normalize_reference_float_bits()
     normalize_reference_errors()
     normalize_reference_value_kinds()
+    normalize_reference_source_preprocess()
     normalize_native_parser()
     normalize_calls_closures()
     normalize_keyword_calls()

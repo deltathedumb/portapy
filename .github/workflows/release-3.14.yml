@@ -23,10 +23,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install native toolchain and asmpython
+      - name: Install package, native toolchain, and asmpython
         run: |
           sudo apt-get update
           sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build libportapy.so
@@ -35,53 +36,51 @@ jobs:
             --target linux \
             --output dist/libportapy.so \
             --work-dir dist/build-linux
-      - name: Execute Linux release artifact from C
+      - name: Execute Linux release artifact from C and Python
         run: |
           if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
             echo 'text relocations are forbidden'
             exit 1
           fi
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_handle_host.c -ldl -o dist/native_handle_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy.so | tee dist/linux-host-output.txt
           grep -qx 'opaque-floats: ok' dist/linux-host-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_statement_host.c -ldl -o dist/native_statement_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_statement_host.c -ldl -o dist/native_statement_host
           ./dist/native_statement_host ./dist/libportapy.so | tee dist/linux-statement-output.txt
           grep -qx 'statement-blocks: ok' dist/linux-statement-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_text_error_host.c -ldl -o dist/native_text_error_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_text_error_host.c -ldl -o dist/native_text_error_host
           ./dist/native_text_error_host ./dist/libportapy.so | tee dist/linux-text-error-output.txt
           grep -qx 'native-text-errors: ok' dist/linux-text-error-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
           ./dist/native_typed_literal_host ./dist/libportapy.so | tee dist/linux-typed-literal-output.txt
           grep -qx 'typed-literals: ok' dist/linux-typed-literal-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
           ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/linux-boolean-expression-output.txt
           grep -qx 'boolean-expressions: ok' dist/linux-boolean-expression-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_expression_host.c -ldl -o dist/native_expression_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_expression_host.c -ldl -o dist/native_expression_host
           ./dist/native_expression_host ./dist/libportapy.so | tee dist/linux-expression-output.txt
           grep -qx 'general-expressions: ok' dist/linux-expression-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
           ./dist/native_control_flow_host ./dist/libportapy.so | tee dist/linux-control-flow-output.txt
           grep -qx 'control-flow: ok' dist/linux-control-flow-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_function_host.c -ldl -o dist/native_function_host
+          ./dist/native_function_host ./dist/libportapy.so | tee dist/linux-function-output.txt
+          grep -qx 'native-functions: ok' dist/linux-function-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_object_host.c -ldl -o dist/native_host_object_host
+          ./dist/native_host_object_host ./dist/libportapy.so | tee dist/linux-host-object-output.txt
+          grep -qx 'native-host-objects: ok' dist/linux-host-object-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_call_host.c -ldl -o dist/native_host_call_host
+          ./dist/native_host_call_host ./dist/libportapy.so | tee dist/linux-host-call-output.txt
+          grep -qx 'native-host-calls: ok' dist/linux-host-call-output.txt
+          python tests/native_environment_adapter_probe.py dist/libportapy.so | tee dist/linux-environment-adapter-output.txt
+          grep -qx 'native-environment-adapter: ok' dist/linux-environment-adapter-output.txt
       - uses: actions/upload-artifact@v4
         with:
           name: linux-release
           path: |
             dist/libportapy.so
             dist/libportapy.so.json
-            dist/linux-host-output.txt
-            dist/linux-statement-output.txt
-            dist/linux-text-error-output.txt
-            dist/linux-typed-literal-output.txt
-            dist/linux-boolean-expression-output.txt
-            dist/linux-expression-output.txt
-            dist/linux-control-flow-output.txt
+            dist/linux-*-output.txt
 
   windows:
     runs-on: windows-2025
@@ -90,10 +89,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install native toolchain and asmpython
+      - name: Install package, native toolchain, and asmpython
         shell: powershell
         run: |
           choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build portapy.dll
@@ -104,64 +104,70 @@ jobs:
             --output dist/portapy.dll `
             --work-dir dist/build-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Execute Windows release artifact from C
+      - name: Execute Windows release artifact from C and Python
         shell: powershell
         run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_handle_host.c -o dist/native_handle_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -o dist/native_handle_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $output = & dist/native_handle_host.exe dist/portapy.dll
           $output | Out-File -Encoding utf8 dist/windows-host-output.txt
           if ($output -ne 'opaque-floats: ok') { throw "unexpected host output: $output" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_statement_host.c -o dist/native_statement_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_statement_host.c -o dist/native_statement_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $statementOutput = & dist/native_statement_host.exe dist/portapy.dll
           $statementOutput | Out-File -Encoding utf8 dist/windows-statement-output.txt
           if ($statementOutput -ne 'statement-blocks: ok') { throw "unexpected statement output: $statementOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_text_error_host.c -o dist/native_text_error_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_text_error_host.c -o dist/native_text_error_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $textErrorOutput = & dist/native_text_error_host.exe dist/portapy.dll
           $textErrorOutput | Out-File -Encoding utf8 dist/windows-text-error-output.txt
           if ($textErrorOutput -ne 'native-text-errors: ok') { throw "unexpected text/error output: $textErrorOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_typed_literal_host.c -o dist/native_typed_literal_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_typed_literal_host.c -o dist/native_typed_literal_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $typedLiteralOutput = & dist/native_typed_literal_host.exe dist/portapy.dll
           $typedLiteralOutput | Out-File -Encoding utf8 dist/windows-typed-literal-output.txt
           if ($typedLiteralOutput -ne 'typed-literals: ok') { throw "unexpected typed literal output: $typedLiteralOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_boolean_expression_host.c -o dist/native_boolean_expression_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $booleanExpressionOutput = & dist/native_boolean_expression_host.exe dist/portapy.dll
           $booleanExpressionOutput | Out-File -Encoding utf8 dist/windows-boolean-expression-output.txt
           if ($booleanExpressionOutput -ne 'boolean-expressions: ok') { throw "unexpected boolean expression output: $booleanExpressionOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_expression_host.c -o dist/native_expression_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_expression_host.c -o dist/native_expression_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $expressionOutput = & dist/native_expression_host.exe dist/portapy.dll
           $expressionOutput | Out-File -Encoding utf8 dist/windows-expression-output.txt
           if ($expressionOutput -ne 'general-expressions: ok') { throw "unexpected expression output: $expressionOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_control_flow_host.c -o dist/native_control_flow_host.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $controlFlowOutput = & dist/native_control_flow_host.exe dist/portapy.dll
           $controlFlowOutput | Out-File -Encoding utf8 dist/windows-control-flow-output.txt
           if ($controlFlowOutput -ne 'control-flow: ok') { throw "unexpected control-flow output: $controlFlowOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_function_host.c -o dist/native_function_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $functionOutput = & dist/native_function_host.exe dist/portapy.dll
+          $functionOutput | Out-File -Encoding utf8 dist/windows-function-output.txt
+          if ($functionOutput -ne 'native-functions: ok') { throw "unexpected function output: $functionOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_object_host.c -o dist/native_host_object_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostObjectOutput = & dist/native_host_object_host.exe dist/portapy.dll
+          $hostObjectOutput | Out-File -Encoding utf8 dist/windows-host-object-output.txt
+          if ($hostObjectOutput -ne 'native-host-objects: ok') { throw "unexpected host-object output: $hostObjectOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_call_host.c -o dist/native_host_call_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostCallOutput = & dist/native_host_call_host.exe dist/portapy.dll
+          $hostCallOutput | Out-File -Encoding utf8 dist/windows-host-call-output.txt
+          if ($hostCallOutput -ne 'native-host-calls: ok') { throw "unexpected host-call output: $hostCallOutput" }
+          $adapterOutput = python tests/native_environment_adapter_probe.py dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $adapterOutput | Out-File -Encoding utf8 dist/windows-environment-adapter-output.txt
+          if ($adapterOutput -ne 'native-environment-adapter: ok') { throw "unexpected adapter output: $adapterOutput" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: |
             dist/portapy.dll
             dist/portapy.dll.json
-            dist/windows-host-output.txt
-            dist/windows-statement-output.txt
-            dist/windows-text-error-output.txt
-            dist/windows-typed-literal-output.txt
-            dist/windows-boolean-expression-output.txt
-            dist/windows-expression-output.txt
-            dist/windows-control-flow-output.txt
+            dist/windows-*-output.txt
 
   publish:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

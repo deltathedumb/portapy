@@ -10,7 +10,7 @@ from tools.rewrite_generated_full_vm_environment import (
 from tools.rewrite_generated_host_calls import rewrite_generated_host_calls
 
 
-def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> None:
+def test_rewrite_installs_canonical_full_vm_environment(tmp_path: Path) -> None:
     output = tmp_path / "generated_environment.py"
     generate_native_host_call_entry(
         output,
@@ -21,6 +21,7 @@ def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> 
     rewrite_generated_full_vm_environment(
         output,
         host_module="_native_host_dependency_linux",
+        target="linux",
     )
     source = output.read_text(encoding="utf-8")
     ast.parse(source)
@@ -30,19 +31,33 @@ def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> 
     assert source.count("def _incremental_portapy_runtime_destroy_impl(") == 1
     assert source.count("def _portapy_exec_span_impl(") == 1
     assert source.count("def _portapy_eval_span_impl(") == 1
-    assert source.count("def _portapy_runtime_create_impl(") == 1
     assert source.count("def _portapy_runtime_destroy_impl(") == 1
 
-    assert "_portapy_runtime_create_impl as _core_portapy_runtime_create_impl" in source
-    assert "from .core.frontend import compile_source as _full_compile_source" in source
+    assert "compile_portable_source as _full_compile_source" in source
     assert "from .core.vm import VirtualMachine as _FullVirtualMachine" in source
-    assert "from ._native_host_dependency_linux import (" in source
-    assert "_host_find_host_attr as _full_find_host_attr" in source
-    assert "_host_attr_value as _full_host_attr_value" in source
+    assert "class _FullTracingVirtualMachine" in source
+    assert "class _FullHostObject" in source
+    assert "class _FullHostCallable" in source
+    assert "_full_sync_in(runtime, state)" in source
+    assert "_full_sync_out(runtime, state)" in source
+    assert "movq xmm0, rdi" in source
     assert "from .native_vm_bridge import" not in source
-    assert "_dispatch_host_call(self._runtime, self._callable_id" in source
-    assert "if type(argument_source) is list:" in source
-    assert "_scalar_release(runtime, _host_call_argument_values[release])" in source
+
+
+def test_rewrite_infers_windows_target_from_host_module(tmp_path: Path) -> None:
+    output = tmp_path / "generated_environment.py"
+    generate_native_host_call_entry(
+        output,
+        host_module="generated_host_windows",
+        scalar_module="generated_scalar_windows",
+    )
+    rewrite_generated_host_calls(output)
+    rewrite_generated_full_vm_environment(
+        output,
+        host_module="generated_host_windows",
+    )
+    source = output.read_text(encoding="utf-8")
+    assert "movq xmm0, rcx" in source
 
 
 def test_rewrite_rejects_duplicate_application(tmp_path: Path) -> None:

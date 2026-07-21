@@ -18,9 +18,9 @@ def _expand(source: str) -> str:
 
 
 def test_expands_top_level_semicolons_without_touching_literals_or_comments() -> None:
-    assert _expand("first = 1; second = 2") == "first = 1\n second = 2"
+    assert _expand("first = 1; second = 2") == "first = 1\nsecond = 2"
     assert _expand("text = 'a;b#c'; answer = 42 # ; ignored") == (
-        "text = 'a;b#c'\n answer = 42 # ; ignored"
+        "text = 'a;b#c'\nanswer = 42 # ; ignored"
     )
     assert _expand("items = [1; 2]") == "items = [1; 2]"
 
@@ -31,6 +31,13 @@ def test_indents_compact_compound_suites() -> None:
     )
     assert _expand("while ready: tick(); stop()") == (
         "while ready: tick()\n    stop()"
+    )
+
+
+def test_consumes_tabs_and_spaces_after_separator() -> None:
+    assert _expand("first = 1;\t  second = 2") == "first = 1\nsecond = 2"
+    assert _expand("if flag: first = 1;\t second = 2") == (
+        "if flag: first = 1\n    second = 2"
     )
 
 

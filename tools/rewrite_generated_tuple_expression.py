@@ -1,9 +1,52 @@
-"""Teach generated boolean expressions about native tuple truthiness."""
+"""Teach generated boolean expressions about native tuple semantics."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from tools.rewrite_generated_parser import _replace_function
+
+
+def _strip_outer_parentheses() -> str:
+    return r'''def _strip_outer_parentheses(source: str, start: int, end: int) -> list[int]:
+    bounds = _trim_range(source, start, end)
+    start = bounds[0]
+    end = bounds[1]
+    changed = 0
+    while end - start >= 2 and source[start] == "(" and source[end - 1] == ")":
+        quote = ""
+        escaped = False
+        depth = 0
+        position = start
+        closes_at_end = False
+        tuple_comma = False
+        while position < end:
+            char = source[position]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = ""
+            elif char == "'" or char == '"':
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    closes_at_end = position == end - 1
+                    break
+            elif char == "," and depth == 1:
+                tuple_comma = True
+            position += 1
+        interior = _trim_range(source, start + 1, end - 1)
+        if not closes_at_end or tuple_comma or interior[0] >= interior[1]:
+            break
+        start = interior[0]
+        end = interior[1]
+        changed = 1
+    return [start, end, changed]'''
 
 
 def _truthy() -> str:
@@ -36,6 +79,11 @@ def rewrite_generated_tuple_expression(path: Path) -> Path:
         marker,
         "    _scalar_retain_global,\n    _scalar_tuple_size_unchecked,\n)",
         1,
+    )
+    source = _replace_function(
+        source,
+        "_strip_outer_parentheses",
+        _strip_outer_parentheses(),
     )
     source = _replace_function(source, "_truthy", _truthy())
     path.write_text(source, encoding="utf-8")

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PORTAPY_DIRECT_CALLABLE_BASE UINT64_C(0x8000000000000000)
 
 typedef struct direct_callable_slot {
     portapy_environment environment;
@@ -16,8 +17,7 @@ typedef struct direct_callable_slot {
 static direct_callable_slot *direct_slots = NULL;
 static size_t direct_slot_count = 0;
 static size_t direct_slot_capacity = 0;
-static uint64_t next_direct_callable_id = UINT64_C(1);
-
+static uint64_t next_direct_callable_id = PORTAPY_DIRECT_CALLABLE_BASE;
 
 static direct_callable_slot *find_direct_slot(
     portapy_environment environment,
@@ -34,7 +34,6 @@ static direct_callable_slot *find_direct_slot(
     return NULL;
 }
 
-
 static void remove_direct_slot_at(size_t index) {
     if (index >= direct_slot_count) {
         return;
@@ -42,7 +41,6 @@ static void remove_direct_slot_at(size_t index) {
     direct_slots[index] = direct_slots[direct_slot_count - 1];
     direct_slot_count -= 1;
 }
-
 
 static void remove_direct_slot(
     portapy_environment environment,
@@ -59,7 +57,6 @@ static void remove_direct_slot(
     }
 }
 
-
 static void remove_environment_slots(portapy_environment environment) {
     size_t index = 0;
     while (index < direct_slot_count) {
@@ -70,7 +67,6 @@ static void remove_environment_slots(portapy_environment environment) {
         }
     }
 }
-
 
 static portapy_status reserve_direct_slot(
     portapy_environment environment,
@@ -96,8 +92,8 @@ static portapy_status reserve_direct_slot(
 
     uint64_t callable_id = next_direct_callable_id;
     next_direct_callable_id += UINT64_C(1);
-    if (next_direct_callable_id == UINT64_C(0)) {
-        next_direct_callable_id = UINT64_C(1);
+    if ((next_direct_callable_id & PORTAPY_DIRECT_CALLABLE_BASE) == 0) {
+        next_direct_callable_id = PORTAPY_DIRECT_CALLABLE_BASE;
     }
     direct_callable_slot *slot = &direct_slots[direct_slot_count++];
     slot->environment = environment;
@@ -108,16 +104,20 @@ static portapy_status reserve_direct_slot(
     return PORTAPY_OK;
 }
 
+int _portapy_environment_is_direct_callable(
+    uint64_t runtime,
+    uint64_t callable_id
+) {
+    return find_direct_slot(runtime, callable_id) != NULL;
+}
 
-static portapy_status PORTAPY_CALL dispatch_direct_callable(
-    void *context,
-    portapy_runtime runtime,
+portapy_status _portapy_environment_dispatch_direct(
+    uint64_t runtime,
     uint64_t callable_id,
     const portapy_value *arguments,
     size_t argument_count,
     portapy_value *out_result
 ) {
-    (void)context;
     direct_callable_slot *slot = find_direct_slot(runtime, callable_id);
     if (slot == NULL) {
         return PORTAPY_NOT_FOUND;
@@ -130,7 +130,6 @@ static portapy_status PORTAPY_CALL dispatch_direct_callable(
         out_result
     );
 }
-
 
 static portapy_status inspect_binding(
     portapy_environment environment,
@@ -180,7 +179,6 @@ static portapy_status inspect_binding(
     return PORTAPY_OK;
 }
 
-
 static uint64_t helper_callable_id_for_value(
     portapy_environment environment,
     portapy_value value
@@ -201,7 +199,6 @@ static uint64_t helper_callable_id_for_value(
     return callable_id;
 }
 
-
 portapy_status PORTAPY_CALL portapy_new(
     portapy_environment *out_environment
 ) {
@@ -211,7 +208,6 @@ portapy_status PORTAPY_CALL portapy_new(
     config.abi_version = PORTAPY_ABI_VERSION;
     return portapy_new_with_config(&config, out_environment);
 }
-
 
 portapy_status PORTAPY_CALL portapy_new_with_config(
     const portapy_config *config,
@@ -228,7 +224,6 @@ portapy_status PORTAPY_CALL portapy_new_with_config(
     return portapy_runtime_create(config, out_environment);
 }
 
-
 portapy_status PORTAPY_CALL portapy_destroy(
     portapy_environment environment
 ) {
@@ -242,7 +237,6 @@ portapy_status PORTAPY_CALL portapy_destroy(
     }
     return status;
 }
-
 
 portapy_status PORTAPY_CALL portapy_execute(
     portapy_environment environment,
@@ -260,7 +254,6 @@ portapy_status PORTAPY_CALL portapy_execute(
         sizeof(filename) - 1
     );
 }
-
 
 portapy_status PORTAPY_CALL portapy_evaluate(
     portapy_environment environment,
@@ -280,7 +273,6 @@ portapy_status PORTAPY_CALL portapy_evaluate(
         out_value
     );
 }
-
 
 portapy_status PORTAPY_CALL portapy_add_value_utf8(
     portapy_environment environment,
@@ -327,7 +319,6 @@ portapy_status PORTAPY_CALL portapy_add_value_utf8(
     return status;
 }
 
-
 portapy_status PORTAPY_CALL portapy_add_callable_utf8(
     portapy_environment environment,
     const uint8_t *name,
@@ -339,17 +330,9 @@ portapy_status PORTAPY_CALL portapy_add_callable_utf8(
     if (callable == NULL) {
         return PORTAPY_INVALID_ARGUMENT;
     }
-    portapy_status status = portapy_host_set_call_handler(
-        environment,
-        dispatch_direct_callable,
-        NULL
-    );
-    if (status != PORTAPY_OK) {
-        return status;
-    }
 
     uint64_t callable_id = UINT64_C(0);
-    status = reserve_direct_slot(
+    portapy_status status = reserve_direct_slot(
         environment,
         callable,
         context,
@@ -385,7 +368,6 @@ portapy_status PORTAPY_CALL portapy_add_callable_utf8(
     return release_status;
 }
 
-
 portapy_status PORTAPY_CALL portapy_add(
     portapy_environment environment,
     const portapy_binding *binding
@@ -419,7 +401,6 @@ portapy_status PORTAPY_CALL portapy_add(
     }
     return PORTAPY_INVALID_ARGUMENT;
 }
-
 
 portapy_status PORTAPY_CALL portapy_add_all(
     portapy_environment environment,

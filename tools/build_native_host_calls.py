@@ -103,6 +103,7 @@ def _upgrade_linked_artifact(
     python_object = work_dir / f"portapy-python{suffix}"
     call_object = work_dir / f"portapy-host-call-glue{suffix}"
     environment_object = work_dir / f"portapy-environment-glue{suffix}"
+    environment_api_object = work_dir / f"portapy-environment-api{suffix}"
     tuple_object = work_dir / f"portapy-tuple-glue{suffix}"
     dict_object = work_dir / f"portapy-dict-glue{suffix}"
     list_object = work_dir / f"portapy-list-glue{suffix}"
@@ -135,6 +136,13 @@ def _upgrade_linked_artifact(
     _compile_bridge_glue(
         gcc=gcc,
         target=target,
+        source=REPOSITORY_ROOT / "native" / "environment_api.c",
+        output=environment_api_object,
+        log=work_dir / f"{target}-environment-api.log",
+    )
+    _compile_bridge_glue(
+        gcc=gcc,
+        target=target,
         source=REPOSITORY_ROOT / "native" / "tuple_glue.c",
         output=tuple_object,
         log=work_dir / f"{target}-tuple-glue.log",
@@ -160,6 +168,7 @@ def _upgrade_linked_artifact(
         str(work_dir / f"portapy-host-glue{suffix}"),
         str(call_object),
         str(environment_object),
+        str(environment_api_object),
         str(tuple_object),
         str(dict_object),
         str(list_object),
@@ -280,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["sha256"] = _sha256(output)
     metadata["host_calls"] = True
     metadata["native_environment_adapter"] = True
+    metadata["public_environment_api"] = True
     metadata["public_tuple_abi"] = True
     metadata["public_dict_abi"] = True
     metadata["public_list_abi"] = True
@@ -291,6 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     metadata["python_module_exports"] = list(PYTHON_MODULE_EXPORTS)
     metadata["python_module_entry"] = "portapy"
+    metadata["bridge_sources"] = [
+        "native/environment_api.c",
+        "native/environment_glue.c",
+        "native/host_call_glue.c",
+    ]
     metadata["semantic_sources"] = [
         "src/portapy/native_api.py",
         "src/portapy/native_api_typed.py",

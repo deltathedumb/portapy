@@ -46,6 +46,34 @@ label = "before"
         environment.get("new_value")
 
 
+def test_add_uses_declared_name_for_functions_and_modules() -> None:
+    def hello_world() -> str:
+        return "Hello, world!"
+
+    module = ModuleType("package.helpers")
+    module.answer = 42
+
+    environment = portapy.new().add(hello_world).add(module)
+    environment.execute("message = hello_world()\nresult = helpers.answer\n")
+
+    assert environment.get("message") == "Hello, world!"
+    assert environment.get("result") == 42
+
+
+def test_add_all_flattens_public_module_members() -> None:
+    module = ModuleType("package.values")
+    module.left = 40
+    module.right = 2
+    module._private = 100
+
+    environment = portapy.new().add_all(module)
+    environment.execute("answer = left + right\n")
+
+    assert environment.get("answer") == 42
+    with pytest.raises(portapy.ExecutionError):
+        environment.get("_private")
+
+
 def test_add_modules_uses_leaf_module_name() -> None:
     module = ModuleType("package.helpers")
     module.answer = 42
@@ -100,3 +128,7 @@ def test_environment_context_manager_closes_runtime() -> None:
 
     with pytest.raises(portapy.EnvironmentClosedError):
         environment.execute("value = 2\n")
+
+
+def test_import_module_is_not_a_portapy_api() -> None:
+    assert not hasattr(portapy, "import_module")

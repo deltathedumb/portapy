@@ -26,9 +26,11 @@ extern "C" {
 
 typedef uint64_t portapy_runtime;
 typedef uint64_t portapy_value;
+typedef portapy_runtime portapy_environment;
 
 #define PORTAPY_NULL_RUNTIME ((portapy_runtime)0)
 #define PORTAPY_NULL_VALUE ((portapy_value)0)
+#define PORTAPY_NULL_ENVIRONMENT ((portapy_environment)0)
 
 typedef enum portapy_status {
     PORTAPY_OK = 0,
@@ -56,6 +58,13 @@ typedef enum portapy_value_kind {
     PORTAPY_VALUE_DICT = 9,
     PORTAPY_VALUE_LIST = 10
 } portapy_value_kind;
+
+typedef enum portapy_binding_kind {
+    PORTAPY_BINDING_VALUE = 0,
+    PORTAPY_BINDING_CALLABLE = 1
+} portapy_binding_kind;
+
+#define PORTAPY_BINDING_REPLACE 1u
 
 typedef struct portapy_bytes_view {
     const uint8_t *data;
@@ -88,8 +97,76 @@ typedef portapy_status (PORTAPY_CALL *portapy_host_call_handler)(
     portapy_value *out_result
 );
 
+typedef portapy_status (PORTAPY_CALL *portapy_direct_call_handler)(
+    void *context,
+    portapy_environment environment,
+    const portapy_value *arguments,
+    size_t argument_count,
+    portapy_value *out_result
+);
+
+typedef struct portapy_binding {
+    size_t struct_size;
+    uint32_t kind;
+    uint32_t flags;
+    const uint8_t *name;
+    size_t name_size;
+    portapy_value value;
+    portapy_direct_call_handler callable;
+    void *context;
+} portapy_binding;
+
 PORTAPY_API portapy_status PORTAPY_CALL portapy_library_initialize(void);
 PORTAPY_API uint32_t PORTAPY_CALL portapy_abi_version(void);
+
+/*
+ * First-class environment helpers. These are convenience exports over the
+ * lower-level runtime/value API below. A portapy_environment is deliberately
+ * the same opaque handle as portapy_runtime, so callers may mix both levels.
+ */
+PORTAPY_API portapy_status PORTAPY_CALL portapy_new(
+    portapy_environment *out_environment
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_new_with_config(
+    const portapy_config *config,
+    portapy_environment *out_environment
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_destroy(
+    portapy_environment environment
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_execute(
+    portapy_environment environment,
+    const char *source
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_evaluate(
+    portapy_environment environment,
+    const char *expression,
+    portapy_value *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_add(
+    portapy_environment environment,
+    const portapy_binding *binding
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_add_all(
+    portapy_environment environment,
+    const portapy_binding *bindings,
+    size_t binding_count
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_add_value_utf8(
+    portapy_environment environment,
+    const uint8_t *name,
+    size_t name_size,
+    portapy_value value,
+    uint32_t flags
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_add_callable_utf8(
+    portapy_environment environment,
+    const uint8_t *name,
+    size_t name_size,
+    portapy_direct_call_handler callable,
+    void *context,
+    uint32_t flags
+);
 
 PORTAPY_API portapy_status PORTAPY_CALL portapy_runtime_create(
     const portapy_config *config,

@@ -53,6 +53,18 @@ ENVIRONMENT_GLUE_EXPORTS = (
     "portapy_global_name_copy_utf8",
 )
 
+ENVIRONMENT_API_EXPORTS = (
+    "portapy_new",
+    "portapy_new_with_config",
+    "portapy_destroy",
+    "portapy_execute",
+    "portapy_evaluate",
+    "portapy_add",
+    "portapy_add_all",
+    "portapy_add_value_utf8",
+    "portapy_add_callable_utf8",
+)
+
 TUPLE_GLUE_EXPORTS = (
     "portapy_value_from_tuple",
     "portapy_tuple_get_size",
@@ -179,6 +191,7 @@ def public_exports(
     if host_calls:
         result += HOST_CALL_GLUE_EXPORTS
         result += ENVIRONMENT_GLUE_EXPORTS
+        result += ENVIRONMENT_API_EXPORTS
         result += TUPLE_GLUE_EXPORTS
         result += DICT_GLUE_EXPORTS
         result += LIST_GLUE_EXPORTS

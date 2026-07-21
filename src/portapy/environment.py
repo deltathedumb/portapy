@@ -2,8 +2,8 @@
 
 This is the stable object-oriented surface intended to be mirrored by native
 binary imports. The hosted package uses :class:`portapy.reference_api.Runtime`
-as its backend; an ``import_binary("portapy.dll")`` module can expose the same
-``new()`` and ``Environment`` contract over native handles.
+as its backend; native hosts expose the same environment contract over opaque
+handles.
 """
 from __future__ import annotations
 
@@ -105,6 +105,27 @@ class Environment:
             raise BindingError(f"PortaPy global already exists: {name}")
         self._raise_status(self._runtime.set_global(name, value), f"bind {name}")
 
+    def add(
+        self,
+        value: object,
+        *,
+        name: str | None = None,
+        replace: bool = False,
+    ) -> "Environment":
+        """Add one function, class, module, or named object to the environment.
+
+        When ``name`` is omitted, PortaPy uses the object's ``__name__`` and,
+        for dotted module names, keeps only the final component.
+        """
+        binding_name = name
+        if binding_name is None:
+            declared = getattr(value, "__name__", None)
+            if not isinstance(declared, str) or not declared:
+                raise BindingError("added object has no usable __name__")
+            binding_name = declared.rsplit(".", 1)[-1]
+        self._bind(binding_name, value, replace=replace)
+        return self
+
     def add_module(
         self,
         module: ModuleType | object,
@@ -112,25 +133,31 @@ class Environment:
         name: str | None = None,
         replace: bool = False,
     ) -> "Environment":
-        """Bind one host module under a module-style global name."""
-        module_name = name
-        if module_name is None:
-            declared = getattr(module, "__name__", None)
-            if not isinstance(declared, str) or not declared:
-                raise BindingError("module object has no usable __name__")
-            module_name = declared.rsplit(".", 1)[-1]
-        self._bind(module_name, module, replace=replace)
-        return self
+        """Compatibility helper that adds one module under its module name."""
+        return self.add(module, name=name, replace=replace)
 
     def add_modules(
         self,
         *modules: ModuleType | object,
         replace: bool = False,
     ) -> "Environment":
-        """Bind host modules using each module's final dotted name component."""
+        """Add host modules using each module's final dotted name component."""
         for module in modules:
-            self.add_module(module, replace=replace)
+            self.add(module, replace=replace)
         return self
+
+    def add_all(
+        self,
+        *sources: Mapping[str, object] | object,
+        include_private: bool = False,
+        replace: bool = False,
+    ) -> "Environment":
+        """Add every eligible member of each module, object, or mapping."""
+        return self.expose(
+            *sources,
+            include_private=include_private,
+            replace=replace,
+        )
 
     def expose(
         self,
@@ -140,9 +167,9 @@ class Environment:
     ) -> "Environment":
         """Expose a mapping or object's members directly as PortaPy globals.
 
-        This is the operation intended for Somnia's ``env`` module: a public
-        member named ``game`` becomes directly available as ``game`` inside the
-        executed script instead of requiring ``env.game``.
+        This is the fine-grained namespace operation beneath :meth:`add_all`.
+        A public member named ``game`` becomes directly available as ``game``
+        inside executed source instead of requiring ``env.game``.
         """
         for source in sources:
             if isinstance(source, Mapping):
@@ -169,12 +196,8 @@ class Environment:
         include_private: bool = False,
         replace: bool = False,
     ) -> "Environment":
-        """Compatibility alias for :meth:`expose`.
-
-        ``expose`` is preferred because the operation exposes host bindings; it
-        does not turn those values into language builtins.
-        """
-        return self.expose(
+        """Compatibility alias for :meth:`add_all`."""
+        return self.add_all(
             source,
             include_private=include_private,
             replace=replace,

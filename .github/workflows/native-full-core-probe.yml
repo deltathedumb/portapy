@@ -66,6 +66,7 @@ jobs:
             --export portapy_full_core_probe
           python tools/elf_pic.py dist/libportapy_full_core_probe.asm
           python tools/elf_relocatable_constants.py dist/libportapy_full_core_probe.asm
+          python tools/elf_runtime_abi.py dist/libportapy_full_core_probe.asm
           nasm -f elf64 -w-label-redef-late \
             dist/libportapy_full_core_probe.asm \
             -o dist/libportapy_full_core_probe.o

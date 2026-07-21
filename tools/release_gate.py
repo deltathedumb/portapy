@@ -38,11 +38,6 @@ def _read_json(path: Path) -> dict[str, object]:
     return value
 
 
-def _require_true(metadata: dict[str, object], key: str, path: Path) -> None:
-    if metadata.get(key) is not True:
-        raise SystemExit(f"artifact does not assert {key}: {path}")
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist", type=Path)
@@ -60,9 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("3.14-dev.1 must remain explicitly marked as a prerelease")
     if status.get("python_built_runtime") is not True:
         raise SystemExit("release status does not assert a Python-built runtime")
-    source_ready = status.get("source_execution_ready")
-    if not isinstance(source_ready, bool):
-        raise SystemExit("release status must declare source_execution_ready as a boolean")
+    if status.get("source_execution_ready") is not False:
+        raise SystemExit(
+            "developer preview must state that source execution is not ready; "
+            "use a new final-release status when the full PortaPy parser lands"
+        )
 
     args.dist.mkdir(parents=True, exist_ok=True)
     records: dict[str, dict[str, object]] = {}
@@ -83,22 +80,18 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact-size mismatch in {metadata_path}")
         if metadata.get("sha256") != actual_digest:
             raise SystemExit(f"artifact digest mismatch in {metadata_path}")
-        _require_true(metadata, "python_built_runtime", metadata_path)
-        _require_true(metadata, "host_bridge", metadata_path)
-        _require_true(metadata, "host_calls", metadata_path)
-        _require_true(metadata, "native_environment_adapter", metadata_path)
-        _require_true(metadata, "public_environment_api", metadata_path)
-        if source_ready:
-            _require_true(metadata, "full_frontend_vm", metadata_path)
-            _require_true(metadata, "standalone_parser", metadata_path)
-            _require_true(metadata, "reference_runtime_handles", metadata_path)
-            _require_true(metadata, "public_tuple_abi", metadata_path)
-            _require_true(metadata, "public_dict_abi", metadata_path)
-            _require_true(metadata, "public_list_abi", metadata_path)
-        elif metadata.get("generated_host_call_entry") is not True:
-            raise SystemExit(
-                f"preview artifact is not host-call-entry generated: {metadata_path}"
-            )
+        if metadata.get("python_built_runtime") is not True:
+            raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
+        if metadata.get("host_bridge") is not True:
+            raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
+        if metadata.get("host_calls") is not True:
+            raise SystemExit(f"artifact does not include host-call dispatch: {metadata_path}")
+        if metadata.get("native_environment_adapter") is not True:
+            raise SystemExit(f"artifact does not include environment management: {metadata_path}")
+        if metadata.get("public_environment_api") is not True:
+            raise SystemExit(f"artifact does not include the public environment API: {metadata_path}")
+        if metadata.get("generated_host_call_entry") is not True:
+            raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
             raise SystemExit(f"public export surface mismatch in {metadata_path}")
         if metadata.get("python_module_exports") != expected_python_exports:
@@ -150,35 +143,24 @@ def main(argv: list[str] | None = None) -> int:
             "The same environment handle can be used with the lower-level runtime, "
             "value, global, callback, container, and structured-error functions.",
             "",
+            "The Python package exposes the same contract through hosted and native "
+            "`Environment.add()` / `Environment.add_all()` methods. Host languages "
+            "load their own modules; PortaPy does not expose `import_module`.",
+            "",
+            "## Not yet included",
+            "",
+            "This is not the final Python 3.14 interpreter release. Remaining "
+            "gates include closures, classes, the complete frontend/bytecode VM "
+            "transition, broader object syntax, native imports inside executed "
+            "PortaPy source, and full traceback-frame retrieval.",
+            "",
         ]
     )
-    if source_ready:
-        notes.extend(
-            [
-                "## Standalone source execution",
-                "",
-                "The release library contains PortaPy's standalone parser, full "
-                "frontend, bytecode VM, runtime handles, closures, classes, "
-                "configured imports, and traceback propagation.",
-                "",
-            ]
-        )
-    else:
-        notes.extend(
-            [
-                "## Not yet included",
-                "",
-                "This preview still uses the incremental native source entry. "
-                "The full standalone parser/VM artifact has not yet been promoted.",
-                "",
-            ]
-        )
-    if isinstance(blockers, list) and blockers:
-        notes.extend(["## Remaining limitations", ""])
+    if isinstance(blockers, list):
         notes.extend(f"- {item}" for item in blockers)
-        notes.append("")
     notes.extend(
         [
+            "",
             "The release includes `portapy.dll`, `libportapy.so`, the public "
             "header, build metadata, FFI examples, and SHA-256 checksums.",
             "",

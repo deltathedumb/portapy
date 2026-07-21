@@ -56,7 +56,7 @@ def test_generated_runtime_executes_persistent_full_vm_state(generated_runtime) 
         "    def __init__(self, value):\n"
         "        self.value = value\n"
         "    def step(self):\n"
-        "        self.value += 1\n"
+        "        self.value = self.value + 1\n"
         "        return self.value\n"
         "def make_offset(offset):\n"
         "    def apply(value):\n"
@@ -71,6 +71,17 @@ def test_generated_runtime_executes_persistent_full_vm_state(generated_runtime) 
     assert evaluate_i64(module, runtime, "answer") == 42
     followup = "answer = counter.step()\n"
     assert module._portapy_exec_span_impl(runtime, followup, len(followup)) == module.PORTAPY_OK
+    assert evaluate_i64(module, runtime, "answer") == 42
+    assert module._portapy_runtime_destroy_impl(runtime) == module.PORTAPY_OK
+
+
+def test_generated_runtime_accepts_utf8_byte_count_spans(generated_runtime) -> None:
+    module = generated_runtime
+    runtime = module._portapy_runtime_create_impl()
+    source = "message = 'π'\nanswer = 40 + 2\n"
+    byte_count = len(source.encode("utf-8"))
+    assert byte_count > len(source)
+    assert module._portapy_exec_span_impl(runtime, source, byte_count) == module.PORTAPY_OK
     assert evaluate_i64(module, runtime, "answer") == 42
     assert module._portapy_runtime_destroy_impl(runtime) == module.PORTAPY_OK
 

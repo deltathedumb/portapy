@@ -30,6 +30,55 @@ _ENVIRONMENT_IMPORT = """from .native_api_environment import (
     _portapy_global_name_size_impl,
 )
 """
+_TRACEBACK_FORWARDERS = '''
+
+def _portapy_traceback_reset_impl(runtime: int) -> int:
+    return _host_portapy_traceback_reset_impl(runtime)
+
+
+def _portapy_traceback_add_impl(
+    runtime: int,
+    line: int,
+    column: int,
+    function_name: str,
+    source_line: str,
+) -> int:
+    return _host_portapy_traceback_add_impl(
+        runtime,
+        line,
+        column,
+        function_name,
+        source_line,
+    )
+
+
+def _portapy_traceback_count_impl(runtime: int) -> int:
+    return _host_portapy_traceback_count_impl(runtime)
+
+
+def _portapy_traceback_line_impl(runtime: int, index: int) -> int:
+    return _host_portapy_traceback_line_impl(runtime, index)
+
+
+def _portapy_traceback_column_impl(runtime: int, index: int) -> int:
+    return _host_portapy_traceback_column_impl(runtime, index)
+
+
+def _portapy_traceback_function_size_impl(runtime: int, index: int) -> int:
+    return _host_portapy_traceback_function_size_impl(runtime, index)
+
+
+def _portapy_traceback_function_byte_impl(runtime: int, index: int, byte_index: int) -> int:
+    return _host_portapy_traceback_function_byte_impl(runtime, index, byte_index)
+
+
+def _portapy_traceback_source_size_impl(runtime: int, index: int) -> int:
+    return _host_portapy_traceback_source_size_impl(runtime, index)
+
+
+def _portapy_traceback_source_byte_impl(runtime: int, index: int, byte_index: int) -> int:
+    return _host_portapy_traceback_source_byte_impl(runtime, index, byte_index)
+'''
 
 
 def _rename(source: str, mapping: dict[str, str]) -> str:
@@ -72,6 +121,15 @@ def generate_native_host_call_entry(
     _host_portapy_eval_span_impl,
     _host_portapy_exec_span_impl,
     _host_resolve_host_path,
+    _host_portapy_traceback_reset_impl,
+    _host_portapy_traceback_add_impl,
+    _host_portapy_traceback_count_impl,
+    _host_portapy_traceback_line_impl,
+    _host_portapy_traceback_column_impl,
+    _host_portapy_traceback_function_size_impl,
+    _host_portapy_traceback_function_byte_impl,
+    _host_portapy_traceback_source_size_impl,
+    _host_portapy_traceback_source_byte_impl,
 )"""
     scalar_import = f"""from .{scalar_module} import (
     _scalar_find_assignment,
@@ -125,6 +183,7 @@ def generate_native_host_call_entry(
         '"""Generated synchronous host-call entry for PortaPy.',
         1,
     )
+    source = source.rstrip() + _TRACEBACK_FORWARDERS
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(source, encoding="utf-8")
     return output

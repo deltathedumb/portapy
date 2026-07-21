@@ -62,6 +62,7 @@ jobs:
           python tools/nasm_exports.py dist/libportapy_full_core_probe.asm \
             --export portapy_library_initialize \
             --export portapy_abi_version \
+            --export portapy_full_core_parse_probe \
             --export portapy_full_core_probe
           python tools/elf_pic.py dist/libportapy_full_core_probe.asm
           python tools/elf_relocatable_constants.py dist/libportapy_full_core_probe.asm
@@ -73,6 +74,7 @@ jobs:
             global:
               portapy_library_initialize;
               portapy_abi_version;
+              portapy_full_core_parse_probe;
               portapy_full_core_probe;
             local: *;
           };
@@ -162,6 +164,7 @@ jobs:
           python tools/nasm_exports.py dist/portapy_full_core_probe.asm `
             --export portapy_library_initialize `
             --export portapy_abi_version `
+            --export portapy_full_core_parse_probe `
             --export portapy_full_core_probe
           nasm -f win64 -w-label-redef-late `
             dist/portapy_full_core_probe.asm `
@@ -172,6 +175,7 @@ jobs:
           EXPORTS
               portapy_library_initialize
               portapy_abi_version
+              portapy_full_core_parse_probe
               portapy_full_core_probe
           '@ | Set-Content -Encoding ascii dist/portapy_full_core_probe.def
           gcc -shared dist/portapy_full_core_probe.obj `

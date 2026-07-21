@@ -59,6 +59,18 @@ _STORE_KIND_BY_FUNCTION = {
     "_portapy_list_begin_impl": "ValueKind.LIST",
 }
 
+_STATUS_CONSTANTS = {
+    "PORTAPY_OK": "OK",
+    "PORTAPY_INVALID_ARGUMENT": "INVALID_ARGUMENT",
+    "PORTAPY_COMPILE_ERROR": "COMPILE_ERROR",
+    "PORTAPY_RUNTIME_ERROR": "RUNTIME_ERROR",
+    "PORTAPY_TYPE_ERROR": "TYPE_ERROR",
+    "PORTAPY_NOT_FOUND": "NOT_FOUND",
+    "PORTAPY_CLOSED": "CLOSED",
+    "PORTAPY_INVALID_HANDLE": "INVALID_HANDLE",
+    "PORTAPY_INTERRUPTED": "INTERRUPTED",
+}
+
 _IMPORT_LOADER_SOURCE = '''
 class _PortaPyImportLoader:
     def __init__(self, instance: Runtime) -> None:
@@ -219,6 +231,23 @@ class _Rewrite(ast.NodeTransformer):
         self.generic_visit(node)
         if (
             isinstance(node.func, ast.Name)
+            and node.func.id == "_set_status"
+            and len(node.args) == 1
+            and not node.keywords
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in _STATUS_CONSTANTS
+        ):
+            node.args[0] = ast.copy_location(
+                ast.Attribute(
+                    value=ast.Name(id="Status", ctx=ast.Load()),
+                    attr=_STATUS_CONSTANTS[node.args[0].id],
+                    ctx=ast.Load(),
+                ),
+                node.args[0],
+            )
+            return node
+        if (
+            isinstance(node.func, ast.Name)
             and node.func.id == "int"
             and len(node.args) == 1
             and not node.keywords
@@ -294,6 +323,16 @@ def main() -> int:
         and len(node.args) == 1
         and _is_native_enum_expression(node.args[0])
     ]
+    raw_status_calls = [
+        node
+        for node in ast.walk(verified)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_set_status"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id in _STATUS_CONSTANTS
+    ]
     runtime_create_text = _function_text(verified, "_portapy_runtime_create_impl")
     set_status_text = _function_text(verified, "_set_status")
     value_get_kind_text = _function_text(verified, "_portapy_value_get_kind_impl")
@@ -305,6 +344,7 @@ def main() -> int:
     builtins_ready = "_seed_builtins" in runtime_create_text
     enum_values_ready = (
         not enum_int_calls
+        and not raw_status_calls
         and "status.value" in set_status_text
         and "return kind.value" in value_get_kind_text
     )
@@ -340,6 +380,7 @@ def main() -> int:
             f"missing={missing}, stale={stale}, "
             f"unsafe_utf8_spans={len(unsafe_spans)}, "
             f"enum_int_calls={len(enum_int_calls)}, "
+            f"raw_status_calls={len(raw_status_calls)}, "
             f"loader_ready={loader_ready}, builtins_ready={builtins_ready}, "
             f"enum_values_ready={enum_values_ready}, "
             f"tagged_kind_ready={tagged_kind_ready}, "
@@ -353,6 +394,7 @@ def main() -> int:
         "BUILTINS",
         "IMPORT_LOADER",
         "ENUM_VALUES",
+        "STATUS_VALUES",
         "TAGGED_VALUES",
         "TAGGED_STORES",
     )

@@ -35,6 +35,13 @@
     "recursive tuple release through ordinary value ownership",
     "recursive Python tuple boxing and unboxing",
     "tuple globals snapshots and host callback round-trips",
+    "owned string-key dictionary values",
+    "dictionary len truthiness structural equality and string-key indexing",
+    "recursive dictionary child ownership",
+    "keyword variadic parameters packed into dictionaries",
+    "mixed fixed positional-only keyword-only positional variadic and keyword variadic calls",
+    "positional-only names captured by keyword variadics",
+    "nested keyword variadic calls and local restoration",
     "equality and ordering comparisons",
     "identity comparisons with is and is not",
     "not and or with operand-return semantics",
@@ -92,7 +99,7 @@
     "Linux and Windows external C and Python conformance hosts"
   ],
   "release_blockers": [
-    "keyword variadic parameters and native list and dictionary containers",
+    "public dictionary extraction boxing and native list containers",
     "closures classes and general VM execution",
     "broader object and container syntax in the standalone native source parser",
     "full traceback frame retrieval beyond structured error location",

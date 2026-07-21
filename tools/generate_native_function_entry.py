@@ -98,6 +98,9 @@ def generate_native_function_entry(
     _scalar_tuple_item_owner,
     _scalar_tuple_item_index,
     _scalar_tuple_item_value,
+    _scalar_dict_entry_owner,
+    _scalar_dict_entry_key,
+    _scalar_dict_entry_value,
 )"""
 
     for old, new, label in (

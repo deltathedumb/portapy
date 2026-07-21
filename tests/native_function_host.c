@@ -42,6 +42,11 @@ static int evaluate_i64(eval_fn function, as_i64_fn as_i64, release_fn release, 
     return release(runtime, value) == PORTAPY_OK;
 }
 
+static int evaluate_status(eval_fn function, portapy_runtime runtime, const char *source, portapy_status expected) {
+    portapy_value value = PORTAPY_NULL_VALUE;
+    return function(runtime, (const uint8_t *)source, strlen(source), NULL, 0, &value) == expected;
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
     void *library = LOAD_LIBRARY(argv[1]);
@@ -112,10 +117,27 @@ int main(int argc, char **argv) {
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "control_small", 4)) return 24;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "control_large", 8)) return 25;
 
+    const char arguments[] =
+        "def combine(left, right=2, scale=3):\n"
+        "    return (left + right) * scale\n"
+        "defaulted = combine(12)\n"
+        "mixed = combine(10, scale=4)\n"
+        "reordered = combine(scale=2, left=18, right=3)\n"
+        "nested_default = combine(combine(1), scale=2)\n";
+    if (!execute(exec_utf8, runtime, arguments)) return 26;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "defaulted", 42)) return 27;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "mixed", 48)) return 28;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "reordered", 42)) return 29;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested_default", 22)) return 30;
+    if (!evaluate_status(eval_utf8, runtime, "combine()", PORTAPY_TYPE_ERROR)) return 31;
+    if (!evaluate_status(eval_utf8, runtime, "combine(1, left=2)", PORTAPY_TYPE_ERROR)) return 32;
+    if (!evaluate_status(eval_utf8, runtime, "combine(1, unknown=2)", PORTAPY_TYPE_ERROR)) return 33;
+    if (!evaluate_status(eval_utf8, runtime, "combine(left=1, 2)", PORTAPY_COMPILE_ERROR)) return 34;
+
     portapy_value missing = PORTAPY_NULL_VALUE;
-    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 26;
-    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 27;
-    if (runtime_destroy(runtime) != PORTAPY_OK) return 28;
+    if (get_global(runtime, (const uint8_t *)"total", 5, &missing) != PORTAPY_NOT_FOUND) return 35;
+    if (get_global(runtime, (const uint8_t *)"current", 7, &missing) != PORTAPY_NOT_FOUND) return 36;
+    if (runtime_destroy(runtime) != PORTAPY_OK) return 37;
     puts("native-functions: ok");
     return 0;
 }

@@ -76,6 +76,30 @@ def _compile_bridge_glue(
     _run(command, log=log)
 
 
+def _linux_link_command(
+    *,
+    gcc: str,
+    objects: list[str],
+    version_script: Path,
+    output: Path,
+) -> list[str]:
+    """Return a self-contained ELF shared-library link command.
+
+    asmpython emits calls to ``pow`` for Python exponentiation. ``libportapy.so``
+    must therefore declare its own libm dependency rather than relying on the
+    embedding process to have loaded libm globally already.
+    """
+    return [
+        gcc,
+        "-shared",
+        *objects,
+        f"-Wl,--version-script={version_script}",
+        "-lm",
+        "-o",
+        str(output),
+    ]
+
+
 def _upgrade_linked_artifact(
     *,
     target: str,
@@ -179,14 +203,12 @@ def _upgrade_linked_artifact(
             linux_version_script(host_bridge=True, host_calls=True),
             encoding="utf-8",
         )
-        command = [
-            gcc,
-            "-shared",
-            *objects,
-            f"-Wl,--version-script={version_script}",
-            "-o",
-            str(output),
-        ]
+        command = _linux_link_command(
+            gcc=gcc,
+            objects=objects,
+            version_script=version_script,
+            output=output,
+        )
     else:
         definition = work_dir / "portapy-host-calls.def"
         definition.write_text(

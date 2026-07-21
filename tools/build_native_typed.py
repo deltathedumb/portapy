@@ -23,6 +23,10 @@ from tools.generate_native_expression_entry import (
     generate_native_expression_entry,
 )
 from tools.python_surface import PYTHON_MODULE_EXPORTS
+from tools.rewrite_generated_parser import (
+    rewrite_generated_expression,
+    rewrite_generated_scalar,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,10 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         expression_source = package / f"{expression_module}.py"
         control_source = package / f"_native_api_control_generated_{args.target}.py"
         generate_namespaced_scalar_entry(scalar_source)
+        rewrite_generated_scalar(scalar_source)
         generate_native_expression_entry(
             expression_source,
             scalar_module=scalar_module,
         )
+        rewrite_generated_expression(expression_source)
         generate_native_control_entry(
             control_source,
             expression_module=expression_module,
@@ -72,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     metadata["generated_scalar_entry"] = bool(generated_paths)
     metadata["generated_expression_entry"] = bool(generated_paths)
     metadata["generated_control_entry"] = bool(generated_paths)
+    metadata["native_safe_parser_rewrite"] = bool(generated_paths)
     metadata["semantic_sources"] = [
         "src/portapy/native_api.py",
         "src/portapy/native_api_typed.py",

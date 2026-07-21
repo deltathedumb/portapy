@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_extended_semantics import (
     main as normalize_extended_semantics,
 )
@@ -26,6 +27,7 @@ def _normalize_opcode_validation() -> None:
 
 def main() -> int:
     normalize_native_parser()
+    normalize_closures()
     normalize_pattern_slices()
     normalize_extended_semantics()
     _normalize_opcode_validation()

@@ -31,6 +31,8 @@ _traceback_source: list[str] = [""]
 
 
 def _portapy_traceback_reset_impl(runtime: int) -> int:
+    if not _runtime_is_valid(runtime):
+        return PORTAPY_INVALID_HANDLE
     index = 1
     while index < len(_traceback_runtime):
         if _traceback_runtime[index] == runtime:
@@ -50,6 +52,8 @@ def _portapy_traceback_add_impl(
     function_name: str,
     source_line: str,
 ) -> int:
+    if not _runtime_is_valid(runtime):
+        return PORTAPY_INVALID_HANDLE
     _traceback_runtime.append(runtime)
     _traceback_line.append(line)
     _traceback_column.append(column)
@@ -98,6 +102,9 @@ def _portapy_traceback_add_function_impl(runtime: int, slot: int) -> int:
 
 
 def _portapy_traceback_count_impl(runtime: int) -> int:
+    if not _runtime_is_valid(runtime):
+        _set_status(PORTAPY_INVALID_HANDLE)
+        return 0
     count = 0
     index = 1
     while index < len(_traceback_runtime):
@@ -110,6 +117,8 @@ def _portapy_traceback_count_impl(runtime: int) -> int:
 
 def _traceback_slot(runtime: int, wanted: int) -> int:
     count = _portapy_traceback_count_impl(runtime)
+    if _portapy_last_status_impl() != PORTAPY_OK:
+        return 0
     if wanted < 0 or wanted >= count:
         _set_status(PORTAPY_INVALID_ARGUMENT)
         return 0

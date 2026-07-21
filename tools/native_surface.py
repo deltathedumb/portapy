@@ -47,6 +47,12 @@ HOST_CALL_GLUE_EXPORTS = (
     "portapy_value_get_host_callable_id",
 )
 
+ENVIRONMENT_GLUE_EXPORTS = (
+    "portapy_delete_global_utf8",
+    "portapy_global_count",
+    "portapy_global_name_copy_utf8",
+)
+
 BASE_GLUE_INTERNALS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_data_begin_impl",
@@ -81,6 +87,13 @@ HOST_CALL_GLUE_INTERNALS = (
     "_portapy_host_dispatch_complete_impl",
 )
 
+ENVIRONMENT_GLUE_INTERNALS = (
+    "_portapy_delete_global_span_impl",
+    "_portapy_global_count_impl",
+    "_portapy_global_name_size_impl",
+    "_portapy_global_name_byte_impl",
+)
+
 # Compatibility constants used by older tooling and tests.
 GLUE_EXPORTS = BASE_GLUE_EXPORTS
 GLUE_INTERNALS = BASE_GLUE_INTERNALS
@@ -98,6 +111,7 @@ def assembly_exports(
         result += HOST_GLUE_INTERNALS
     if host_calls:
         result += HOST_CALL_GLUE_INTERNALS
+        result += ENVIRONMENT_GLUE_INTERNALS
     return result
 
 
@@ -111,6 +125,7 @@ def public_exports(
         result += HOST_GLUE_EXPORTS
     if host_calls:
         result += HOST_CALL_GLUE_EXPORTS
+        result += ENVIRONMENT_GLUE_EXPORTS
     return result
 
 

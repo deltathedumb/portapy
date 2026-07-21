@@ -88,7 +88,12 @@ Implemented native ABI and source surface:
 - retain/release and runtime-owned teardown
 - precedence-aware integer arithmetic, powers, shifts, and bitwise expressions
 - string/bytes concatenation and repetition
-- native `None`, boolean, quoted string, and bytes literals
+- native `None`, boolean, quoted string, bytes, and immutable tuple literals
+- empty, single-item, multi-item, and nested tuples
+- positive, negative, and chained tuple indexing
+- tuple-aware `len()`, truthiness, and recursive structural equality
+- UTF-8 source literals across hosted Unicode and native byte-oriented source boundaries
+- tuple values passed through native functions and control flow
 - equality, ordering, `is`, and `is not` comparisons
 - `not`, `and`, and `or` with Python-style truthiness and operand returns
 - typed global assignment, lookup, aliasing, augmented assignment, and `eval`
@@ -111,7 +116,7 @@ Implemented native ABI and source surface:
 - independent Linux and Windows C and Python conformance hosts
 - reproducible native builds pinned to a verified asmpython compiler commit
 
-This preview is **not** the final standalone Python 3.14 interpreter release. Remaining gates include variadic parameters, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
+This preview is **not** the final standalone Python 3.14 interpreter release. Tuple support in this slice is source-facing; public tuple extraction and automatic high-level tuple boxing remain separate ABI work. Other remaining gates include variadic parameters, native list/dict containers, closures, classes, broader object/container syntax, full traceback-frame retrieval, and native module imports.
 
 ## Relationship to pyinbin
 

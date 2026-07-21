@@ -16,7 +16,7 @@ def _sha256(path: Path) -> str:
 def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
-    expected_exports = list(public_exports(host_bridge=True))
+    expected_exports = list(public_exports(host_bridge=True, host_calls=True))
     for target, name in (("linux", "libportapy.so"), ("windows", "portapy.dll")):
         artifact = dist / name
         artifact.write_bytes((target.encode("ascii") + b"\0") * 1024)
@@ -28,14 +28,15 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "artifact": name,
             "size": artifact.stat().st_size,
             "sha256": _sha256(artifact),
-            "source": "src/portapy/native_api_host.py",
+            "source": "src/portapy/native_api_host_calls.py",
             "source_sha256": "0" * 64,
             "public_exports": expected_exports,
             "python_module_exports": list(PYTHON_MODULE_EXPORTS),
             "python_module_entry": "portapy",
             "python_built_runtime": True,
             "host_bridge": True,
-            "generated_host_entry": True,
+            "host_calls": True,
+            "generated_host_call_entry": True,
         }
         artifact.with_suffix(artifact.suffix + ".json").write_text(
             json.dumps(metadata),

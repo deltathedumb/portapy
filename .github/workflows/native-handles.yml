@@ -46,6 +46,9 @@ jobs:
               dist/build-linux/linux-nasm.log \
               dist/build-linux/linux-glue.log \
               dist/build-linux/linux-host-glue.log \
+              dist/build-linux/linux-host-call-glue.log \
+              dist/build-linux/linux-host-call-nasm.log \
+              dist/build-linux/linux-host-call-link.log \
               dist/build-linux/linux-link.log; do
               if [ -f "$file" ]; then
                 echo "===== $file ====="
@@ -68,47 +71,41 @@ jobs:
           from pathlib import Path
           from tools.native_surface import public_exports
           Path('dist/expected-symbols.txt').write_text(
-              '\n'.join(sorted(public_exports(host_bridge=True))) + '\n',
+              '\n'.join(sorted(public_exports(host_bridge=True, host_calls=True))) + '\n',
               encoding='utf-8',
           )
           PY
           diff -u dist/expected-symbols.txt dist/actual-symbols.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_handle_host.c -ldl -o dist/native_handle_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -ldl -o dist/native_handle_host
           ./dist/native_handle_host ./dist/libportapy.so | tee dist/host-output.txt
           grep -qx 'opaque-floats: ok' dist/host-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_statement_host.c -ldl -o dist/native_statement_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_statement_host.c -ldl -o dist/native_statement_host
           ./dist/native_statement_host ./dist/libportapy.so | tee dist/statement-output.txt
           grep -qx 'statement-blocks: ok' dist/statement-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_text_error_host.c -ldl -o dist/native_text_error_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_text_error_host.c -ldl -o dist/native_text_error_host
           ./dist/native_text_error_host ./dist/libportapy.so | tee dist/text-error-output.txt
           grep -qx 'native-text-errors: ok' dist/text-error-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_typed_literal_host.c -ldl -o dist/native_typed_literal_host
           ./dist/native_typed_literal_host ./dist/libportapy.so | tee dist/typed-literal-output.txt
           grep -qx 'typed-literals: ok' dist/typed-literal-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_boolean_expression_host.c -ldl -o dist/native_boolean_expression_host
           ./dist/native_boolean_expression_host ./dist/libportapy.so | tee dist/boolean-expression-output.txt
           grep -qx 'boolean-expressions: ok' dist/boolean-expression-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_expression_host.c -ldl -o dist/native_expression_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_expression_host.c -ldl -o dist/native_expression_host
           ./dist/native_expression_host ./dist/libportapy.so | tee dist/expression-output.txt
           grep -qx 'general-expressions: ok' dist/expression-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_control_flow_host.c -ldl -o dist/native_control_flow_host
           ./dist/native_control_flow_host ./dist/libportapy.so | tee dist/control-flow-output.txt
           grep -qx 'control-flow: ok' dist/control-flow-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_function_host.c -ldl -o dist/native_function_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_function_host.c -ldl -o dist/native_function_host
           ./dist/native_function_host ./dist/libportapy.so | tee dist/function-output.txt
           grep -qx 'native-functions: ok' dist/function-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_host_object_host.c -ldl -o dist/native_host_object_host
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_object_host.c -ldl -o dist/native_host_object_host
           ./dist/native_host_object_host ./dist/libportapy.so | tee dist/host-object-output.txt
           grep -qx 'native-host-objects: ok' dist/host-object-output.txt
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_call_host.c -ldl -o dist/native_host_call_host
+          ./dist/native_host_call_host ./dist/libportapy.so | tee dist/host-call-output.txt
+          grep -qx 'native-host-calls: ok' dist/host-call-output.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -155,6 +152,9 @@ jobs:
             'dist/build-windows/windows-nasm.log',
             'dist/build-windows/windows-glue.log',
             'dist/build-windows/windows-host-glue.log',
+            'dist/build-windows/windows-host-call-glue.log',
+            'dist/build-windows/windows-host-call-nasm.log',
+            'dist/build-windows/windows-host-call-link.log',
             'dist/build-windows/windows-link.log'
           )) {
             if (Test-Path $file) {
@@ -170,7 +170,7 @@ jobs:
         shell: powershell
         run: |
           objdump -p dist/portapy.dll | Out-File -Encoding utf8 dist/windows-exports.txt
-          $symbols = python -c "from tools.native_surface import public_exports; print(' '.join(public_exports(host_bridge=True)))"
+          $symbols = python -c "from tools.native_surface import public_exports; print(' '.join(public_exports(host_bridge=True, host_calls=True)))"
           foreach ($symbol in $symbols.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
             if (-not (Select-String -Path dist/windows-exports.txt -Pattern "\b$symbol\b" -Quiet)) {
               throw "missing export: $symbol"
@@ -215,6 +215,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hostObjectOutput = & dist/native_host_object_host.exe dist/portapy.dll
           if ($hostObjectOutput -ne 'native-host-objects: ok') { throw "unexpected host-object output: $hostObjectOutput" }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_host_call_host.c -o dist/native_host_call_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostCallOutput = & dist/native_host_call_host.exe dist/portapy.dll
+          if ($hostCallOutput -ne 'native-host-calls: ok') { throw "unexpected host-call output: $hostCallOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

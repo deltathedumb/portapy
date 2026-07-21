@@ -76,6 +76,15 @@ typedef struct portapy_error_info {
     size_t message_size;
 } portapy_error_info;
 
+typedef portapy_status (PORTAPY_CALL *portapy_host_call_handler)(
+    void *context,
+    portapy_runtime runtime,
+    uint64_t callable_id,
+    const portapy_value *arguments,
+    size_t argument_count,
+    portapy_value *out_result
+);
+
 PORTAPY_API portapy_status PORTAPY_CALL portapy_library_initialize(void);
 PORTAPY_API uint32_t PORTAPY_CALL portapy_abi_version(void);
 
@@ -151,6 +160,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_host_object(
     uint64_t host_id,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_host_callable(
+    portapy_runtime runtime,
+    uint64_t callable_id,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_kind(
     portapy_runtime runtime,
     portapy_value value,
@@ -175,6 +189,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_host_id(
     portapy_runtime runtime,
     portapy_value value,
     uint64_t *out_host_id
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_host_callable_id(
+    portapy_runtime runtime,
+    portapy_value value,
+    uint64_t *out_callable_id
 );
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_get_size(
     portapy_runtime runtime,
@@ -210,6 +229,11 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_host_get_attr_utf8(
     const uint8_t *name,
     size_t name_size,
     portapy_value *out_value
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_host_set_call_handler(
+    portapy_runtime runtime,
+    portapy_host_call_handler handler,
+    void *context
 );
 
 PORTAPY_API portapy_status PORTAPY_CALL portapy_error_get_info(

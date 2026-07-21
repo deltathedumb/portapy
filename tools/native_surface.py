@@ -41,6 +41,12 @@ HOST_GLUE_EXPORTS = (
     "portapy_host_get_attr_utf8",
 )
 
+HOST_CALL_GLUE_EXPORTS = (
+    "portapy_host_set_call_handler",
+    "portapy_value_from_host_callable",
+    "portapy_value_get_host_callable_id",
+)
+
 BASE_GLUE_INTERNALS = (
     "_portapy_last_status_impl",
     "_portapy_value_from_data_begin_impl",
@@ -67,6 +73,14 @@ HOST_GLUE_INTERNALS = (
     "_portapy_host_get_attr_span_impl",
 )
 
+HOST_CALL_GLUE_INTERNALS = (
+    "_portapy_value_from_host_callable_impl",
+    "_portapy_value_get_host_callable_id_impl",
+    "_portapy_host_pending_arg_count_impl",
+    "_portapy_host_pending_arg_impl",
+    "_portapy_host_dispatch_complete_impl",
+)
+
 # Compatibility constants used by older tooling and tests.
 GLUE_EXPORTS = BASE_GLUE_EXPORTS
 GLUE_INTERNALS = BASE_GLUE_INTERNALS
@@ -74,23 +88,42 @@ ASSEMBLY_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_INTERNALS
 PUBLIC_EXPORTS = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_EXPORTS
 
 
-def assembly_exports(*, host_bridge: bool = False) -> tuple[str, ...]:
+def assembly_exports(
+    *,
+    host_bridge: bool = False,
+    host_calls: bool = False,
+) -> tuple[str, ...]:
     result = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_INTERNALS
-    if host_bridge:
+    if host_bridge or host_calls:
         result += HOST_GLUE_INTERNALS
+    if host_calls:
+        result += HOST_CALL_GLUE_INTERNALS
     return result
 
 
-def public_exports(*, host_bridge: bool = False) -> tuple[str, ...]:
+def public_exports(
+    *,
+    host_bridge: bool = False,
+    host_calls: bool = False,
+) -> tuple[str, ...]:
     result = ASSEMBLY_PUBLIC_EXPORTS + BASE_GLUE_EXPORTS
-    if host_bridge:
+    if host_bridge or host_calls:
         result += HOST_GLUE_EXPORTS
+    if host_calls:
+        result += HOST_CALL_GLUE_EXPORTS
     return result
 
 
-def linux_version_script(*, host_bridge: bool = False) -> str:
+def linux_version_script(
+    *,
+    host_bridge: bool = False,
+    host_calls: bool = False,
+) -> str:
     lines = ["{", "  global:"]
-    lines.extend(f"    {symbol};" for symbol in public_exports(host_bridge=host_bridge))
+    lines.extend(
+        f"    {symbol};"
+        for symbol in public_exports(host_bridge=host_bridge, host_calls=host_calls)
+    )
     lines.extend(["  local: *;", "};", ""])
     return "\n".join(lines)
 
@@ -99,8 +132,12 @@ def windows_definition(
     library_name: str = "portapy",
     *,
     host_bridge: bool = False,
+    host_calls: bool = False,
 ) -> str:
     lines = [f"LIBRARY {library_name}", "EXPORTS"]
-    lines.extend(f"    {symbol}" for symbol in public_exports(host_bridge=host_bridge))
+    lines.extend(
+        f"    {symbol}"
+        for symbol in public_exports(host_bridge=host_bridge, host_calls=host_calls)
+    )
     lines.append("")
     return "\n".join(lines)

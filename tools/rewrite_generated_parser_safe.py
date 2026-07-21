@@ -5,6 +5,9 @@ from pathlib import Path
 
 from tools.rewrite_generated_dict import rewrite_generated_dict
 from tools.rewrite_generated_dict_expression import rewrite_generated_dict_expression
+from tools.rewrite_generated_dict_function_bridge import (
+    rewrite_generated_dict_function_bridge,
+)
 from tools.rewrite_generated_parser import (
     _replace_function,
     rewrite_generated_scalar as _rewrite_generated_scalar,
@@ -22,6 +25,7 @@ def rewrite_generated_scalar(path: Path) -> Path:
     path.write_text(source, encoding="utf-8")
     rewrite_generated_tuple(path)
     rewrite_generated_dict(path)
+    rewrite_generated_dict_function_bridge(path)
     return path
 
 

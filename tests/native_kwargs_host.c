@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "filled", 41)) return 15;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "mixed", 64)) return 16;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "keyword_middle", 48)) return 17;
-    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested", 42)) return 18;
+    if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "nested", 44)) return 18;
     if (!evaluate_i64(eval_utf8, as_i64, release, runtime, "options", 100)) return 19;
     if (!evaluate_status(eval_utf8, runtime, "summarize(item=1, item=2)", PORTAPY_TYPE_ERROR)) return 20;
 

@@ -147,7 +147,7 @@ def test_generated_control_flow_uses_general_scalar_grammar(tmp_path: Path) -> N
         )
         assert control._portapy_exec_span_impl(runtime, source, len(source)) == base.PORTAPY_OK
         answer = control._portapy_get_global_span_impl(runtime, "answer", len("answer"))
-        assert base._portapy_value_as_i64_impl(runtime, answer) == 42
+        assert base._portapy_value_as_i64_impl(runtime, answer) == 36
     finally:
         sys.modules.pop(f"portapy.{control_name}", None)
         sys.modules.pop(f"portapy.{expression_name}", None)

@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
         frame.struct_size = sizeof(frame);
         if (trace_frame(runtime, index, &frame) != PORTAPY_OK) return 15;
         if (frame.line == 0 || frame.column == 0) return 16;
-        if (!copy_equals(copy_filename, runtime, index, "<portapy>")) return 17;
+        if (!copy_equals(copy_filename, runtime, index, "traceback_test.py")) return 17;
         if (!copy_equals(copy_function, runtime, index, functions[index])) return 18;
     }
     if (!copy_equals(copy_source, runtime, 1, "def outer():")) return 19;

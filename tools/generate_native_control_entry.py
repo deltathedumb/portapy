@@ -25,7 +25,7 @@ def _execute_assignment() -> str:
     return '''def _execute_assignment(runtime: int, source: str, start: int, end: int) -> int:
     statement = source[start:end]
     assignment = _scalar_find_assignment(statement, len(statement))
-    if not assignment[0]:
+    if assignment[0] == "":
         parsed = _parse_boolean_expression(runtime, source, start, end)
         if parsed[2] != PORTAPY_OK:
             return _record_expression_failure(runtime, parsed[2], parsed[1])

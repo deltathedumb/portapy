@@ -65,5 +65,8 @@ def test_installs_sequential_native_data_builders(
     assert "target.data" not in setter
 
     validator = _function(module, "_portapy_value_validate_utf8_impl")
-    assert "_data_bytes(raw).decode('utf-8')" in validator
-    assert "except TypeError" in validator
+    assert "while index < raw.size" in validator
+    assert "invalid UTF-8 leading byte" in validator
+    assert "invalid UTF-8 continuation byte" in validator
+    assert "codepoint > 1114111" in validator
+    assert ".decode(" not in validator

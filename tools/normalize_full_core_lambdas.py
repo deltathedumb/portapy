@@ -4,9 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+import asmpython
+
 
 VM_PATH = Path("src/portapy/core/vm.py")
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
+BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
+ASMPYTHON_STDLIB = Path(asmpython.__file__).resolve().parent / "stdlib"
 
 
 def _normalize_ascii(source: str) -> tuple[str, int, int]:
@@ -15,6 +19,14 @@ def _normalize_ascii(source: str) -> tuple[str, int, int]:
     source = source.replace("ascii(", "str(")
     source = source.replace("!a", "!r")
     return source, call_count, conversion_count
+
+
+def _normalize_ascii_file(path: Path, label: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    source, call_count, conversion_count = _normalize_ascii(source)
+    path.write_text(source, encoding="utf-8")
+    print(f"REPLACED {label} ASCII CALLS", call_count)
+    print(f"REPLACED {label} ASCII CONVERSIONS", conversion_count)
 
 
 def main() -> int:
@@ -56,6 +68,13 @@ def main() -> int:
     print("REPLACED STARRED LAMBDA ARGUMENT LIST", count)
     print("REPLACED FRONTEND ASCII CALLS", frontend_ascii_count)
     print("REPLACED FRONTEND ASCII CONVERSIONS", frontend_ascii_conversion_count)
+
+    _normalize_ascii_file(BYTECODE_PATH, "BYTECODE")
+    for name in ("dataclasses.py", "enum.py", "types.py"):
+        path = ASMPYTHON_STDLIB / name
+        if not path.is_file():
+            raise RuntimeError(f"missing asmpython stdlib source: {path}")
+        _normalize_ascii_file(path, f"ASMPYTHON {name}")
     return 0
 
 

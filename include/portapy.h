@@ -51,7 +51,8 @@ typedef enum portapy_value_kind {
     PORTAPY_VALUE_STRING = 4,
     PORTAPY_VALUE_BYTES = 5,
     PORTAPY_VALUE_CALLABLE = 6,
-    PORTAPY_VALUE_OBJECT = 7
+    PORTAPY_VALUE_OBJECT = 7,
+    PORTAPY_VALUE_TUPLE = 8
 } portapy_value_kind;
 
 typedef struct portapy_bytes_view {
@@ -171,6 +172,12 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_bytes(
     size_t size,
     portapy_value *out_value
 );
+PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_tuple(
+    portapy_runtime runtime,
+    const portapy_value *items,
+    size_t item_count,
+    portapy_value *out_value
+);
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_from_host_object(
     portapy_runtime runtime,
     uint64_t host_id,
@@ -222,6 +229,17 @@ PORTAPY_API portapy_status PORTAPY_CALL portapy_value_copy_data(
     uint8_t *buffer,
     size_t capacity,
     size_t *out_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_tuple_get_size(
+    portapy_runtime runtime,
+    portapy_value value,
+    size_t *out_size
+);
+PORTAPY_API portapy_status PORTAPY_CALL portapy_tuple_get_item(
+    portapy_runtime runtime,
+    portapy_value value,
+    size_t index,
+    portapy_value *out_item
 );
 PORTAPY_API portapy_status PORTAPY_CALL portapy_value_retain(
     portapy_runtime runtime,

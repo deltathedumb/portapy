@@ -135,7 +135,7 @@ def test_kwargs_mix_with_fixed_varargs_and_keyword_only_parameters(tmp_path: Pat
             "        total += options[\"bonus\"]\n"
             "    return total * scale\n"
             "plain = combine(10)\n"
-            "mixed = combine(10, 3, 4, scale=2, bonus=3)\n"
+            "mixed = combine(10, 3, 4, scale=2, bonus=2)\n"
         )
         assert _exec(api, runtime, source) == base.PORTAPY_OK
         assert _eval_int(api, runtime, "plain") == 12

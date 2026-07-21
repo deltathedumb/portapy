@@ -60,6 +60,28 @@ return _set_status(Status.OK)
 '''
 
 
+def _map_builder_store_kind(node: ast.FunctionDef) -> int:
+    count = 0
+    for item in ast.walk(node):
+        if (
+            isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Attribute)
+            and isinstance(item.func.value, ast.Name)
+            and item.func.value.id == "instance"
+            and item.func.attr == "_store"
+            and len(item.args) == 2
+            and isinstance(item.args[1], ast.Name)
+            and item.args[1].id == "kind"
+        ):
+            item.args[1] = ast.Call(
+                func=ast.Name(id="_native_kind_member", ctx=ast.Load()),
+                args=[ast.Name(id="kind", ctx=ast.Load())],
+                keywords=[],
+            )
+            count += 1
+    return count
+
+
 class _Rewrite(ast.NodeTransformer):
     def __init__(self) -> None:
         self.builder = 0
@@ -84,7 +106,14 @@ class _Rewrite(ast.NodeTransformer):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
         self.generic_visit(node)
-        if node.name == "_portapy_value_set_data_byte_impl":
+        if node.name == "_portapy_value_from_data_begin_impl":
+            count = _map_builder_store_kind(node)
+            if count != 1:
+                raise RuntimeError(
+                    f"native data builder store expected one raw kind, found {count}"
+                )
+            self.functions.add(node.name)
+        elif node.name == "_portapy_value_set_data_byte_impl":
             node.body = ast.parse(_SET_BYTE).body
             self.functions.add(node.name)
         elif node.name == "_portapy_value_validate_utf8_impl":
@@ -98,6 +127,7 @@ def main() -> int:
     rewriter = _Rewrite()
     module = rewriter.visit(module)
     expected = {
+        "_portapy_value_from_data_begin_impl",
         "_portapy_value_set_data_byte_impl",
         "_portapy_value_validate_utf8_impl",
     }
@@ -114,6 +144,7 @@ def main() -> int:
     text = ast.unparse(verified)
     required = (
         "self.size = size",
+        "instance._store(_DataBuilder(kind, size), _native_kind_member(kind))",
         "index != len(target.data)",
         "target.data.append(byte)",
         "_data_bytes(raw).decode('utf-8')",
@@ -121,7 +152,7 @@ def main() -> int:
     absent = [marker for marker in required if marker not in text]
     if absent:
         raise RuntimeError(f"native data-builder validation failed: {absent}")
-    print("NORMALIZED NATIVE DATA BUILDERS", 3)
+    print("NORMALIZED NATIVE DATA BUILDERS", 4)
     return 0
 
 

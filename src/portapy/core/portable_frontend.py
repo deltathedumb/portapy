@@ -64,6 +64,7 @@ class _PortableLowerer:
     loop_starts: list[int] = field(default_factory=list)
     loop_breaks: list[list[int]] = field(default_factory=list)
     loop_has_iterator: list[bool] = field(default_factory=list)
+    global_names: set[str] = field(default_factory=set)
 
     def constant(self, value: object) -> int:
         self.constants.append(value)
@@ -92,12 +93,27 @@ class _PortableLowerer:
             f"{self.name}:{line}: portable frontend does not support {kind}"
         )
 
+    def store_name(self, value: str) -> None:
+        opcode = Op.STORE_GLOBAL if value in self.global_names else Op.STORE_NAME
+        self.emit(opcode, self.name_index(value))
+
     def load_dotted_name(self, value: str) -> None:
         """Load a decorator or other parser-provided dotted name."""
         pieces = value.split(".")
         self.emit(Op.LOAD_NAME, self.name_index(pieces[0]))
         for piece in pieces[1:]:
             self.emit(Op.GET_ATTR, self.name_index(piece))
+
+    def slice_expression(self, node: A.Expr) -> None:
+        if not isinstance(node, A.Slice):
+            self.expression(node)
+            return
+        for bound in (node.start, node.stop, node.step):
+            if bound is None:
+                self.emit(Op.LOAD_CONST, self.constant(None))
+            else:
+                self.expression(bound)
+        self.emit(Op.BUILD_SLICE)
 
     def call(
         self,
@@ -128,6 +144,28 @@ class _PortableLowerer:
             self.constant((tuple(False for _ in args), tuple(keyword_names))),
         )
 
+    def store_value_target(self, target: object) -> None:
+        """Store the value currently on top of the VM stack into ``target``."""
+        if isinstance(target, A.Name):
+            self.store_name(target.name)
+            return
+        if isinstance(target, A.Attr):
+            temporary = f"__portapy_attr_value_{len(self.instructions)}"
+            self.emit(Op.STORE_NAME, self.name_index(temporary))
+            self.expression(target.obj)
+            self.emit(Op.LOAD_NAME, self.name_index(temporary))
+            self.emit(Op.SET_ATTR, self.name_index(target.name))
+            return
+        if isinstance(target, A.Subscript):
+            temporary = f"__portapy_item_value_{len(self.instructions)}"
+            self.emit(Op.STORE_NAME, self.name_index(temporary))
+            self.expression(target.obj)
+            self.slice_expression(target.index)
+            self.emit(Op.LOAD_NAME, self.name_index(temporary))
+            self.emit(Op.SET_ITEM)
+            return
+        self.unsupported(target, "assignment target")
+
     def expression(self, node: A.Expr) -> None:
         if isinstance(node, A.IntLit):
             if node.is_none:
@@ -150,6 +188,11 @@ class _PortableLowerer:
         if isinstance(node, A.Attr):
             self.expression(node.obj)
             self.emit(Op.GET_ATTR, self.name_index(node.name))
+            return
+        if isinstance(node, A.NamedExpr):
+            self.expression(node.value)
+            self.emit(Op.DUP_TOP)
+            self.store_name(node.target)
             return
         if isinstance(node, A.BinOp):
             opcode = _BINARY_OPS.get(node.op)
@@ -223,10 +266,8 @@ class _PortableLowerer:
             self.emit(Op.BUILD_DICT, len(node.keys))
             return
         if isinstance(node, A.Subscript):
-            if isinstance(node.index, A.Slice):
-                self.unsupported(node, "slicing")
             self.expression(node.obj)
-            self.expression(node.index)
+            self.slice_expression(node.index)
             self.emit(Op.GET_ITEM)
             return
         if isinstance(node, A.Call):
@@ -237,6 +278,33 @@ class _PortableLowerer:
             self.expression(node.obj)
             self.emit(Op.GET_ATTR, self.name_index(node.method))
             self.call(node.args, node.kwargs)
+            return
+        if isinstance(node, A.FString):
+            if not node.segments:
+                self.emit(Op.LOAD_CONST, self.constant(""))
+                return
+            first = True
+            for segment in node.segments:
+                if isinstance(segment, A.StrLit):
+                    self.expression(segment)
+                else:
+                    self.emit(Op.LOAD_NAME, self.name_index("str"))
+                    self.expression(segment)
+                    self.emit(Op.CALL, 1)
+                if not first:
+                    self.emit(Op.BINARY_ADD)
+                first = False
+            return
+        if isinstance(node, A.Lambda):
+            if node.body is None:
+                self.unsupported(node, "empty lambda")
+            nested = _PortableLowerer("<lambda>", list(node.params))
+            nested.expression(node.body)
+            nested.emit(Op.RETURN)
+            self.emit(
+                Op.MAKE_FUNCTION,
+                self.constant((nested.finish(), 0, 0, {})),
+            )
             return
         self.unsupported(node)
 
@@ -254,7 +322,47 @@ class _PortableLowerer:
     def statement(self, node: A.Stmt) -> None:
         if isinstance(node, A.Assign):
             self.expression(node.value)
-            self.emit(Op.STORE_NAME, self.name_index(node.target))
+            self.store_name(node.target)
+            return
+        if isinstance(node, A.MultiAssign):
+            self.expression(node.value)
+            for index, target in enumerate(node.targets):
+                if index + 1 < len(node.targets):
+                    self.emit(Op.DUP_TOP)
+                self.store_name(target)
+            return
+        if isinstance(node, A.TupleAssign):
+            if len(node.values) == 1 and len(node.targets) != 1:
+                self.expression(node.values[0])
+                star_indexes = [
+                    index for index, target in enumerate(node.targets)
+                    if isinstance(target, A.StarTarget)
+                ]
+                if len(star_indexes) > 1:
+                    self.unsupported(node, "multiple starred assignment targets")
+                if star_indexes:
+                    before = star_indexes[0]
+                    after = len(node.targets) - before - 1
+                    self.emit(Op.UNPACK_EX, before | (after << 16))
+                else:
+                    self.emit(Op.UNPACK_SEQUENCE, len(node.targets))
+                for target in node.targets:
+                    if isinstance(target, A.StarTarget):
+                        self.store_name(target.name)
+                    else:
+                        self.store_value_target(target)
+                return
+            if len(node.values) != len(node.targets):
+                self.unsupported(node, "assignment arity")
+            temporary_names: list[str] = []
+            for value in node.values:
+                temporary = f"__portapy_tuple_value_{len(self.instructions)}"
+                temporary_names.append(temporary)
+                self.expression(value)
+                self.emit(Op.STORE_NAME, self.name_index(temporary))
+            for target, temporary in zip(node.targets, temporary_names):
+                self.emit(Op.LOAD_NAME, self.name_index(temporary))
+                self.store_value_target(target)
             return
         if isinstance(node, A.AttrAssign):
             self.expression(node.obj)
@@ -268,13 +376,11 @@ class _PortableLowerer:
             self.emit(Op.LOAD_NAME, self.name_index(node.target))
             self.expression(node.value)
             self.emit(opcode)
-            self.emit(Op.STORE_NAME, self.name_index(node.target))
+            self.store_name(node.target)
             return
         if isinstance(node, A.IndexAssign):
-            if isinstance(node.target.index, A.Slice):
-                self.unsupported(node, "slice assignment")
             self.expression(node.target.obj)
-            self.expression(node.target.index)
+            self.slice_expression(node.target.index)
             self.expression(node.value)
             self.emit(Op.SET_ITEM)
             return
@@ -286,6 +392,66 @@ class _PortableLowerer:
             if node.value is not None:
                 self.expression(node.value)
             self.emit(Op.RETURN)
+            return
+        if isinstance(node, A.Raise):
+            if node.value is not None:
+                self.expression(node.value)
+            self.emit(Op.RAISE)
+            return
+        if isinstance(node, A.Global):
+            self.global_names.update(node.names)
+            return
+        if isinstance(node, A.Nonlocal):
+            self.unsupported(node, "nonlocal closure binding")
+        if isinstance(node, A.Del):
+            target = node.target
+            if isinstance(target, A.Name):
+                self.emit(Op.DELETE_NAME, self.name_index(target.name))
+            elif isinstance(target, A.Attr):
+                self.expression(target.obj)
+                self.emit(Op.DELETE_ATTR, self.name_index(target.name))
+            elif isinstance(target, A.Subscript):
+                self.expression(target.obj)
+                self.slice_expression(target.index)
+                self.emit(Op.DELETE_ITEM)
+            else:
+                self.unsupported(target, "delete target")
+            return
+        if isinstance(node, A.Import):
+            local_name = node.alias or node.module.split(".", 1)[0]
+            self.emit(
+                Op.IMPORT_NAME if node.alias is not None else Op.IMPORT_ROOT,
+                self.name_index(node.module),
+            )
+            self.store_name(local_name)
+            return
+        if isinstance(node, A.FromImport):
+            original_names = node.orig_names or node.names
+            for original, local_name in zip(original_names, node.names):
+                if node.level:
+                    self.emit(
+                        Op.IMPORT_RELATIVE_FROM,
+                        self.constant((node.module, node.level, original)),
+                    )
+                else:
+                    self.emit(Op.IMPORT_NAME, self.name_index(node.module))
+                    if original != "*":
+                        self.emit(Op.IMPORT_FROM, self.name_index(original))
+                if original == "*":
+                    self.emit(Op.IMPORT_STAR)
+                else:
+                    self.store_name(local_name)
+            return
+        if isinstance(node, A.With):
+            self.expression(node.expr)
+            self.emit(Op.WITH_ENTER)
+            if node.name is None:
+                self.emit(Op.POP_TOP)
+            else:
+                self.store_name(node.name)
+            for statement in node.body:
+                self.statement(statement)
+            self.emit(Op.WITH_EXIT)
             return
         if isinstance(node, A.If):
             self.expression(node.test)
@@ -324,7 +490,7 @@ class _PortableLowerer:
             self.emit(Op.GET_ITER)
             start = len(self.instructions)
             exit_jump = self.emit(Op.FOR_ITER)
-            self.emit(Op.STORE_NAME, self.name_index(node.var))
+            self.store_name(node.var)
             self.begin_loop(start, True)
             for statement in node.body:
                 self.statement(statement)
@@ -382,7 +548,7 @@ class _PortableLowerer:
             self.load_dotted_name(decorator)
             self.emit(Op.SWAP)
             self.emit(Op.CALL, 1)
-        self.emit(Op.STORE_NAME, self.name_index(node.name))
+        self.store_name(node.name)
 
     def class_definition(self, node: A.ClassDef) -> None:
         body = _PortableLowerer(f"{self.name}.{node.name}")
@@ -390,7 +556,7 @@ class _PortableLowerer:
             if value is None:
                 continue
             body.expression(value)
-            body.emit(Op.STORE_NAME, body.name_index(class_name))
+            body.store_name(class_name)
         for method in node.methods:
             body.function(method)
         body.emit(Op.RETURN)
@@ -407,7 +573,7 @@ class _PortableLowerer:
             self.load_dotted_name(decorator)
             self.emit(Op.SWAP)
             self.emit(Op.CALL, 1)
-        self.emit(Op.STORE_NAME, self.name_index(node.name))
+        self.store_name(node.name)
 
     def finish(self) -> CodeObject:
         code = CodeObject(

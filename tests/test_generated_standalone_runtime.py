@@ -62,7 +62,7 @@ def test_generated_runtime_executes_persistent_full_vm_state(generated_runtime) 
         "    def apply(value):\n"
         "        return value + offset\n"
         "    return apply\n"
-        "counter = Counter(39)\n"
+        "counter = Counter(40)\n"
         "offset = make_offset(1)\n"
         "values = [offset(value) for value in [19, 20, 21] if value >= 20]\n"
         "answer = counter.step() + values[0] - 20\n"
@@ -86,10 +86,10 @@ def test_generated_runtime_round_trips_public_containers(generated_runtime) -> N
     )
     assert module._portapy_exec_span_impl(runtime, source, len(source)) == module.PORTAPY_OK
     assert evaluate_i64(module, runtime, "answer") == 42
-    assert module._portapy_value_get_kind_impl(
-        runtime,
-        module._portapy_get_global_span_impl(runtime, "items", 5),
-    ) == module.PORTAPY_VALUE_LIST
+    handle = module._portapy_get_global_span_impl(runtime, "items", 5)
+    assert handle != 0
+    assert module._portapy_value_get_kind_impl(runtime, handle) == module.PORTAPY_VALUE_LIST
+    assert module._portapy_value_release_impl(runtime, handle) == module.PORTAPY_OK
     assert module._portapy_runtime_destroy_impl(runtime) == module.PORTAPY_OK
 
 

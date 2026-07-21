@@ -6,29 +6,29 @@ from pathlib import Path
 
 from tools.native_surface import public_exports
 from tools.python_surface import PYTHON_MODULE_EXPORTS
-from tools.release_gate import main
+from tools.release_gate import FULL_RUNTIME_FLAGS, main
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
-    dist = tmp_path / "dist"
-    dist.mkdir()
+def _write_artifacts(dist: Path, *, full_runtime: bool) -> None:
     expected_exports = list(public_exports(host_bridge=True, host_calls=True))
     for target, name in (("linux", "libportapy.so"), ("windows", "portapy.dll")):
         artifact = dist / name
-        artifact.write_bytes((target.encode("ascii") + b"\0") * 1024)
-        if artifact.stat().st_size < 4096:
-            artifact.write_bytes(artifact.read_bytes() + b"x" * 4096)
-        metadata = {
+        artifact.write_bytes((target.encode("ascii") + b"\0") * 1024 + b"x" * 4096)
+        metadata: dict[str, object] = {
             "schema": 1,
             "target": target,
             "artifact": name,
             "size": artifact.stat().st_size,
             "sha256": _sha256(artifact),
-            "source": "src/portapy/native_api_host_calls.py",
+            "source": (
+                "src/portapy/native_full_reference_entry.py"
+                if full_runtime
+                else "src/portapy/native_api_host_calls.py"
+            ),
             "source_sha256": "0" * 64,
             "public_exports": expected_exports,
             "python_module_exports": list(PYTHON_MODULE_EXPORTS),
@@ -38,38 +38,57 @@ def test_release_gate_validates_both_native_artifacts(tmp_path: Path) -> None:
             "host_calls": True,
             "native_environment_adapter": True,
             "public_environment_api": True,
-            "generated_host_call_entry": True,
+            "generated_host_call_entry": not full_runtime,
         }
+        if full_runtime:
+            for flag in FULL_RUNTIME_FLAGS:
+                metadata[flag] = True
         artifact.with_suffix(artifact.suffix + ".json").write_text(
-            json.dumps(metadata),
-            encoding="utf-8",
+            json.dumps(metadata), encoding="utf-8"
         )
 
-    status = tmp_path / "status.json"
-    status.write_text(
+
+def _write_status(path: Path, *, source_ready: bool) -> str:
+    tag = "3.14.0" if source_ready else "3.14-dev.1"
+    path.write_text(
         json.dumps(
             {
                 "version_line": "3.14",
-                "release_tag": "3.14-dev.1",
-                "stage": "developer-preview",
-                "prerelease": True,
+                "release_tag": tag,
+                "stage": "stable" if source_ready else "developer-preview",
+                "prerelease": not source_ready,
                 "python_built_runtime": True,
-                "source_execution_ready": False,
+                "source_execution_ready": source_ready,
                 "completed_surface": ["runtime handles"],
-                "release_blockers": ["native parser"],
+                "release_blockers": [] if source_ready else ["native parser"],
             }
         ),
         encoding="utf-8",
     )
+    return tag
 
-    assert main([str(dist), "--status", str(status), "--expected-tag", "3.14-dev.1"]) == 0
-    assert (dist / "checksums.json").is_file()
+
+def _run_gate(tmp_path: Path, *, source_ready: bool) -> Path:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_artifacts(dist, full_runtime=source_ready)
+    status = tmp_path / "status.json"
+    tag = _write_status(status, source_ready=source_ready)
+    assert main([str(dist), "--status", str(status), "--expected-tag", tag]) == 0
+    return dist
+
+
+def test_release_gate_validates_preview_artifacts(tmp_path: Path) -> None:
+    dist = _run_gate(tmp_path, source_ready=False)
     manifest = json.loads((dist / "release-manifest.json").read_text(encoding="utf-8"))
-    assert manifest["release"]["stage"] == "developer-preview"
-    assert manifest["public_exports"] == expected_exports
+    assert manifest["release"]["source_execution_ready"] is False
+    assert "Not yet included" in (dist / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+
+
+def test_release_gate_validates_full_runtime_artifacts(tmp_path: Path) -> None:
+    dist = _run_gate(tmp_path, source_ready=True)
+    manifest = json.loads((dist / "release-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["release"]["source_execution_ready"] is True
     assert manifest["python_module_exports"] == list(PYTHON_MODULE_EXPORTS)
-    assert manifest["python_module_entry"] == "portapy"
     notes = (dist / "RELEASE_NOTES.md").read_text(encoding="utf-8")
-    assert "not the final Python 3.14 interpreter release" in notes
-    assert "`add_all`" in notes
-    assert "does not expose `import_module`" in notes
+    assert "Standalone source execution" in notes

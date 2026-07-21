@@ -19,6 +19,7 @@ _CALL_PARSER_MARKERS = {
 _ALREADY_NORMALIZED_MARKERS = {
     "dynamic exception reraising": "RuntimeError: exception did not match handler",
     "exception stack extension": "frame.stack.append(matched)",
+    "context-manager exception forwarding": "exit_args.append(exc_type)",
 }
 
 
@@ -55,11 +56,13 @@ def _compatible_replace(
 
     target_marker = _ALREADY_NORMALIZED_MARKERS.get(label)
     if target_marker is not None and count == 0:
-        if target_marker not in source:
+        marker_count = source.count(target_marker)
+        if marker_count != 1:
             raise RuntimeError(
-                f"{label}: neither source nor normalized target form is present"
+                f"{label}: neither unique source nor normalized target form is present; "
+                f"target matches={marker_count}"
             )
-        print("SKIPPED", label, "target form already present")
+        print("PRESERVED", label, marker_count)
         return source
 
     return _original_replace(

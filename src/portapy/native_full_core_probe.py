@@ -1,4 +1,4 @@
-"""Execute closures, classes, and configured imports through the full core."""
+"""Execute every release-blocking subsystem through the standalone full core."""
 from __future__ import annotations
 
 from .core.frontend import compile_source
@@ -32,10 +32,17 @@ def portapy_full_core_probe() -> int:
         "fn = outer(19)\n"
         "box = Box(fn(23))\n"
         "import probe\n"
-        "answer = box.get() + probe.value - 42\n"
+        "def fail():\n"
+        "    return 1 // 0\n"
+        "try:\n"
+        "    fail()\n"
+        "except Exception as exc:\n"
+        "    traced = exc.__traceback__ is not None\n"
+        "answer = box.get() + probe.value - 42 if traced else -1\n"
     )
     namespace: dict[str, object] = {}
     namespace["__pyinbin_import__"] = _probe_import
+    namespace["Exception"] = Exception
     code = compile_source(source, "<native-full-core-probe>")
     machine = VirtualMachine()
     machine.run(code, namespace)

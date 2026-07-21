@@ -32,6 +32,11 @@ _ENVIRONMENT_IMPORT = """from .native_api_environment import (
 """
 _TRACEBACK_FORWARDERS = '''
 
+
+def _traceback_filename_for_runtime(runtime: int) -> str:
+    return _host_traceback_filename_for_runtime(runtime)
+
+
 def _portapy_traceback_set_filename_impl(runtime: int, filename: str, filename_size: int) -> int:
     return _host_portapy_traceback_set_filename_impl(runtime, filename, filename_size)
 
@@ -96,6 +101,7 @@ def _portapy_traceback_source_byte_impl(runtime: int, index: int, byte_index: in
     return _host_portapy_traceback_source_byte_impl(runtime, index, byte_index)
 '''
 _LIFECYCLE_FORWARDERS = '''
+
 
 def _portapy_error_clear_impl(runtime: int) -> int:
     if _runtime_is_valid(runtime):
@@ -165,6 +171,7 @@ def generate_native_host_call_entry(
     _host_portapy_eval_span_impl,
     _host_portapy_exec_span_impl,
     _host_resolve_host_path,
+    _host_traceback_filename_for_runtime,
     _host_portapy_traceback_set_filename_impl,
     _host_portapy_traceback_default_filename_impl,
     _host_portapy_traceback_reset_impl,

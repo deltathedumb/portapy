@@ -66,6 +66,30 @@ return 1, 1
 '''
 
 
+def _is_name_plus_one(node: ast.AST, name: str) -> bool:
+    return (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.Add)
+        and isinstance(node.left, ast.Name)
+        and node.left.id == name
+        and isinstance(node.right, ast.Constant)
+        and node.right.value == 1
+    )
+
+
+def _has_return_pair(function: ast.FunctionDef, second_name: str) -> bool:
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Tuple):
+            continue
+        if len(node.value.elts) != 2:
+            continue
+        if _is_name_plus_one(node.value.elts[0], "line_index") and _is_name_plus_one(
+            node.value.elts[1], second_name
+        ):
+            return True
+    return False
+
+
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     matches = [
@@ -83,23 +107,37 @@ def main() -> int:
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
 
-    locator = ast.unparse(
-        next(
-            node
-            for node in ast.parse(source).body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_native_error_location"
-        )
+    verified = ast.parse(source)
+    locator = next(
+        node
+        for node in verified.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_native_error_location"
     )
-    required = (
-        'lines = source.split("\\n")',
-        "previous_opens_block",
-        "return line_index + 1, indent + 1",
-        "return line_index + 1, column_index + 1",
+    has_newline_split = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "split"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "source"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "\n"
+        for node in ast.walk(locator)
     )
-    absent = [marker for marker in required if marker not in locator]
-    if absent:
-        raise RuntimeError(f"native error location validation failed: {absent}")
+    names = {
+        node.id
+        for node in ast.walk(locator)
+        if isinstance(node, ast.Name)
+    }
+    ready = (
+        has_newline_split
+        and "previous_opens_block" in names
+        and _has_return_pair(locator, "indent")
+        and _has_return_pair(locator, "column_index")
+    )
+    if not ready:
+        raise RuntimeError("native error location semantic validation failed")
     print("NORMALIZED NATIVE ERROR LOCATIONS", 1)
     return 0
 

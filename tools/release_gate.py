@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from tools.native_surface import PUBLIC_EXPORTS
+from tools.native_surface import public_exports
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
@@ -62,12 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     if status.get("source_execution_ready") is not False:
         raise SystemExit(
             "developer preview must state that source execution is not ready; "
-            "use a new final-release status when the PortaPy parser lands"
+            "use a new final-release status when the full PortaPy parser lands"
         )
 
     args.dist.mkdir(parents=True, exist_ok=True)
     records: dict[str, dict[str, object]] = {}
-    expected_exports = list(PUBLIC_EXPORTS)
+    expected_exports = list(public_exports(host_bridge=True))
     expected_python_exports = list(PYTHON_MODULE_EXPORTS)
     for target, name in REQUIRED.items():
         path = args.dist / name
@@ -86,6 +86,10 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"artifact digest mismatch in {metadata_path}")
         if metadata.get("python_built_runtime") is not True:
             raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
+        if metadata.get("host_bridge") is not True:
+            raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
+        if metadata.get("generated_host_entry") is not True:
+            raise SystemExit(f"artifact is not host-entry generated: {metadata_path}")
         if metadata.get("public_exports") != expected_exports:
             raise SystemExit(f"public export surface mismatch in {metadata_path}")
         if metadata.get("python_module_exports") != expected_python_exports:
@@ -134,13 +138,15 @@ def main(argv: list[str] | None = None) -> int:
             "",
             "The artifact metadata declares the environment-oriented binary-module "
             "surface: `new`, `Environment`, `EnvironmentSnapshot`, `Snapshot`, "
-            "and structured public errors.",
+            "and structured public errors. The C ABI now includes opaque host "
+            "objects, global injection, attribute graphs, and host-ID recovery.",
             "",
             "## Not yet included",
             "",
-            "This is not the final Python 3.14 interpreter release. Native source "
-            "execution remains gated on functions/classes, the native host-object "
-            "bridge, module imports, and full traceback-frame retrieval.",
+            "This is not the final Python 3.14 interpreter release. Remaining "
+            "gates include synchronous host callable dispatch, native module "
+            "registration/imports, broader object/container syntax, compound "
+            "statements inside functions, and full traceback-frame retrieval.",
             "",
         ]
     )

@@ -7,6 +7,7 @@ from tools.generate_native_host_call_entry import generate_native_host_call_entr
 from tools.rewrite_generated_full_vm_environment import (
     rewrite_generated_full_vm_environment,
 )
+from tools.rewrite_generated_host_calls import rewrite_generated_host_calls
 
 
 def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> None:
@@ -16,6 +17,7 @@ def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> 
         host_module="_native_host_dependency_linux",
         scalar_module="_native_scalar_dependency_linux",
     )
+    rewrite_generated_host_calls(output)
     rewrite_generated_full_vm_environment(
         output,
         host_module="_native_host_dependency_linux",
@@ -31,6 +33,7 @@ def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> 
     assert source.count("def _portapy_runtime_create_impl(") == 1
     assert source.count("def _portapy_runtime_destroy_impl(") == 1
 
+    assert "_portapy_runtime_create_impl as _core_portapy_runtime_create_impl" in source
     assert "from .core.frontend import compile_source as _full_compile_source" in source
     assert "from .core.vm import VirtualMachine as _FullVirtualMachine" in source
     assert "from ._native_host_dependency_linux import (" in source
@@ -38,6 +41,8 @@ def test_rewrite_installs_full_vm_over_generated_environment(tmp_path: Path) -> 
     assert "_host_attr_value as _full_host_attr_value" in source
     assert "from .native_vm_bridge import" not in source
     assert "_dispatch_host_call(self._runtime, self._callable_id" in source
+    assert "if type(argument_source) is list:" in source
+    assert "_scalar_release(runtime, _host_call_argument_values[release])" in source
 
 
 def test_rewrite_rejects_duplicate_application(tmp_path: Path) -> None:
@@ -47,6 +52,7 @@ def test_rewrite_rejects_duplicate_application(tmp_path: Path) -> None:
         host_module="generated_host",
         scalar_module="generated_scalar",
     )
+    rewrite_generated_host_calls(output)
     rewrite_generated_full_vm_environment(output, host_module="generated_host")
 
     try:

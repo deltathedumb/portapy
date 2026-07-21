@@ -38,10 +38,13 @@ jobs:
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Build full libportapy.so
         run: |
+          mkdir -p dist
+          set -o pipefail
           python tools/build_native_typed.py \
             --target linux \
             --output dist/libportapy.so \
-            --work-dir dist/build-linux
+            --work-dir dist/build-linux \
+            2>&1 | tee dist/build-linux.log
       - name: Validate Linux stable artifact
         run: |
           readelf -dW dist/libportapy.so | tee dist/linux-dynamic-section.txt
@@ -63,6 +66,7 @@ jobs:
         with:
           name: portapy-linux-3.14.0
           path: |
+            dist/build-linux.log
             dist/libportapy.so
             dist/libportapy.so.json
             dist/linux-dynamic-section.txt
@@ -86,11 +90,14 @@ jobs:
       - name: Build full portapy.dll
         shell: powershell
         run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
           python tools/build_native_typed.py `
             --target windows `
             --output dist/portapy.dll `
-            --work-dir dist/build-windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            --work-dir dist/build-windows `
+            2>&1 | Tee-Object -FilePath dist/build-windows.log
+          $buildStatus = $LASTEXITCODE
+          if ($buildStatus -ne 0) { exit $buildStatus }
       - name: Validate Windows stable artifact
         shell: powershell
         run: |
@@ -110,6 +117,7 @@ jobs:
         with:
           name: portapy-windows-3.14.0
           path: |
+            dist/build-windows.log
             dist/portapy.dll
             dist/portapy.dll.json
             dist/windows-imports.txt

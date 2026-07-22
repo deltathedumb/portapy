@@ -45,16 +45,23 @@ def _normalize(tmp_path: Path, monkeypatch) -> str:
     return source
 
 
-def test_transports_keyword_names_and_values_as_lists(
+def test_transports_typed_keyword_names_and_values(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     source = _normalize(tmp_path, monkeypatch)
 
-    assert "keyword_names: list[object] | None = None" in source
+    assert "keyword_names: list[str] | None = None" in source
     assert "keyword_values: list[object] | None = None" in source
+    assert "transported_kwargs: dict[str, object] = {}" in source
+    assert "keyword_name: str = keyword_names[keyword_index]" in source
+    assert "mapping_name: str = raw_mapping_name" in source
+    assert "kwargs = transported_kwargs" in source
+    assert "keyword_names: list[str] = []" in source
+    assert 'keyword_names.append("")' in source
+    assert "keyword_name: str = name" in source
     assert "self._call(target, positional, None, keyword_names, values)" in source
-    assert "kwargs: dict[str, object] = {}" not in source
+    assert "keyword_names: list[object]" not in source
     assert "for name, value in zip(names, values):" not in source
 
 

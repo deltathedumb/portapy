@@ -22,16 +22,8 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Normalize implementation sources for the pinned compiler
-        run: |
-          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
-          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
-          python tools/normalize_full_core_lambdas.py
-          python tools/normalize_full_core_native_semantics.py
-          python tools/normalize_full_core_opcode_maps.py
-          python tools/normalize_full_core_validation.py
-          cp src/portapy/core/vm.py src/portapy/core/vm_impl.py
-          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+      - name: Prepare implementation sources for the pinned compiler
+        run: python tools/prepare_standalone_native_sources.py
       - name: Build stable ABI over standalone VM
         shell: bash
         run: |
@@ -73,21 +65,11 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Normalize implementation sources for the pinned compiler
+      - name: Prepare implementation sources for the pinned compiler
         shell: powershell
         run: |
-          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
-          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
-          python tools/normalize_full_core_lambdas.py
+          python tools/prepare_standalone_native_sources.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_native_semantics.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_opcode_maps.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_validation.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item src/portapy/core/vm.py src/portapy/core/vm_impl.py -Force
-          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
       - name: Build stable ABI over standalone VM
         shell: powershell
         run: |

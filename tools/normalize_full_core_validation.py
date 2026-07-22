@@ -41,6 +41,7 @@ from tools.normalize_full_reference_error_text import main as normalize_referenc
 from tools.normalize_full_reference_errors import main as normalize_reference_errors
 from tools.normalize_full_reference_expression_kinds import main as normalize_reference_expression_kinds
 from tools.normalize_full_reference_float_bits import main as normalize_reference_float_bits
+from tools.normalize_full_reference_function_return_kinds import main as normalize_reference_function_return_kinds
 from tools.normalize_full_reference_nested_kinds import main as normalize_reference_nested_kinds
 from tools.normalize_full_reference_runtime import main as normalize_reference_runtime
 from tools.normalize_full_reference_source_preprocess import main as normalize_reference_source_preprocess
@@ -117,6 +118,7 @@ def main() -> int:
         ("reference_error_text", normalize_reference_error_text),
         ("reference_error_locations", normalize_reference_error_locations),
         ("reference_value_kinds", normalize_reference_value_kinds),
+        ("reference_function_return_kinds", normalize_reference_function_return_kinds),
         ("reference_expression_kinds", normalize_reference_expression_kinds),
         ("reference_nested_kinds", normalize_reference_nested_kinds),
         ("reference_source_preprocess", normalize_reference_source_preprocess),

@@ -172,12 +172,14 @@ def main() -> int:
         ("combine_native_parser", combine_native_parser),
         ("native_parser_expressions", normalize_native_parser_expressions),
         ("native_parser_target_dispatch", normalize_native_parser_target_dispatch),
-        ("expr_stmt_initializer", normalize_expr_stmt_initializer),
         ("parser_errors", normalize_parser_errors),
         ("boolops", normalize_boolops),
         ("closures", normalize_closures),
         ("pattern_slices", normalize_pattern_slices),
         ("extended_semantics", normalize_extended_semantics),
+        # Extended semantics installs MatchAs defaults using the original
+        # constructor signature. Rename colliding parameters only afterwards.
+        ("expr_stmt_initializer", normalize_expr_stmt_initializer),
         ("native_statement_bodies", normalize_native_statement_bodies),
         ("native_node_fields", normalize_native_node_fields),
         ("pop_top", normalize_pop_top),

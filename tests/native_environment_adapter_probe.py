@@ -92,6 +92,19 @@ def main() -> int:
             "full_runtime_answer = box.get() if traced else -1\n"
         )
 
+        assert environment.evaluate("not ''") is True
+        assert environment.evaluate("'alpha' == 'alpha'") is True
+        assert environment.evaluate("'alpha' != 'beta'") is True
+        assert environment.evaluate("'alpha' < 'beta'") is True
+        try:
+            environment.evaluate("'alpha' < 1")
+        except ExecutionError as error:
+            assert error.error is not None
+            assert int(error.error.status) == 4
+            assert error.error.type_name == "TypeError"
+        else:
+            raise AssertionError("mixed string/number ordering did not raise TypeError")
+
         snapshot = environment.snapshot()
         assert "__pyinbin_import__" not in snapshot.var
         assert snapshot.var["http_provider"] is game.provider.HttpProvider

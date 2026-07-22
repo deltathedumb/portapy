@@ -9,11 +9,62 @@
 #define LOAD_LIBRARY(path) ((void *)LoadLibraryA(path))
 #define LOAD_SYMBOL(lib, name) ((void *)(uintptr_t)GetProcAddress((HMODULE)(lib), (name)))
 #define ABI_CALL __cdecl
+
+static LONG WINAPI portapy_boolean_crash_filter(EXCEPTION_POINTERS *exception) {
+    DWORD code = 0;
+    void *address = NULL;
+    CONTEXT *context = NULL;
+    if (exception != NULL) {
+        context = exception->ContextRecord;
+        if (exception->ExceptionRecord != NULL) {
+            code = exception->ExceptionRecord->ExceptionCode;
+            address = exception->ExceptionRecord->ExceptionAddress;
+        }
+    }
+
+    HMODULE module = NULL;
+    char module_name[MAX_PATH] = {0};
+    unsigned long long offset = 0;
+    if (address != NULL && GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)address,
+            &module
+        )) {
+        GetModuleFileNameA(module, module_name, (DWORD)sizeof(module_name));
+        offset = (unsigned long long)((uintptr_t)address - (uintptr_t)module);
+    }
+
+    fprintf(
+        stderr,
+        "boolean-crash: code=0x%08lx address=%p module=%s offset=0x%llx\n",
+        (unsigned long)code,
+        address,
+        module_name[0] == '\0' ? "<unknown>" : module_name,
+        offset
+    );
+#if defined(_M_X64) || defined(__x86_64__)
+    if (context != NULL) {
+        fprintf(
+            stderr,
+            "boolean-crash-context: rip=0x%llx rsp=0x%llx rbp=0x%llx\n",
+            (unsigned long long)context->Rip,
+            (unsigned long long)context->Rsp,
+            (unsigned long long)context->Rbp
+        );
+    }
+#endif
+    fflush(stderr);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+#define INSTALL_CRASH_HANDLER() SetUnhandledExceptionFilter(portapy_boolean_crash_filter)
 #else
 #include <dlfcn.h>
 #define LOAD_LIBRARY(path) dlopen((path), RTLD_NOW | RTLD_LOCAL)
 #define LOAD_SYMBOL(lib, name) dlsym((lib), (name))
 #define ABI_CALL
+#define INSTALL_CRASH_HANDLER() ((void)0)
 #endif
 
 #define TRACE_STEP(message) do { \
@@ -117,6 +168,7 @@ static int expect_data(
 
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    INSTALL_CRASH_HANDLER();
     TRACE_STEP("load-library");
     void *library = LOAD_LIBRARY(argv[1]);
     if (library == NULL) return 3;

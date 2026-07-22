@@ -4,7 +4,6 @@ import ast
 from pathlib import Path
 
 from tools import normalize_full_core_native_keyword_transport as normalizer
-from tools import normalize_full_core_validation as validation
 
 
 _SOURCE = '''def _raise_typed(message: str) -> None:
@@ -149,7 +148,8 @@ def test_fails_closed_when_call_shape_changes(
 
 
 def test_keyword_transport_runs_before_every_other_normalizer() -> None:
-    module = ast.parse(Path(validation.__file__).read_text(encoding="utf-8"))
+    validation_path = Path(__file__).parents[1] / "tools" / "normalize_full_core_validation.py"
+    module = ast.parse(validation_path.read_text(encoding="utf-8"))
     main = next(
         node
         for node in module.body

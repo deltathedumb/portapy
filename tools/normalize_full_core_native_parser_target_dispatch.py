@@ -3,7 +3,9 @@
 The pinned compiler lowers a ``dict``-annotated local holding an opaque AST node
 as the static dict type token. The preceding one-item list subscript, however,
 is a real runtime load. Remove the unsafe local and use that boxed load for every
-remaining assignment-target check in ``Parser._parse_stmt``.
+remaining assignment-target check in ``Parser._parse_stmt``. Attribute targets
+also need their ``obj`` and ``name`` fields loaded into typed runtime boxes before
+constructing assignment nodes; direct opaque-field access otherwise becomes null.
 """
 from __future__ import annotations
 
@@ -95,14 +97,83 @@ def _rewrite_method(method: ast.FunctionDef) -> tuple[int, int]:
     return removed, replacements
 
 
+def _is_attribute_target_test(statement: ast.If) -> bool:
+    for node in ast.walk(statement.test):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "isinstance"
+            and len(node.args) == 2
+            and _is_box_subscript(node.args[0])
+            and isinstance(node.args[1], ast.Name)
+        ):
+            continue
+        type_name = node.args[1].id
+        if type_name == "Attr" or type_name.endswith("_Attr"):
+            return True
+    return False
+
+
+class _ReplaceAttributeTargetFields(ast.NodeTransformer):
+    def __init__(self, suffix: int) -> None:
+        self.suffix = suffix
+        self.count = 0
+
+    def visit_Attribute(self, node: ast.Attribute) -> ast.AST:
+        self.generic_visit(node)
+        if not _is_box_subscript(node.value) or node.attr not in {"obj", "name"}:
+            return node
+        self.count += 1
+        box_name = f"_native_attr_{node.attr}_values_{self.suffix}"
+        return ast.copy_location(
+            ast.Subscript(
+                value=ast.Name(id=box_name, ctx=ast.Load()),
+                slice=ast.Constant(value=0),
+                ctx=ast.Load(),
+            ),
+            node,
+        )
+
+
+def _normalize_attribute_target_fields(method: ast.FunctionDef) -> tuple[int, int]:
+    branches = 0
+    replacements = 0
+    for statement in method.body:
+        if not isinstance(statement, ast.If) or not _is_attribute_target_test(statement):
+            continue
+
+        rewriter = _ReplaceAttributeTargetFields(branches)
+        rewritten_body = [rewriter.visit(item) for item in statement.body]
+        if rewriter.count == 0:
+            continue
+
+        loads = ast.parse(
+            f'''_native_attr_obj_values_{branches}: list[dict] = [getattr({_BOX_NAME}[0], "obj")]
+_native_attr_name_values_{branches}: list[str] = [getattr({_BOX_NAME}[0], "name")]
+'''
+        ).body
+        statement.body = [*loads, *rewritten_body]
+        replacements += rewriter.count
+        branches += 1
+
+    return branches, replacements
+
+
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     method = _parse_stmt_method(module)
     removed, replacements = _rewrite_method(method)
-    if removed != 1 or replacements < 4:
+    attr_branches, attr_fields = _normalize_attribute_target_fields(method)
+    if (
+        removed != 1
+        or replacements < 4
+        or attr_branches < 1
+        or attr_fields < attr_branches * 2
+    ):
         raise RuntimeError(
             "native parser target dispatch normalization missed shapes; "
-            f"restores={removed}, expression_loads={replacements}"
+            f"restores={removed}, expression_loads={replacements}, "
+            f"attribute_branches={attr_branches}, attribute_fields={attr_fields}"
         )
 
     ast.fix_missing_locations(module)
@@ -131,14 +202,44 @@ def main() -> int:
         for node in ast.walk(verified_method)
         if isinstance(node, ast.Subscript) and _is_box_subscript(node)
     ]
-    if stale_restores or stale_loads or len(boxed_loads) < replacements + 1:
+    stale_attr_fields = [
+        node
+        for node in ast.walk(verified_method)
+        if isinstance(node, ast.Attribute)
+        and _is_box_subscript(node.value)
+        and node.attr in {"obj", "name"}
+    ]
+    typed_attr_boxes = [
+        node
+        for node in ast.walk(verified_method)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and (
+            node.target.id.startswith("_native_attr_obj_values_")
+            or node.target.id.startswith("_native_attr_name_values_")
+        )
+        and isinstance(node.value, ast.List)
+        and len(node.value.elts) == 1
+        and isinstance(node.value.elts[0], ast.Call)
+        and isinstance(node.value.elts[0].func, ast.Name)
+        and node.value.elts[0].func.id == "getattr"
+    ]
+    if (
+        stale_restores
+        or stale_loads
+        or stale_attr_fields
+        or len(boxed_loads) < replacements + 1
+        or len(typed_attr_boxes) != attr_branches * 2
+    ):
         raise RuntimeError(
             "native parser target dispatch validation failed; "
             f"restores={len(stale_restores)}, loads={len(stale_loads)}, "
-            f"boxed={len(boxed_loads)}"
+            f"boxed={len(boxed_loads)}, stale_attr_fields={len(stale_attr_fields)}, "
+            f"typed_attr_boxes={len(typed_attr_boxes)}"
         )
 
     print("KEPT NATIVE PARSER TARGET EXPRESSION BOXED", replacements)
+    print("TYPED NATIVE ATTRIBUTE TARGET FIELDS", attr_fields)
     return 0
 
 

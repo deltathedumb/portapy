@@ -15,26 +15,56 @@ class _DataBuilder:
     pass
 
 
+class _Kinds:
+    STRING = object()
+    BYTES = object()
+
+
 def _helpers() -> dict[str, object]:
     namespace: dict[str, object] = {
         "_DataBuilder": _DataBuilder,
+        "ValueKind": _Kinds,
         "_native_byte_data": [0],
     }
     exec(access_normalizer._HELPERS, namespace)
     return namespace
 
 
-def test_calculates_utf8_size_and_bytes_without_encoding() -> None:
+def test_calculates_utf8_size_and_bytes_without_introspection() -> None:
     namespace = _helpers()
     size = namespace["_native_data_size"]
     byte = namespace["_native_data_byte"]
     value = "Aπ😀"
     expected = value.encode("utf-8")
-    assert size(value) == len(expected)
-    assert bytes(byte(value, index) for index in range(len(expected))) == expected
+    assert size(1, 2, _Kinds.STRING, value) == len(expected)
+    assert bytes(
+        byte(1, 2, _Kinds.STRING, value, index)
+        for index in range(len(expected))
+    ) == expected
     raw = b"\x00\xffA"
-    assert size(raw) == 3
-    assert [byte(raw, index) for index in range(3)] == [0, 255, 65]
+    assert size(1, 3, _Kinds.BYTES, raw) == 3
+    assert [
+        byte(1, 3, _Kinds.BYTES, raw, index)
+        for index in range(3)
+    ] == [0, 255, 65]
+
+
+def test_builder_handle_uses_arena_without_payload_type_checks() -> None:
+    namespace = _helpers()
+    size = namespace["_native_data_size"]
+    byte = namespace["_native_data_byte"]
+    key = namespace["_native_builder_key"]
+    markers = namespace["_native_builder_handles"]
+    arena = namespace["_native_byte_data"]
+    builder = _DataBuilder()
+    builder.start = len(arena)
+    builder.size = 2
+    builder.written = 2
+    arena.extend([10, 255])
+    markers[key(4, 7)] = True
+    assert size(4, 7, _Kinds.STRING, builder) == 2
+    assert byte(4, 7, _Kinds.STRING, builder, 0) == 10
+    assert byte(4, 7, _Kinds.STRING, builder, 1) == 255
 
 
 def test_installs_direct_data_access_into_native_abi(
@@ -57,9 +87,10 @@ def test_installs_direct_data_access_into_native_abi(
 
     module = ast.parse(output.read_text(encoding="utf-8"))
     text = ast.unparse(module)
+    assert "_native_builder_handles[_native_builder_key(runtime, result)] = True" in text
     assert "_native_string_byte(value, index)" in text
-    assert "size = _native_data_size(raw)" in text
-    assert "result = _native_data_byte(raw, index)" in text
+    assert "size = _native_data_size(runtime, value, kind, raw)" in text
+    assert "result = _native_data_byte(runtime, value, kind, raw, index)" in text
     functions = "\n".join(
         ast.unparse(node)
         for node in module.body
@@ -69,5 +100,5 @@ def test_installs_direct_data_access_into_native_abi(
             "_portapy_value_get_byte_impl",
         }
     )
-    assert ".encode(" not in functions
-    assert "_data_bytes(" not in functions
+    assert "type(raw)" not in functions
+    assert "isinstance(raw" not in functions

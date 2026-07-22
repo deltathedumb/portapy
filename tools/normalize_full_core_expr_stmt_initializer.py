@@ -2,8 +2,8 @@
 
 The pinned compiler's synthesized dataclass initializer stores the static ``dict``
 type token (0x7e) into ``ExprStmt.expr`` instead of the constructor argument. An
-explicit initializer boxes both dict-backed parameters in a typed list and copies
-runtime element loads into the instance fields, bypassing that synthesis bug.
+explicit initializer keeps ordinary parameter slots and copies their runtime values
+directly into the instance fields, bypassing dataclass synthesis entirely.
 """
 from __future__ import annotations
 
@@ -41,9 +41,8 @@ def _install_initializer(class_node: ast.ClassDef) -> int:
 
     initializer = ast.parse(
         "def __init__(self, expr: dict, pos: dict) -> None:\n"
-        "    values: list[dict] = [expr, pos]\n"
-        "    self.expr = values[0]\n"
-        "    self.pos = values[1]\n"
+        "    self.expr = expr\n"
+        "    self.pos = pos\n"
     ).body[0]
     class_node.body.append(initializer)
     return 1
@@ -52,23 +51,18 @@ def _install_initializer(class_node: ast.ClassDef) -> int:
 def _is_self_field_assignment(
     node: ast.stmt,
     field: str,
-    index: int,
+    source_name: str,
 ) -> bool:
-    if not (
+    return (
         isinstance(node, ast.Assign)
         and len(node.targets) == 1
         and isinstance(node.targets[0], ast.Attribute)
         and isinstance(node.targets[0].value, ast.Name)
         and node.targets[0].value.id == "self"
         and node.targets[0].attr == field
-        and isinstance(node.value, ast.Subscript)
-        and isinstance(node.value.value, ast.Name)
-        and node.value.value.id == "values"
-        and isinstance(node.value.slice, ast.Constant)
-        and node.value.slice.value == index
-    ):
-        return False
-    return True
+        and isinstance(node.value, ast.Name)
+        and node.value.id == source_name
+    )
 
 
 def main() -> int:
@@ -106,25 +100,14 @@ def main() -> int:
     ):
         raise RuntimeError("native ExprStmt initializer lost dict parameter types")
 
-    boxes = [
-        node
-        for node in initializer.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "values"
-        and isinstance(node.value, ast.List)
-        and len(node.value.elts) == 2
-        and all(isinstance(value, ast.Name) for value in node.value.elts)
-        and [value.id for value in node.value.elts] == ["expr", "pos"]
-    ]
-    if len(boxes) != 1:
-        raise RuntimeError("native ExprStmt initializer parameter box is missing")
     if not any(
-        _is_self_field_assignment(node, "expr", 0) for node in initializer.body
+        _is_self_field_assignment(node, "expr", "expr")
+        for node in initializer.body
     ):
         raise RuntimeError("native ExprStmt initializer does not copy expr")
     if not any(
-        _is_self_field_assignment(node, "pos", 1) for node in initializer.body
+        _is_self_field_assignment(node, "pos", "pos")
+        for node in initializer.body
     ):
         raise RuntimeError("native ExprStmt initializer does not copy pos")
 

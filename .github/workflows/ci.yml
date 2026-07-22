@@ -74,20 +74,25 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
+          set -o pipefail
           python tools/build_native_typed.py \
             --target linux \
             --output dist/libportapy.so \
-            --work-dir dist/build-verify-linux
+            --work-dir dist/build-verify-linux \
+            2>&1 | tee dist/build-linux.log
       - name: Build Windows standalone library
         if: matrix.target == 'windows'
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          python tools/build_native_typed.py `
+          $output = & python tools/build_native_typed.py `
             --target windows `
             --output dist/portapy.dll `
-            --work-dir dist/build-verify-windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            --work-dir dist/build-verify-windows `
+            2>&1
+          $buildStatus = $LASTEXITCODE
+          $output | Tee-Object -FilePath dist/build-windows.log
+          if ($buildStatus -ne 0) { exit $buildStatus }
       - name: Verify Linux standalone library
         if: matrix.target == 'linux'
         shell: bash

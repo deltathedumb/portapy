@@ -27,7 +27,7 @@ from tools.normalize_full_core_pattern_slices import main as normalize_pattern_s
 from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
-from tools.normalize_full_core_truthiness_lists import main as normalize_truthiness
+from tools.normalize_full_core_truthiness_safe_ast import main as normalize_truthiness
 from tools.normalize_full_reference_abi_helpers import (
     main as normalize_reference_abi_helpers,
 )

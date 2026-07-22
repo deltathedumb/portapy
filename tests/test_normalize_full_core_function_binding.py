@@ -30,8 +30,9 @@ def test_replaces_zip_and_kwargs_comprehension(tmp_path: Path, monkeypatch) -> N
     source = path.read_text(encoding="utf-8")
     assert "dict(zip(" not in source
     assert "for name, value in kwargs.items()" not in source
-    assert "while bind_index < len(positional)" in source
-    assert "locals_[target.code.arg_names[bind_index]] = positional[bind_index]" in source
+    assert "argument_names: list[str] = target.code.arg_names" in source
+    assert "argument_name: str = argument_names[bind_index]" in source
+    assert "locals_[argument_name] = positional[bind_index]" in source
     assert "extra_kwargs[name] = kwargs[name]" in source
 
 

@@ -1,0 +1,156 @@
+name: PortaPy 3.14 Alternate Pools
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[test]'
+      - name: Run complete hosted suite
+        run: python -m pytest
+      - name: Check public C example
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+
+  linux-22:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install toolchain and pinned compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize and audit standalone source
+        run: |
+          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
+          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
+          python tools/normalize_full_core_lambdas.py
+          python tools/normalize_full_core_native_semantics.py
+          python tools/normalize_full_core_opcode_maps.py
+          python tools/normalize_full_core_validation.py
+          cp src/portapy/core/vm.py src/portapy/core/vm_impl.py
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+          mkdir -p dist
+          python tools/audit_standalone_generated_entry.py \
+            --target linux --output dist/generated-standalone-linux.py
+      - name: Build canonical Linux library
+        run: |
+          python tools/build_native_host_calls.py \
+            --standalone-vm --target linux \
+            --output dist/libportapy.so --work-dir dist/build-linux
+      - name: Verify Linux artifact
+        run: |
+          readelf -dW dist/libportapy.so | tee dist/dynamic.txt
+          ldd dist/libportapy.so | tee dist/dependencies.txt
+          ! grep -Eiq 'NEEDED.*(lib)?python|(^|[[:space:]/])libpython[0-9]' dist/dynamic.txt dist/dependencies.txt
+          ! readelf -dW dist/libportapy.so | grep -q TEXTREL
+          run_host() {
+            cc -std=c11 -Wall -Wextra -Werror -Iinclude "$1" -ldl -o "dist/$2"
+            "./dist/$2" ./dist/libportapy.so | tee "dist/$2.txt"
+            grep -qx "$3" "dist/$2.txt"
+          }
+          run_host tests/native_host_call_host.c host_calls 'native-host-calls: ok'
+          run_host tests/native_full_environment_host.c full_environment 'native-full-environment: ok'
+          run_host tests/native_tuple_host.c tuples 'native-tuples: ok'
+          run_host tests/native_dict_host.c dicts 'native-dicts: ok'
+          run_host tests/native_list_host.c lists 'native-lists: ok'
+          run_host tests/native_handle_host.c handles 'opaque-floats: ok'
+          run_host tests/native_import_host.c imports 'native-host-imports: ok'
+          run_host tests/native_traceback_host.c traceback 'native-traceback-frames: ok'
+          run_host tests/native_full_runtime_host.c full_runtime 'native-full-runtime: ok'
+          python tests/native_environment_adapter_probe.py dist/libportapy.so
+          python tests/native_traceback_adapter_probe.py dist/libportapy.so
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portapy-linux-22
+          path: dist
+
+  windows-2022:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install toolchain and pinned compiler
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Normalize and audit standalone source
+        shell: powershell
+        run: |
+          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
+          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
+          python tools/normalize_full_core_lambdas.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_native_semantics.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_validation.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item src/portapy/core/vm.py src/portapy/core/vm_impl.py -Force
+          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/audit_standalone_generated_entry.py `
+            --target windows --output dist/generated-standalone-windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build canonical Windows library
+        shell: powershell
+        run: |
+          python tools/build_native_host_calls.py `
+            --standalone-vm --target windows `
+            --output dist/portapy.dll --work-dir dist/build-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Windows artifact
+        shell: powershell
+        run: |
+          $imports = & objdump -p dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $imports | Out-File -Encoding utf8 dist/imports.txt
+          if ($imports -match 'DLL Name:\s*(python|libpython)[^\s]*\.dll') { throw 'Python DLL dependency found' }
+          function Run-Host($source, $binary, $expected) {
+            gcc -std=c11 -Wall -Wextra -Werror -Iinclude $source -o "dist/$binary.exe"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $output = & "dist/$binary.exe" dist/portapy.dll
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $output | Out-File -Encoding utf8 "dist/$binary.txt"
+            if ($output -ne $expected) { throw "unexpected $binary output: $output" }
+          }
+          Run-Host tests/native_host_call_host.c host_calls 'native-host-calls: ok'
+          Run-Host tests/native_full_environment_host.c full_environment 'native-full-environment: ok'
+          Run-Host tests/native_tuple_host.c tuples 'native-tuples: ok'
+          Run-Host tests/native_dict_host.c dicts 'native-dicts: ok'
+          Run-Host tests/native_list_host.c lists 'native-lists: ok'
+          Run-Host tests/native_handle_host.c handles 'opaque-floats: ok'
+          Run-Host tests/native_import_host.c imports 'native-host-imports: ok'
+          Run-Host tests/native_traceback_host.c traceback 'native-traceback-frames: ok'
+          Run-Host tests/native_full_runtime_host.c full_runtime 'native-full-runtime: ok'
+          python tests/native_environment_adapter_probe.py dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/native_traceback_adapter_probe.py dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portapy-windows-2022
+          path: dist

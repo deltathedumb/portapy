@@ -2,7 +2,7 @@
 
 The pinned native compiler can materialize dictionaries locally, but a keyword
 mapping created in the CALL_KW opcode path may arrive at ``VirtualMachine._call``
-as a null raw dictionary pointer.  Positional calls are unaffected.  Transport
+as a null raw dictionary pointer. Positional calls are unaffected. Transport
 keyword names and values as lists instead, then build the mapping inside
 ``_call`` where it is consumed.
 """
@@ -70,9 +70,25 @@ def main() -> int:
                         frame.stack.append(self._call(target, positional, kwargs))
 ''',
         '''                    keyword_names: list[object] = []
-                    for name in names:
+                    has_effective_keywords = False
+                    keyword_index = 0
+                    while keyword_index < len(names):
+                        name = names[keyword_index]
+                        value = values[keyword_index]
                         keyword_names.append(name)
-                    if getattr(target, "__pyinbin_super__", False) and not positional and not keyword_names:
+                        if name is None:
+                            if not isinstance(value, dict):
+                                _raise_typed("TypeError: ** argument must be a mapping")
+                            if len(value) > 0:
+                                has_effective_keywords = True
+                        else:
+                            has_effective_keywords = True
+                        keyword_index += 1
+                    if (
+                        getattr(target, "__pyinbin_super__", False)
+                        and not positional
+                        and not has_effective_keywords
+                    ):
                         instance = frame.locals.get("self")
                         cls = self._lexical_super_class(frame, instance)
                         frame.stack.append(SuperProxy(self, cls, instance))
@@ -88,6 +104,9 @@ def main() -> int:
     required = (
         "keyword_names: list[object] | None = None",
         "keyword_values: list[object] | None = None",
+        "has_effective_keywords = False",
+        "if len(value) > 0:",
+        "and not has_effective_keywords",
         "self._call(target, positional, None, keyword_names, values)",
     )
     missing = [marker for marker in required if marker not in verified]

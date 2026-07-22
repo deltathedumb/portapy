@@ -8,6 +8,16 @@ from pathlib import Path
 PATH = Path("src/portapy/reference_api.py")
 
 
+def _is_vm_run_try(statement: ast.stmt) -> bool:
+    return isinstance(statement, ast.Try) and any(
+        isinstance(item, ast.Expr)
+        and isinstance(item.value, ast.Call)
+        and isinstance(item.value.func, ast.Attribute)
+        and item.value.func.attr == "run"
+        for item in statement.body
+    )
+
+
 class _Rewrite(ast.NodeTransformer):
     def __init__(self) -> None:
         self.count = 0
@@ -27,15 +37,7 @@ class _Rewrite(ast.NodeTransformer):
         if method is None:
             raise RuntimeError("reference Runtime.exec_utf8 is missing")
         for statement in method.body:
-            if not isinstance(statement, ast.Try):
-                continue
-            if not any(
-                isinstance(item, ast.Expr)
-                and isinstance(item.value, ast.Call)
-                and isinstance(item.value.func, ast.Attribute)
-                and item.value.func.attr == "run"
-                for item in statement.body
-            ):
+            if not _is_vm_run_try(statement):
                 continue
             broad_index = next(
                 (
@@ -112,22 +114,34 @@ def main() -> int:
         for node in runtime.body
         if isinstance(node, ast.FunctionDef) and node.name == "exec_utf8"
     )
-    text = ast.unparse(method)
-    required = (
-        "except TypeError as error:",
-        "Status.TYPE_ERROR",
-        "self._capture_native(",
-        "except BaseException as error:",
+    run_try = next(
+        statement for statement in method.body if _is_vm_run_try(statement)
     )
-    missing = [marker for marker in required if marker not in text]
+    handler_names = [
+        handler.type.id if isinstance(handler.type, ast.Name) else ""
+        for handler in run_try.handlers
+    ]
+    required_handlers = ("TypeError", "BaseException")
+    missing = [name for name in required_handlers if name not in handler_names]
     if missing:
         raise RuntimeError(
             f"native reference TypeError validation failed: {missing}"
         )
-    if text.find("except TypeError as error:") > text.find(
-        "except BaseException as error:"
-    ):
+    if handler_names.index("TypeError") > handler_names.index("BaseException"):
         raise RuntimeError("native TypeError handler follows the broad handler")
+
+    type_handler = run_try.handlers[handler_names.index("TypeError")]
+    text = ast.unparse(type_handler)
+    required_markers = (
+        "except TypeError as error:",
+        "Status.TYPE_ERROR",
+        "self._capture_native(",
+    )
+    missing_markers = [marker for marker in required_markers if marker not in text]
+    if missing_markers:
+        raise RuntimeError(
+            f"native reference TypeError validation failed: {missing_markers}"
+        )
     print("NORMALIZED NATIVE REFERENCE TYPE ERRORS", rewriter.count)
     return 0
 

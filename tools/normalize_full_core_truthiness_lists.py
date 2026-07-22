@@ -86,8 +86,18 @@ def main() -> int:
         "directive recording",
     )
 
-    if "kind_hints" in source:
-        raise RuntimeError("native dict truth-hint ledger survived list normalization")
+    forbidden = (
+        "kind_hints: dict",
+        "self.kind_hints",
+        "lowerer.kind_hints",
+        "nested.kind_hints",
+    )
+    remaining = [marker for marker in forbidden if marker in source]
+    if remaining:
+        raise RuntimeError(
+            "native dict truth-hint ledger survived list normalization: "
+            + ", ".join(remaining)
+        )
     FRONTEND_PATH.write_text(source, encoding="utf-8")
     print("NORMALIZED LIST-BACKED NATIVE TRUTH HINTS", 5)
     return 0

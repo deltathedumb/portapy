@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 
@@ -18,3 +19,7 @@ def test_full_core_workflow_runs_complete_normalizer_once_per_platform() -> None
         "python tools/normalize_full_core_opcode_maps.py",
     ):
         assert obsolete_command not in source
+
+
+def test_full_core_normalizer_is_importable_as_a_module() -> None:
+    assert importlib.util.find_spec("tools.normalize_full_core_validation") is not None

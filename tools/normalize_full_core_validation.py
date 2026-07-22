@@ -4,8 +4,15 @@ from __future__ import annotations
 import contextlib
 import io
 from pathlib import Path
+import sys
 import traceback
 from typing import Callable
+
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPOSITORY_ROOT))
+
 
 from tools.combine_full_core_native_parser import main as combine_native_parser
 from tools.materialize_full_reference_entry import main as materialize_reference_entry

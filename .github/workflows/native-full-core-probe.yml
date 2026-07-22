@@ -30,6 +30,10 @@ jobs:
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Normalize probe source
         run: |
+          python tools/normalize_full_core_probe.py
+          python tools/normalize_full_core_lambdas.py
+          python tools/normalize_full_core_native_semantics.py
+          python tools/normalize_full_core_opcode_maps.py
           python tools/normalize_full_core_validation.py
           mkdir -p dist/debug-tree
           python - <<'PY'
@@ -160,6 +164,14 @@ jobs:
       - name: Normalize probe source
         shell: powershell
         run: |
+          python tools/normalize_full_core_probe.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_lambdas.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_native_semantics.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_opcode_maps.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_validation.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile full frontend and VM probe
@@ -248,14 +260,14 @@ jobs:
             '```text'
           )
           if (Test-Path dist/windows-full-core-build.log) {
-            $lines += Get-Content dist/windows-full-core-build.log | Select-Object -Last 180
+            $lines += Get-Content dist/windows-full-core-build.log -Tail 180
           } else {
             $lines += 'No compiler log was produced.'
           }
           $lines += '```'
-          $lines | Set-Content -Encoding utf8 $env:TEMP/portapy-full-core-windows.md
-          gh pr comment "${{ github.event.pull_request.number }}" `
-            --body-file $env:TEMP/portapy-full-core-windows.md
+          $path = "$env:RUNNER_TEMP\portapy-full-core-windows.md"
+          $lines | Set-Content -Encoding utf8 $path
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file $path
       - uses: actions/upload-artifact@v4
         if: always()
         with:

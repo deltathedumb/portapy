@@ -37,7 +37,9 @@ def _replace(source: str, old: str, new: str, label: str) -> str:
 
 def _normalize_frontend() -> int:
     source = FRONTEND_PATH.read_text(encoding="utf-8")
-    old = '''            operands = [node.left, *node.comparators]
+    old = '''            operands = [node.left]
+            for comparator in node.comparators:
+                operands.append(comparator)
             for index, op in enumerate(node.ops):
                 self.expr(operands[index])
                 self.expr(operands[index + 1])
@@ -45,7 +47,9 @@ def _normalize_frontend() -> int:
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
 '''
-    new = '''            operands = [node.left, *node.comparators]
+    new = '''            operands = [node.left]
+            for comparator in node.comparators:
+                operands.append(comparator)
             for index, op in enumerate(node.ops):
                 left_operand = operands[index]
                 right_operand = operands[index + 1]

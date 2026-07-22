@@ -5,6 +5,10 @@ on:
     branches: [finish-3.14-runtime]
   workflow_dispatch:
 
+concurrency:
+  group: portapy-3.14-exact-head
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -13,12 +17,6 @@ jobs:
   hosted:
     runs-on: ubuntu-24.04
     steps:
-      - name: Announce hosted run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr comment 46 --repo "${{ github.repository }}" --body \
-            "<!-- portapy-verify-${{ github.run_id }}-hosted-start --> Hosted verification started for \`${{ github.sha }}\` (run ${{ github.run_id }})."
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -29,13 +27,6 @@ jobs:
         run: python -m pytest
       - name: Validate release metadata tests
         run: python -m pytest tests/test_release_gate.py tests/test_generated_standalone_runtime.py
-      - name: Report hosted result
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr comment 46 --repo "${{ github.repository }}" --body \
-            "<!-- portapy-verify-${{ github.run_id }}-hosted-end --> Hosted verification for \`${{ github.sha }}\`: **${{ job.status }}** (run ${{ github.run_id }})."
 
   native:
     strategy:
@@ -50,13 +41,6 @@ jobs:
             library: dist/portapy.dll
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Announce native run
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr comment 46 --repo "${{ github.repository }}" --body \
-            "<!-- portapy-verify-${{ github.run_id }}-${{ matrix.target }}-start --> ${{ matrix.target }} verification started for \`${{ github.sha }}\` (run ${{ github.run_id }})."
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -141,11 +125,43 @@ jobs:
         with:
           name: verify-${{ matrix.target }}
           path: dist
-      - name: Report native result
-        if: always()
-        shell: bash
+
+  report:
+    if: always()
+    needs: [hosted, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish exact-head status to PR
         env:
           GH_TOKEN: ${{ github.token }}
+          VERIFY_SHA: ${{ github.sha }}
+          VERIFY_RUN_ID: ${{ github.run_id }}
+          HOSTED_RESULT: ${{ needs.hosted.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
         run: |
-          gh pr comment 46 --repo "${{ github.repository }}" --body \
-            "<!-- portapy-verify-${{ github.run_id }}-${{ matrix.target }}-end --> ${{ matrix.target }} verification for \`${{ github.sha }}\`: **${{ job.status }}** (run ${{ github.run_id }})."
+          gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/pr-body.md
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('/tmp/pr-body.md')
+          body = path.read_text(encoding='utf-8')
+          start = '<!-- portapy-exact-head-verification -->'
+          end = '<!-- /portapy-exact-head-verification -->'
+          block = f'''{start}
+          ### Exact-head verification
+
+          - Commit: `{os.environ["VERIFY_SHA"]}`
+          - Workflow run: `{os.environ["VERIFY_RUN_ID"]}`
+          - Hosted suite: **{os.environ["HOSTED_RESULT"]}**
+          - Native Linux/Windows matrix: **{os.environ["NATIVE_RESULT"]}**
+          {end}'''
+          if start in body and end in body:
+              before, rest = body.split(start, 1)
+              _, after = rest.split(end, 1)
+              body = before.rstrip() + '\n\n' + block + after
+          else:
+              body = body.rstrip() + '\n\n' + block + '\n'
+          path.write_text(body, encoding='utf-8')
+          PY
+          gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/pr-body.md

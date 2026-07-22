@@ -22,29 +22,27 @@ jobs:
           sudo apt-get install --yes nasm gcc binutils
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Normalize standalone VM implementation for the pinned compiler
-        run: |
-          cp src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py
-          cp src/portapy/core/vm_impl.py src/portapy/core/vm.py
-          python tools/normalize_full_core_lambdas.py
-          python tools/normalize_full_core_native_semantics.py
-          python tools/normalize_full_core_opcode_maps.py
-          python tools/normalize_full_core_validation.py
-          cp src/portapy/core/vm.py src/portapy/core/vm_impl.py
-          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
-      - name: Audit generated standalone entry
+      - name: Prepare standalone VM implementation
         run: |
           mkdir -p dist
+          set -o pipefail
+          python tools/prepare_standalone_native_sources.py 2>&1 | tee dist/prepare.log
+      - name: Audit generated standalone entry
+        run: |
+          set -o pipefail
           python tools/audit_standalone_generated_entry.py \
             --target linux \
-            --output dist/generated-standalone-linux.py
+            --output dist/generated-standalone-linux.py \
+            2>&1 | tee dist/audit.log
       - name: Build host-call library over standalone VM
         run: |
+          set -o pipefail
           python tools/build_native_host_calls.py \
             --standalone-vm \
             --target linux \
             --output dist/libportapy.so \
-            --work-dir dist/build-linux
+            --work-dir dist/build-linux \
+            2>&1 | tee dist/build.log
           if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
             echo 'text relocations are forbidden'
             exit 1
@@ -58,52 +56,27 @@ jobs:
             echo 'standalone library must not load or link libpython'
             exit 1
           fi
-      - name: Execute host calls from C
+      - name: Execute complete Linux release matrix
         run: |
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_host_call_host.c -ldl -o dist/native_host_call_host
-          ./dist/native_host_call_host ./dist/libportapy.so | tee dist/host-call-output.txt
-          grep -qx 'native-host-calls: ok' dist/host-call-output.txt
-      - name: Execute full high-level environment from C
-        run: |
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_full_environment_host.c -ldl \
-            -o dist/native_full_environment_host
-          ./dist/native_full_environment_host ./dist/libportapy.so \
-            | tee dist/full-environment-output.txt
-          grep -qx 'native-full-environment: ok' dist/full-environment-output.txt
-      - name: Execute public container ABI from C
-        run: |
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_tuple_host.c -ldl -o dist/native_tuple_host
-          ./dist/native_tuple_host ./dist/libportapy.so | tee dist/tuple-output.txt
-          grep -qx 'native-tuples: ok' dist/tuple-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_dict_host.c -ldl -o dist/native_dict_host
-          ./dist/native_dict_host ./dist/libportapy.so | tee dist/dict-output.txt
-          grep -qx 'native-dicts: ok' dist/dict-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_list_host.c -ldl -o dist/native_list_host
-          ./dist/native_list_host ./dist/libportapy.so | tee dist/list-output.txt
-          grep -qx 'native-lists: ok' dist/list-output.txt
-      - name: Execute remaining standalone release matrix from C
-        run: |
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_handle_host.c -ldl -o dist/native_handle_host
-          ./dist/native_handle_host ./dist/libportapy.so | tee dist/handle-output.txt
-          grep -qx 'opaque-floats: ok' dist/handle-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_import_host.c -ldl -o dist/native_import_host
-          ./dist/native_import_host ./dist/libportapy.so | tee dist/import-output.txt
-          grep -qx 'native-host-imports: ok' dist/import-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_traceback_host.c -ldl -o dist/native_traceback_host
-          ./dist/native_traceback_host ./dist/libportapy.so | tee dist/traceback-output.txt
-          grep -qx 'native-traceback-frames: ok' dist/traceback-output.txt
-          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
-            tests/native_full_runtime_host.c -ldl -o dist/native_full_runtime_host
-          ./dist/native_full_runtime_host ./dist/libportapy.so | tee dist/full-runtime-output.txt
-          grep -qx 'native-full-runtime: ok' dist/full-runtime-output.txt
+          run_host() {
+            source="$1"
+            binary="$2"
+            expected="$3"
+            cc -std=c11 -Wall -Wextra -Werror -Iinclude "$source" -ldl -o "dist/$binary"
+            "./dist/$binary" ./dist/libportapy.so | tee "dist/$binary-output.txt"
+            grep -qx "$expected" "dist/$binary-output.txt"
+          }
+          run_host tests/native_host_call_host.c native_host_call_host 'native-host-calls: ok'
+          run_host tests/native_full_environment_host.c native_full_environment_host 'native-full-environment: ok'
+          run_host tests/native_tuple_host.c native_tuple_host 'native-tuples: ok'
+          run_host tests/native_dict_host.c native_dict_host 'native-dicts: ok'
+          run_host tests/native_list_host.c native_list_host 'native-lists: ok'
+          run_host tests/native_handle_host.c native_handle_host 'opaque-floats: ok'
+          run_host tests/native_import_host.c native_import_host 'native-host-imports: ok'
+          run_host tests/native_traceback_host.c native_traceback_host 'native-traceback-frames: ok'
+          run_host tests/native_full_runtime_host.c native_full_runtime_host 'native-full-runtime: ok'
+          python tests/native_environment_adapter_probe.py dist/libportapy.so
+          python tests/native_traceback_adapter_probe.py dist/libportapy.so
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -123,28 +96,19 @@ jobs:
           choco install nasm mingw -y --no-progress
           python -m pip install --no-cache-dir --force-reinstall `
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
-      - name: Normalize standalone VM implementation for the pinned compiler
-        shell: powershell
-        run: |
-          Copy-Item src/portapy/core/bootstrap_frontend.py src/portapy/core/frontend.py -Force
-          Copy-Item src/portapy/core/vm_impl.py src/portapy/core/vm.py -Force
-          python tools/normalize_full_core_lambdas.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_native_semantics.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_opcode_maps.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/normalize_full_core_validation.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item src/portapy/core/vm.py src/portapy/core/vm_impl.py -Force
-          git checkout -- src/portapy/core/frontend.py src/portapy/core/vm.py
-      - name: Audit generated standalone entry
+      - name: Prepare standalone VM implementation
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/prepare_standalone_native_sources.py *>&1 | Tee-Object -FilePath dist/prepare.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Audit generated standalone entry
+        shell: powershell
+        run: |
           python tools/audit_standalone_generated_entry.py `
             --target windows `
-            --output dist/generated-standalone-windows.py
+            --output dist/generated-standalone-windows.py `
+            *>&1 | Tee-Object -FilePath dist/audit.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build host-call library over standalone VM
         shell: powershell
@@ -153,7 +117,8 @@ jobs:
             --standalone-vm `
             --target windows `
             --output dist/portapy.dll `
-            --work-dir dist/build-windows
+            --work-dir dist/build-windows `
+            *>&1 | Tee-Object -FilePath dist/build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prove Windows artifact has no Python runtime dependency
         shell: powershell
@@ -164,68 +129,30 @@ jobs:
           if ($imports -match 'DLL Name:\s*(python|libpython)[^\s]*\.dll') {
             throw 'standalone library must not load or link a Python DLL'
           }
-      - name: Execute host calls from C
+      - name: Execute complete Windows release matrix
         shell: powershell
         run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_host_call_host.c -o dist/native_host_call_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $output = & dist/native_host_call_host.exe dist/portapy.dll
-          $output | Out-File -Encoding utf8 dist/host-call-output.txt
-          if ($output -ne 'native-host-calls: ok') { throw "unexpected host-call output: $output" }
-      - name: Execute full high-level environment from C
-        shell: powershell
-        run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
-            tests/native_full_environment_host.c `
-            -o dist/native_full_environment_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $output = & dist/native_full_environment_host.exe dist/portapy.dll
-          $output | Out-File -Encoding utf8 dist/full-environment-output.txt
-          if ($output -ne 'native-full-environment: ok') {
-            throw "unexpected full environment output: $output"
+          function Run-Host($source, $binary, $expected) {
+            gcc -std=c11 -Wall -Wextra -Werror -Iinclude $source -o "dist/$binary.exe"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $output = & "dist/$binary.exe" dist/portapy.dll
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $output | Out-File -Encoding utf8 "dist/$binary-output.txt"
+            if ($output -ne $expected) { throw "unexpected $binary output: $output" }
           }
-      - name: Execute public container ABI from C
-        shell: powershell
-        run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_tuple_host.c -o dist/native_tuple_host.exe
+          Run-Host tests/native_host_call_host.c native_host_call_host 'native-host-calls: ok'
+          Run-Host tests/native_full_environment_host.c native_full_environment_host 'native-full-environment: ok'
+          Run-Host tests/native_tuple_host.c native_tuple_host 'native-tuples: ok'
+          Run-Host tests/native_dict_host.c native_dict_host 'native-dicts: ok'
+          Run-Host tests/native_list_host.c native_list_host 'native-lists: ok'
+          Run-Host tests/native_handle_host.c native_handle_host 'opaque-floats: ok'
+          Run-Host tests/native_import_host.c native_import_host 'native-host-imports: ok'
+          Run-Host tests/native_traceback_host.c native_traceback_host 'native-traceback-frames: ok'
+          Run-Host tests/native_full_runtime_host.c native_full_runtime_host 'native-full-runtime: ok'
+          python tests/native_environment_adapter_probe.py dist/portapy.dll
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $tupleOutput = & dist/native_tuple_host.exe dist/portapy.dll
-          $tupleOutput | Out-File -Encoding utf8 dist/tuple-output.txt
-          if ($tupleOutput -ne 'native-tuples: ok') { throw "unexpected tuple output: $tupleOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_dict_host.c -o dist/native_dict_host.exe
+          python tests/native_traceback_adapter_probe.py dist/portapy.dll
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $dictOutput = & dist/native_dict_host.exe dist/portapy.dll
-          $dictOutput | Out-File -Encoding utf8 dist/dict-output.txt
-          if ($dictOutput -ne 'native-dicts: ok') { throw "unexpected dictionary output: $dictOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_list_host.c -o dist/native_list_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $listOutput = & dist/native_list_host.exe dist/portapy.dll
-          $listOutput | Out-File -Encoding utf8 dist/list-output.txt
-          if ($listOutput -ne 'native-lists: ok') { throw "unexpected list output: $listOutput" }
-      - name: Execute remaining standalone release matrix from C
-        shell: powershell
-        run: |
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_handle_host.c -o dist/native_handle_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $handleOutput = & dist/native_handle_host.exe dist/portapy.dll
-          $handleOutput | Out-File -Encoding utf8 dist/handle-output.txt
-          if ($handleOutput -ne 'opaque-floats: ok') { throw "unexpected handle output: $handleOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_import_host.c -o dist/native_import_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $importOutput = & dist/native_import_host.exe dist/portapy.dll
-          $importOutput | Out-File -Encoding utf8 dist/import-output.txt
-          if ($importOutput -ne 'native-host-imports: ok') { throw "unexpected import output: $importOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_traceback_host.c -o dist/native_traceback_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $tracebackOutput = & dist/native_traceback_host.exe dist/portapy.dll
-          $tracebackOutput | Out-File -Encoding utf8 dist/traceback-output.txt
-          if ($tracebackOutput -ne 'native-traceback-frames: ok') { throw "unexpected traceback output: $tracebackOutput" }
-          gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/native_full_runtime_host.c -o dist/native_full_runtime_host.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $runtimeOutput = & dist/native_full_runtime_host.exe dist/portapy.dll
-          $runtimeOutput | Out-File -Encoding utf8 dist/full-runtime-output.txt
-          if ($runtimeOutput -ne 'native-full-runtime: ok') { throw "unexpected full-runtime output: $runtimeOutput" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

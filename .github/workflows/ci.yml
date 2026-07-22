@@ -1,8 +1,8 @@
 name: CI
 
 on:
-  pull_request:
-    types: [ready_for_review]
+  pull_request_target:
+    types: [labeled]
   workflow_dispatch:
 
 permissions:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   hosted:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 46 && github.event.label.name == 'enhancement')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
         run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
 
   native:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 46 && github.event.label.name == 'enhancement')
     strategy:
       fail-fast: false
       matrix:

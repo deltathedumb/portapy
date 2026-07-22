@@ -21,6 +21,9 @@ from tools.normalize_full_core_extended_semantics_compat import (
 from tools.normalize_full_core_function_binding import (
     main as normalize_function_binding,
 )
+from tools.normalize_full_core_function_parameter_names import (
+    main as normalize_function_parameter_names,
+)
 from tools.normalize_full_core_function_specs import main as normalize_function_specs
 from tools.normalize_full_core_keyword_calls import (
     main as normalize_keyword_calls,
@@ -127,6 +130,7 @@ def main() -> int:
     normalize_function_specs()
     normalize_function_binding()
     normalize_native_semantics()
+    normalize_function_parameter_names()
     normalize_opcode_maps()
     normalize_name_index()
     normalize_reference_runtime()

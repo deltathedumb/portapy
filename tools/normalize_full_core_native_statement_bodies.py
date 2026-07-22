@@ -42,17 +42,13 @@ def _branch_type(test: ast.expr) -> str | None:
 
 
 def _safe_name(value: str) -> str:
-    return re_sub_non_identifier(value).strip("_").lower()
-
-
-def re_sub_non_identifier(value: str) -> str:
     result = ""
     for character in value:
         if character.isalnum() or character == "_":
             result += character
         else:
             result += "_"
-    return result
+    return result.strip("_").lower()
 
 
 class _BodyCallCollector(ast.NodeVisitor):
@@ -70,6 +66,22 @@ class _BodyCallCollector(ast.NodeVisitor):
         ):
             self.calls.append((node, node.args[0].attr))
         self.generic_visit(node)
+
+
+class _ReplaceBodyCalls(ast.NodeTransformer):
+    def __init__(self, replacements: dict[int, str]) -> None:
+        self.replacements = replacements
+        self.changed = 0
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        replacement = self.replacements.get(id(node))
+        if replacement is not None:
+            self.changed += 1
+            return ast.copy_location(
+                ast.Name(id=replacement, ctx=ast.Load()),
+                node,
+            )
+        return self.generic_visit(node)
 
 
 def _normalize_function(function: ast.FunctionDef) -> int:
@@ -106,51 +118,30 @@ def _normalize_function(function: ast.FunctionDef) -> int:
                 ).body
             )
 
-        for call, field in collector.calls:
-            call.func = ast.copy_location(ast.Name(id="_identity_body", ctx=ast.Load()), call.func)
-            call.args = [
-                ast.copy_location(
-                    ast.Name(id=converted_names[field], ctx=ast.Load()),
-                    call.args[0],
-                )
-            ]
-            call.keywords = []
-
-        branch.body = [*declarations, *branch.body]
-        changed += len(collector.calls)
+        replacements = {
+            id(call): converted_names[field]
+            for call, field in collector.calls
+        }
+        rewriter = _ReplaceBodyCalls(replacements)
+        original_body = [rewriter.visit(statement) for statement in branch.body]
+        if rewriter.changed != len(collector.calls):
+            raise RuntimeError(
+                f"native {prefix} body call replacement expected {len(collector.calls)}, "
+                f"found {rewriter.changed}"
+            )
+        branch.body = [*declarations, *original_body]
+        changed += rewriter.changed
     return changed
-
-
-def _install_identity_helper(module: ast.Module) -> int:
-    if any(
-        isinstance(node, ast.FunctionDef) and node.name == "_identity_body"
-        for node in module.body
-    ):
-        return 0
-    converter_index = next(
-        index
-        for index, node in enumerate(module.body)
-        if isinstance(node, ast.FunctionDef) and node.name == "_convert_stmt"
-    )
-    helper = ast.parse(
-        '''def _identity_body(body: list[stmt]) -> list[stmt]:
-    return body
-
-'''
-    ).body[0]
-    module.body.insert(converter_index, helper)
-    return 1
 
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     function = _convert_stmt(module)
     changed = _normalize_function(function)
-    helper = _install_identity_helper(module)
-    if changed != 11 or helper != 1:
+    if changed != 11:
         raise RuntimeError(
             "native statement body normalization missed shapes; "
-            f"body_calls={changed}, helper={helper}"
+            f"body_calls={changed}"
         )
 
     ast.fix_missing_locations(module)
@@ -191,10 +182,21 @@ def main() -> int:
         and isinstance(node.value.func, ast.Name)
         and node.value.func.id == "_convert_body"
     ]
+    nested_body_calls = [
+        node
+        for node in ast.walk(verified_function)
+        if isinstance(node, ast.Call)
+        and not (
+            isinstance(getattr(node, "parent", None), ast.AnnAssign)
+        )
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_convert_body"
+    ]
     if unsafe or len(typed_loads) != 11 or len(converted) != 11:
         raise RuntimeError(
             "native statement body validation failed; "
-            f"unsafe={len(unsafe)}, typed={len(typed_loads)}, converted={len(converted)}"
+            f"unsafe={len(unsafe)}, typed={len(typed_loads)}, converted={len(converted)}, "
+            f"calls={len(nested_body_calls)}"
         )
 
     print("NORMALIZED NATIVE STATEMENT BODY LOADS", changed)

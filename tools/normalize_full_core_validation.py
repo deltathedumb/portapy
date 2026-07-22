@@ -23,6 +23,7 @@ from tools.normalize_full_core_native_parser import main as normalize_native_par
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
+from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
 from tools.normalize_full_reference_abi_helpers import (
@@ -126,6 +127,7 @@ def main() -> int:
     normalize_closures()
     normalize_pattern_slices()
     normalize_extended_semantics()
+    normalize_pop_top()
     normalize_collections()
     normalize_builtins()
     normalize_tracebacks()

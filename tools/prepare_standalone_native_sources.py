@@ -1,9 +1,10 @@
 """Prepare PortaPy's full VM sources for the pinned native asmpython compiler.
 
-The hosted source remains the source of truth.  This applies the existing
-fail-closed normalization passes to ``vm_impl.py`` while preserving the small
-hosted ``vm.py`` and ``frontend.py`` entry wrappers.  A marker in the normalized
-implementation makes the operation idempotent within one checkout.
+The hosted source remains the source of truth. This applies the existing
+fail-closed normalization passes to ``vm_impl.py`` while temporarily exposing
+that implementation through ``vm.py``. ``frontend.py`` is normalized only while
+the passes run and is restored before this function returns; the standalone
+runtime itself uses ``portable_frontend.py``.
 """
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ import shutil
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CORE = REPOSITORY_ROOT / "src" / "portapy" / "core"
 FRONTEND = CORE / "frontend.py"
-BOOTSTRAP_FRONTEND = CORE / "bootstrap_frontend.py"
 VM = CORE / "vm.py"
 VM_IMPL = CORE / "vm_impl.py"
 _MARKERS = (
@@ -34,13 +34,12 @@ def prepare() -> bool:
     if is_prepared():
         print("standalone native sources already prepared")
         return False
-    if not BOOTSTRAP_FRONTEND.is_file() or not VM_IMPL.is_file():
+    if not FRONTEND.is_file() or not VM_IMPL.is_file():
         raise RuntimeError("standalone frontend or VM implementation is missing")
 
     frontend_original = FRONTEND.read_bytes()
     vm_original = VM.read_bytes()
     try:
-        shutil.copyfile(BOOTSTRAP_FRONTEND, FRONTEND)
         shutil.copyfile(VM_IMPL, VM)
 
         from tools.normalize_full_core_lambdas import main as normalize_lambdas

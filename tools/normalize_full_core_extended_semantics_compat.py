@@ -8,6 +8,9 @@ retaining the original fail-closed behavior everywhere else.
 from __future__ import annotations
 
 from tools import normalize_full_core_extended_semantics as _base
+from tools.normalize_full_core_pattern_constructor_collisions import (
+    main as normalize_pattern_constructor_collisions,
+)
 
 
 _CALL_PARSER_MARKERS = {
@@ -21,13 +24,13 @@ _ALREADY_NORMALIZED_MARKERS = {
 }
 
 _DYNAMIC_EXCEPTION_COMPACT = '''                    if not self._exception_matches(value, expected):
-                        if isinstance(value, (BaseException, PyException)): raise value
-                        _raise_typed("RuntimeError: invalid exception value")'''
+                         if isinstance(value, (BaseException, PyException)): raise value
+                         _raise_typed("RuntimeError: invalid exception value")'''
 
 _DYNAMIC_EXCEPTION_TARGET = '''                    if not self._exception_matches(value, expected):
-                        if isinstance(value, (BaseException, PyException)):
-                            _raise_typed("RuntimeError: exception did not match handler")
-                        _raise_typed("RuntimeError: invalid exception value")'''
+                         if isinstance(value, (BaseException, PyException)):
+                             _raise_typed("RuntimeError: exception did not match handler")
+                         _raise_typed("RuntimeError: invalid exception value")'''
 
 
 def _call_argument_method(source: str) -> str:
@@ -102,7 +105,10 @@ def main() -> int:
     previous = _base._replace
     _base._replace = _compatible_replace
     try:
-        return _base.main()
+        result = _base.main()
+        if result not in (None, 0):
+            return int(result)
+        return normalize_pattern_constructor_collisions()
     finally:
         _base._replace = previous
 

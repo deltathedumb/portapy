@@ -28,10 +28,11 @@ def test_types_parse_stmt_expression_results_only(tmp_path: Path, monkeypatch) -
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
-    assert "expr: object = self._parse_expr()" in source
-    assert "value: object = self._parse_expr()" in source
+    assert "expr: dict = self._parse_expr()" in source
+    assert "value: dict = self._parse_expr()" in source
     assert "untouched = self._parse_expr()" in source
     assert "other = self._peek()" in source
+    assert ": object = self._parse_expr()" not in source
     ast.parse(source)
 
 

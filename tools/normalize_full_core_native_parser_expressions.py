@@ -141,15 +141,14 @@ def main() -> int:
     ]
     if len(typed) != annotator.count:
         raise RuntimeError("native parser expression annotations were not preserved")
-    fast_paths = [
-        node
-        for node in ast.walk(verified_method)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_npr_ast_nodes_ExprStmt"
-    ]
-    if len(fast_paths) != 1:
+
+    method_source = ast.unparse(verified_method)
+    fast_path_marker = "return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)"
+    if method_source.count(fast_path_marker) != 1:
         raise RuntimeError("native parser expression fast path was not preserved")
+    assignment_check = "isinstance(expr, _npr_ast_nodes_Name)"
+    if assignment_check in method_source and method_source.index(fast_path_marker) > method_source.index(assignment_check):
+        raise RuntimeError("native expression fast path follows assignment checks")
 
     print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
     print("FAST-PATHED NATIVE EXPRESSION STATEMENTS", fast_path_count)

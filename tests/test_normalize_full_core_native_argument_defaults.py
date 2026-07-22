@@ -6,7 +6,29 @@ from pathlib import Path
 from tools import normalize_full_core_native_argument_defaults as normalizer
 
 
-_SOURCE = '''def _convert_arguments(node: A.FuncDef, lifted: dict[str, A.FuncDef]) -> arguments:
+_SOURCE = '''class AST:
+    pass
+
+class expr(AST):
+    pass
+
+class arg(AST):
+    def __init__(self, arg: str) -> None:
+        self.arg = arg
+
+class arguments(AST):
+    def __init__(self, posonlyargs: list[arg], args: list[arg], vararg: arg | None,
+                 kwonlyargs: list[arg], kw_defaults: list[expr | None],
+                 kwarg: arg | None, defaults: list[expr]) -> None:
+        self.posonlyargs = posonlyargs
+        self.args = args
+        self.vararg = vararg
+        self.kwonlyargs = kwonlyargs
+        self.kw_defaults = kw_defaults
+        self.kwarg = kwarg
+        self.defaults = defaults
+
+def _convert_arguments(node: A.FuncDef, lifted: dict[str, A.FuncDef]) -> arguments:
     all_args = [arg(name) for name in node.params]
     defaults: list[expr] = []
     first_default = len(node.defaults)
@@ -25,18 +47,37 @@ _SOURCE = '''def _convert_arguments(node: A.FuncDef, lifted: dict[str, A.FuncDef
 '''
 
 
+def _module(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"))
+
+
 def _function(path: Path) -> ast.FunctionDef:
-    module = ast.parse(path.read_text(encoding="utf-8"))
     functions = [
         node
-        for node in module.body
+        for node in _module(path).body
         if isinstance(node, ast.FunctionDef) and node.name == "_convert_arguments"
     ]
     assert len(functions) == 1
     return functions[0]
 
 
-def test_pins_default_elements_to_dict_backed_ast(
+def _arguments_initializer(path: Path) -> ast.FunctionDef:
+    classes = [
+        node
+        for node in _module(path).body
+        if isinstance(node, ast.ClassDef) and node.name == "arguments"
+    ]
+    assert len(classes) == 1
+    initializers = [
+        node
+        for node in classes[0].body
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+    ]
+    assert len(initializers) == 1
+    return initializers[0]
+
+
+def test_pins_default_elements_and_storage_to_dict_backed_ast(
     tmp_path: Path, monkeypatch,
 ) -> None:
     path = tmp_path / "native_ast.py"
@@ -61,9 +102,20 @@ def test_pins_default_elements_to_dict_backed_ast(
         and node.value.args[1].value == "defaults"
     ]
     assert len(annotated_getattrs) == 1
+    assert "defaults: list[dict] = []" in source
     assert source.count("default_node: dict = native_defaults[index]") == 2
-    assert "defaults.append(_convert_expr(default_node, lifted))" in source
+    assert "converted_default: dict = _convert_expr(default_node, lifted)" in source
+    assert "defaults.append(converted_default)" in source
     assert "_convert_expr(node.defaults[index], lifted)" not in source
+
+    initializer = _arguments_initializer(path)
+    annotations = {
+        argument.arg: ast.unparse(argument.annotation)
+        for argument in initializer.args.args
+        if argument.annotation is not None
+    }
+    assert annotations["defaults"] == "list[dict]"
+    assert annotations["kw_defaults"] == "list[dict | None]"
 
 
 def test_is_idempotent(tmp_path: Path, monkeypatch) -> None:

@@ -1,4 +1,17 @@
-"""Teach the native ABI kind tracker about user-function return values."""
+"""Stabilize native callable return-kind inference.
+
+The structural expression-kind pass installs one callable return-kind ledger.
+This pass makes that ledger distinguish three different states:
+
+* no return kind has been observed yet;
+* one concrete return kind has been observed;
+* incompatible return kinds have been observed.
+
+Using ``PORTAPY_VALUE_NONE`` as the initial/unknown state loses real bare-None
+returns, while allowing a later return to overwrite ``OBJECT`` can accidentally
+"unmix" a function after conflicting return types.  Both cases can cause the
+native ABI to decode a value through the wrong getter.
+"""
 from __future__ import annotations
 
 import ast
@@ -6,152 +19,160 @@ from pathlib import Path
 
 
 PATH = Path("src/portapy/native_full_reference_entry.py")
-
-_HELPERS = r'''
-_native_function_return_kinds: dict[str, int] = {}
-
-
-def _native_function_kind_key(runtime: int, name: str) -> str:
-    return str(runtime) + ":" + name
+_UNKNOWN_NAME = "_NATIVE_RETURN_KIND_UNKNOWN"
+_MIXED_NAME = "_NATIVE_RETURN_KIND_MIXED"
 
 
-def _native_function_return_kind(runtime: int, name: str) -> int:
-    return _native_function_return_kinds.get(
-        _native_function_kind_key(runtime, name),
-        PORTAPY_VALUE_OBJECT,
-    )
+_RETURN_KIND_BODY = '''
+kind = _native_callable_return_kinds.get(
+    _native_callable_key(runtime, name),
+    _NATIVE_RETURN_KIND_UNKNOWN,
+)
+if kind < 0:
+    return PORTAPY_VALUE_OBJECT
+return kind
+'''
 
 
-def _native_set_function_return_kind(runtime: int, name: str, kind: int) -> None:
-    _native_function_return_kinds[_native_function_kind_key(runtime, name)] = kind
-
-
-def _native_top_level_function_name(text: str) -> str:
-    start = 0
-    if text.startswith("def "):
-        start = 4
-    elif text.startswith("async def "):
-        start = 10
-    else:
-        return ""
-    end = text.find("(", start)
-    if end <= start:
-        return ""
-    name = text[start:end].strip()
-    if not _native_is_identifier(name):
-        return ""
-    return name
-
-
-def _native_record_function_return_kinds(runtime: int, source: str) -> None:
-    current = ""
-    position = 0
-    while position <= len(source):
-        line_end = position
-        while line_end < len(source) and source[line_end] != "\n":
-            line_end += 1
-        line = source[position:line_end]
-        indentation = 0
-        while indentation < len(line) and (line[indentation] == " " or line[indentation] == "\t"):
-            indentation += 1
-        text = line[indentation:].strip()
-        if indentation == 0 and len(text) != 0:
-            current = _native_top_level_function_name(text)
-            if current != "":
-                _native_set_function_return_kind(runtime, current, PORTAPY_VALUE_OBJECT)
-        elif current != "" and text.startswith("return"):
-            expression = text[6:].strip()
-            if len(expression) != 0:
-                kind = _native_expression_kind(runtime, expression)
-                previous = _native_function_return_kind(runtime, current)
-                if previous == PORTAPY_VALUE_OBJECT or previous == kind:
-                    _native_set_function_return_kind(runtime, current, kind)
-                else:
-                    _native_set_function_return_kind(runtime, current, PORTAPY_VALUE_OBJECT)
-        if line_end >= len(source):
-            break
-        position = line_end + 1
+_MERGE_BODY = '''
+key = _native_callable_key(runtime, name)
+existing = _native_callable_return_kinds.get(
+    key,
+    _NATIVE_RETURN_KIND_UNKNOWN,
+)
+if existing == _NATIVE_RETURN_KIND_MIXED:
+    return
+if existing == _NATIVE_RETURN_KIND_UNKNOWN:
+    _native_callable_return_kinds[key] = kind
+    return
+if existing != kind:
+    _native_callable_return_kinds[key] = _NATIVE_RETURN_KIND_MIXED
 '''
 
 
 class _Rewrite(ast.NodeTransformer):
     def __init__(self) -> None:
-        self.expression_rewritten = False
-        self.source_rewritten = False
+        self.return_kind_rewritten = False
+        self.merge_rewritten = False
+        self.initializers_rewritten = 0
+        self._in_callable_scanner = False
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
+        if node.name == "_native_callable_return_kind":
+            node.body = ast.parse(_RETURN_KIND_BODY).body
+            self.return_kind_rewritten = True
+            return node
+        if node.name == "_native_merge_callable_return_kind":
+            node.body = ast.parse(_MERGE_BODY).body
+            self.merge_rewritten = True
+            return node
+        previous = self._in_callable_scanner
+        if node.name == "_native_record_callable_return_kinds":
+            self._in_callable_scanner = True
         node = self.generic_visit(node)
-        if node.name == "_native_expression_kind":
-            for statement in node.body:
-                if not isinstance(statement, ast.If):
-                    continue
-                test = statement.test
-                if not (
-                    isinstance(test, ast.Compare)
-                    and isinstance(test.left, ast.Name)
-                    and test.left.id == "open_at"
-                    and len(test.ops) == 1
-                    and isinstance(test.ops[0], ast.Gt)
-                ):
-                    continue
-                replacement = ast.parse(
-                    '''
-callee = text[0:open_at].strip()
-if _native_is_identifier(callee):
-    callee_kind = _native_global_kind(runtime, callee)
-    if callee_kind == PORTAPY_VALUE_CALLABLE:
-        return _native_function_return_kind(runtime, callee)
-'''
-                ).body
-                statement.body = replacement
-                self.expression_rewritten = True
-                break
-        elif node.name == "_native_record_source_kinds":
-            node.body.insert(
-                0,
-                ast.Expr(
-                    value=ast.Call(
-                        func=ast.Name(id="_native_record_function_return_kinds", ctx=ast.Load()),
-                        args=[
-                            ast.Name(id="runtime", ctx=ast.Load()),
-                            ast.Name(id="source", ctx=ast.Load()),
-                        ],
-                        keywords=[],
-                    )
-                ),
-            )
-            self.source_rewritten = True
+        self._in_callable_scanner = previous
         return node
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        node = self.generic_visit(node)
+        if not self._in_callable_scanner:
+            return node
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "_native_set_callable_return_kind"
+            and len(node.args) == 3
+            and isinstance(node.args[2], ast.Name)
+            and node.args[2].id == "PORTAPY_VALUE_NONE"
+        ):
+            return node
+        node.args[2] = ast.Name(id=_UNKNOWN_NAME, ctx=ast.Load())
+        self.initializers_rewritten += 1
+        return node
+
+
+def _has_constant(module: ast.Module, name: str) -> bool:
+    return any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+        for node in module.body
+    )
+
+
+def _insert_state_constants(module: ast.Module) -> None:
+    if _has_constant(module, _UNKNOWN_NAME) or _has_constant(module, _MIXED_NAME):
+        raise RuntimeError("native callable return-kind state constants already exist")
+    insertion = next(
+        (
+            index
+            for index, node in enumerate(module.body)
+            if isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_native_callable_return_kinds"
+        ),
+        None,
+    )
+    if insertion is None:
+        raise RuntimeError("native callable return-kind ledger is missing")
+    constants = ast.parse(
+        "_NATIVE_RETURN_KIND_UNKNOWN = -1\n"
+        "_NATIVE_RETURN_KIND_MIXED = -2\n"
+    ).body
+    module.body[insertion:insertion] = constants
 
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
-    if any(
-        isinstance(node, ast.FunctionDef)
-        and node.name == "_native_record_function_return_kinds"
+    forbidden = {
+        "_native_function_return_kinds",
+        "_native_record_function_return_kinds",
+        "_native_function_return_kind",
+    }
+    existing_forbidden = sorted(
+        node.name
         for node in module.body
-    ):
-        raise RuntimeError("native function return-kind tracking is already installed")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in forbidden
+    )
+    if existing_forbidden:
+        raise RuntimeError(
+            "duplicate native return-kind tracker already installed: "
+            + ", ".join(existing_forbidden)
+        )
+
+    _insert_state_constants(module)
     rewrite = _Rewrite()
     module = rewrite.visit(module)
-    if not rewrite.expression_rewritten:
-        raise RuntimeError("native callable expression-kind branch was not found")
-    if not rewrite.source_rewritten:
-        raise RuntimeError("native source-kind recorder was not found")
-    module.body.extend(ast.parse(_HELPERS).body)
+    if not rewrite.return_kind_rewritten:
+        raise RuntimeError("native callable return-kind getter is missing")
+    if not rewrite.merge_rewritten:
+        raise RuntimeError("native callable return-kind merger is missing")
+    if rewrite.initializers_rewritten != 1:
+        raise RuntimeError(
+            "expected one callable unknown-state initializer, found "
+            f"{rewrite.initializers_rewritten}"
+        )
+
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
-    text = ast.unparse(ast.parse(source))
+
+    verified = ast.unparse(ast.parse(source))
     required = (
-        "_native_record_function_return_kinds(runtime, source)",
-        "return _native_function_return_kind(runtime, callee)",
-        "_native_function_return_kinds",
+        "_NATIVE_RETURN_KIND_UNKNOWN = -1",
+        "_NATIVE_RETURN_KIND_MIXED = -2",
+        "if kind < 0:",
+        "if existing == _NATIVE_RETURN_KIND_MIXED:",
+        "if existing == _NATIVE_RETURN_KIND_UNKNOWN:",
+        "_native_set_callable_return_kind(runtime, function_name, _NATIVE_RETURN_KIND_UNKNOWN)",
     )
-    absent = [marker for marker in required if marker not in text]
-    if absent:
-        raise RuntimeError(f"native function return-kind validation failed: {absent}")
-    print("NORMALIZED NATIVE FUNCTION RETURN KINDS")
+    missing = [marker for marker in required if marker not in verified]
+    if missing:
+        raise RuntimeError(
+            "native callable return-kind stabilization failed: " + repr(missing)
+        )
+    if "_native_function_return_kinds" in verified:
+        raise RuntimeError("duplicate native function return-kind ledger remains")
+    print("STABILIZED NATIVE CALLABLE RETURN KINDS")
     return 0
 
 

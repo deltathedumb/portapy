@@ -1,10 +1,10 @@
 """Replace host-style function argument binding with compiler-safe loops.
 
 The pinned native compiler lowers ``dict(zip(names, positional))`` by replacing
-``zip(...)`` with a null value and then dereferencing it as a list. This crashes
-as soon as an interpreted function is called. Dict comprehensions used for
-``**kwargs`` have the same unsafe lowering shape, so normalize both operations
-into explicit loops before native semantic rewriting.
+``zip(...)`` with a null value and then dereferencing it as a list. It also
+mis-infers an inline ``target.code.arg_names[index]`` access as an opaque value,
+which produces an invalid dictionary key. Normalize both argument binding and
+``**kwargs`` collection into explicitly typed loops.
 """
 from __future__ import annotations
 
@@ -18,10 +18,12 @@ _POSITIONAL_OLD = '''            positional = list(args[:total])
 '''
 
 _POSITIONAL_NEW = '''            positional = list(args[:total])
+            argument_names: list[str] = target.code.arg_names
             locals_: dict[str, object] = {}
             bind_index = 0
-            while bind_index < len(positional) and bind_index < len(target.code.arg_names):
-                locals_[target.code.arg_names[bind_index]] = positional[bind_index]
+            while bind_index < len(positional) and bind_index < len(argument_names):
+                argument_name: str = argument_names[bind_index]
+                locals_[argument_name] = positional[bind_index]
                 bind_index += 1
 '''
 
@@ -74,8 +76,9 @@ def main() -> int:
     PATH.write_text(source, encoding="utf-8")
 
     required = (
-        "locals_: dict[str, object] = {}",
-        "while bind_index < len(positional)",
+        "argument_names: list[str] = target.code.arg_names",
+        "argument_name: str = argument_names[bind_index]",
+        "locals_[argument_name] = positional[bind_index]",
         "extra_kwargs: dict[str, object] = {}",
         "extra_kwargs[name] = kwargs[name]",
     )

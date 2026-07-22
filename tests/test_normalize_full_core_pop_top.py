@@ -5,37 +5,40 @@ from pathlib import Path
 from tools import normalize_full_core_pop_top as normalizer
 
 
-VM_SOURCE = '''def run(frame, op):
-    if op is Op.LOAD_CONST:
-        frame.stack.append(1)
-    elif op is Op.POP_TOP:
-        frame.stack.pop()
-    elif op is Op.STORE_NAME:
-        value = frame.stack.pop()
+FRONTEND_SOURCE = '''class Lowerer:
+    def stmt(self, node):
+        if isinstance(node, ast.Expr):
+            self.expr(node.value)
+            if not self.interactive and not isinstance(node.value, ast.Yield):
+                self.emit(Op.POP_TOP)
+        elif isinstance(node, ast.Pass):
+            return
 '''
 
 
-def test_replaces_pop_top_with_stack_slice(tmp_path: Path, monkeypatch) -> None:
-    path = tmp_path / "vm.py"
-    path.write_text(VM_SOURCE, encoding="utf-8")
+def test_preserves_expression_evaluation_without_pop_top(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / "frontend.py"
+    path.write_text(FRONTEND_SOURCE, encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
 
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
-    assert "frame.stack = frame.stack[:-1]" in source
-    assert "value = frame.stack.pop()" in source
-    assert source.count("frame.stack = frame.stack[:-1]") == 1
+    assert "self.expr(node.value)" in source
+    assert "self.emit(Op.POP_TOP)" not in source
+    assert "elif isinstance(node, ast.Pass):" in source
 
 
-def test_fails_closed_without_unique_handler(tmp_path: Path, monkeypatch) -> None:
-    path = tmp_path / "vm.py"
-    path.write_text("def run():\n    return\n", encoding="utf-8")
+def test_fails_closed_without_unique_emission(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "frontend.py"
+    path.write_text("def stmt():\n    return\n", encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
 
     try:
         normalizer.main()
     except RuntimeError as error:
-        assert "expected one handler" in str(error)
+        assert "expected one emission" in str(error)
     else:
-        raise AssertionError("normalizer accepted a missing POP_TOP handler")
+        raise AssertionError("normalizer accepted a missing POP_TOP emission")

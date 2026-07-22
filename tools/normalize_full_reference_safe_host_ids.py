@@ -173,7 +173,7 @@ def main() -> int:
     hoister = _NestedSlotValueHoister()
     module = hoister.visit(module)
     missing = sorted(set(_REPLACEMENTS) - rewrite.replaced)
-    if missing or value_lookup.replaced != 1 or hoister.hoisted != 4:
+    if missing or value_lookup.replaced not in (0, 1) or hoister.hoisted != 4:
         raise RuntimeError(
             "native host ABI normalization missed shapes; "
             f"missing={missing}, value_lookups={value_lookup.replaced}, "

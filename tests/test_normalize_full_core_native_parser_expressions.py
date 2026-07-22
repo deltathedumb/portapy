@@ -45,7 +45,8 @@ def test_types_results_field_and_fast_paths_expression_statements(
     assert "other = self._peek()" in source
     assert "if self._check('NEWLINE'):" in source
     assert "self._eat()" in source
-    assert "return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)" in source
+    assert "return _npr_ast_nodes_ExprStmt(expr, pos)" in source
+    assert "return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)" not in source
     assert source.index("if self._check('NEWLINE'):") < source.index(
         "if isinstance(expr, Name):"
     )

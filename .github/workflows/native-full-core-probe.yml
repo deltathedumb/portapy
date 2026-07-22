@@ -29,8 +29,23 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall \
             'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
       - name: Normalize probe source
+        shell: bash
         run: |
-          python tools/normalize_full_core_validation.py
+          mkdir -p dist
+          set +e
+          python tools/normalize_full_core_validation.py \
+            > dist/linux-full-core-normalization.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if [ -f dist/full-core-normalization-error.txt ]; then
+              cat dist/full-core-normalization-error.txt
+            else
+              cat dist/linux-full-core-normalization.txt
+            fi
+            exit "$status"
+          fi
+          cat dist/linux-full-core-normalization.txt
           mkdir -p dist/debug-tree
           python - <<'PY'
           from pathlib import Path
@@ -125,13 +140,17 @@ jobs:
         run: |
           {
             echo '<!-- portapy-full-core-linux-diagnostic -->'
-            echo '### Linux full-core compiler diagnostic'
+            echo '### Linux full-core diagnostic'
             echo
             echo '```text'
-            if [ -f dist/linux-full-core-build.log ]; then
+            if [ -f dist/full-core-normalization-error.txt ]; then
+              cat dist/full-core-normalization-error.txt
+            elif [ -f dist/linux-full-core-build.log ]; then
               tail -n 180 dist/linux-full-core-build.log
+            elif [ -f dist/linux-full-core-normalization.txt ]; then
+              cat dist/linux-full-core-normalization.txt
             else
-              echo 'No compiler log was produced.'
+              echo 'No diagnostic log was produced.'
             fi
             echo '```'
           } > /tmp/portapy-full-core-linux.md
@@ -160,8 +179,19 @@ jobs:
       - name: Normalize probe source
         shell: powershell
         run: |
-          python tools/normalize_full_core_validation.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $normalizationLog = Join-Path $PWD 'dist/windows-full-core-normalization.txt'
+          python tools/normalize_full_core_validation.py *> $normalizationLog
+          $status = $LASTEXITCODE
+          if ($status -ne 0) {
+            if (Test-Path dist/full-core-normalization-error.txt) {
+              Get-Content dist/full-core-normalization-error.txt
+            } else {
+              Get-Content $normalizationLog
+            }
+            exit $status
+          }
+          Get-Content $normalizationLog
       - name: Compile full frontend and VM probe
         shell: powershell
         run: |
@@ -243,14 +273,18 @@ jobs:
         run: |
           $lines = @(
             '<!-- portapy-full-core-windows-diagnostic -->',
-            '### Windows full-core compiler diagnostic',
+            '### Windows full-core diagnostic',
             '',
             '```text'
           )
-          if (Test-Path dist/windows-full-core-build.log) {
+          if (Test-Path dist/full-core-normalization-error.txt) {
+            $lines += Get-Content dist/full-core-normalization-error.txt
+          } elseif (Test-Path dist/windows-full-core-build.log) {
             $lines += Get-Content dist/windows-full-core-build.log | Select-Object -Last 180
+          } elseif (Test-Path dist/windows-full-core-normalization.txt) {
+            $lines += Get-Content dist/windows-full-core-normalization.txt
           } else {
-            $lines += 'No compiler log was produced.'
+            $lines += 'No diagnostic log was produced.'
           }
           $lines += '```'
           $lines | Set-Content -Encoding utf8 $env:TEMP/portapy-full-core-windows.md

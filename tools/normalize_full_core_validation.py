@@ -29,6 +29,7 @@ from tools.normalize_full_core_native_parser_expressions import (
 )
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
+from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
@@ -141,6 +142,7 @@ def main() -> int:
     combine_native_parser()
     normalize_native_parser_expressions()
     normalize_expr_stmt_initializer()
+    normalize_parser_errors()
     normalize_boolops()
     normalize_closures()
     normalize_pattern_slices()

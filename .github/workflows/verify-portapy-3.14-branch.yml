@@ -1,8 +1,13 @@
 name: Verify PortaPy 3.14 branch
 
 on:
+  workflow_run:
+    workflows: [Native shared-library probe]
+    types: [completed]
   issue_comment:
     types: [created]
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +33,6 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-
           path = Path('/tmp/body.md')
           body = path.read_text(encoding='utf-8')
           start = '<!-- portapy-main-verification -->'
@@ -171,7 +175,6 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-
           path = Path('/tmp/body.md')
           body = path.read_text(encoding='utf-8')
           start = '<!-- portapy-main-verification -->'

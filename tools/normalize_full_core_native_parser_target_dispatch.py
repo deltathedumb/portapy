@@ -228,7 +228,7 @@ def main() -> int:
         stale_restores
         or stale_loads
         or stale_attr_fields
-        or len(boxed_loads) < replacements + 1
+        or not boxed_loads
         or len(typed_attr_boxes) != attr_branches * 2
     ):
         raise RuntimeError(

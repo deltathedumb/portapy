@@ -15,6 +15,11 @@ SOURCE = '''class Lowerer:
             for default in node.args.defaults:
                 self.expr(default)
             kw_default_count = 0
+            for default in node.args.kw_defaults:
+                if default is None:
+                    continue
+                self.expr(default)
+                kw_default_count += 1
             self.emit(
                 Op.MAKE_FUNCTION,
                 self.constant((nested.finish(), len(node.args.defaults), kw_default_count, annotations)),
@@ -22,7 +27,7 @@ SOURCE = '''class Lowerer:
 '''
 
 
-def test_counts_defaults_and_canonicalizes_four_fields(
+def test_counts_defaults_and_pins_ast_elements(
     tmp_path: Path, monkeypatch,
 ) -> None:
     path = tmp_path / "frontend.py"
@@ -32,13 +37,19 @@ def test_counts_defaults_and_canonicalizes_four_fields(
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
-    assert "lambda_default_count = 0" in source
+    assert 'lambda_defaults: list[dict] = getattr(node.args, "defaults")' in source
+    assert "lambda_default: dict = lambda_defaults[lambda_default_index]" in source
     assert "lambda_default_count += 1" in source
     assert "(nested.finish(), lambda_default_count, 0, {})" in source
-    assert "default_count = 0" in source
+    assert 'function_defaults: list[dict] = getattr(node.args, "defaults")' in source
+    assert "function_default: dict = function_defaults[default_index]" in source
     assert "default_count += 1" in source
+    assert 'keyword_defaults: list[dict] = getattr(node.args, "kw_defaults")' in source
+    assert "keyword_default: dict = keyword_defaults[keyword_default_index]" in source
     assert "(nested.finish(), default_count, kw_default_count, annotations)" in source
     assert "len(node.args.defaults)" not in source
+    assert "for default in node.args.defaults:" not in source
+    assert "for default in node.args.kw_defaults:" not in source
 
 
 def test_fails_closed_without_lambda_defaults_shape(

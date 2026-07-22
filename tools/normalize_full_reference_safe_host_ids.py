@@ -7,6 +7,24 @@ from pathlib import Path
 
 PATH = Path("src/portapy/native_full_reference_entry.py")
 
+_SLOT_VALUE_SOURCE = '''
+kind_status, kind = instance.value_kind(handle)
+if kind_status is not Status.OK:
+    raise KeyError(handle)
+status, value = instance.unbox(handle)
+if status is not Status.OK:
+    raise KeyError(handle)
+if (
+    kind is ValueKind.STRING
+    or kind is ValueKind.BYTES
+    or kind is ValueKind.TUPLE
+    or kind is ValueKind.DICT
+    or kind is ValueKind.LIST
+):
+    return _materialize(value)
+return value
+'''
+
 _HOST_OBJECT_ID_SOURCE = '''
 instance = _runtime(runtime)
 if instance is None:
@@ -46,6 +64,7 @@ return result
 '''
 
 _REPLACEMENTS = {
+    "_slot_value": _SLOT_VALUE_SOURCE,
     "_portapy_value_get_host_id_impl": _HOST_OBJECT_ID_SOURCE,
     "_portapy_value_get_host_callable_id_impl": _HOST_CALLABLE_ID_SOURCE,
 }
@@ -184,6 +203,8 @@ def main() -> int:
     PATH.write_text(source, encoding="utf-8")
     verified = ast.unparse(ast.parse(source))
     required = (
+        "kind_status, kind = instance.value_kind(handle)",
+        "kind is ValueKind.LIST",
         "slot = instance._value_slot(handle)",
         "_native_value_kind_code(kind) != PORTAPY_VALUE_OBJECT",
         "_native_value_kind_code(kind) != PORTAPY_VALUE_CALLABLE",

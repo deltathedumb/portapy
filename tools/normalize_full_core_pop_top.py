@@ -3,9 +3,9 @@
 The pinned native compiler crashes in the VM's standalone POP_TOP dispatch,
 regardless of whether that handler calls ``pop`` or uses slicing. STORE_NAME's
 stack pop is already exercised successfully throughout the runtime, so emit a
-short-lived internal binding for every discard and immediately delete it. The
-internal name contains characters that cannot occur in a Python identifier,
-preventing collisions with user code.
+short-lived internal binding for every discard and immediately delete it. Use
+the project's reserved ``__pyinbin_`` namespace because native name storage
+expects identifier-shaped keys.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _HELPER_ANCHOR = '''        return len(self.instructions) - 1
 _HELPER_REPLACEMENT = '''        return len(self.instructions) - 1
 
     def discard_top(self) -> None:
-        discard_name = f"<discard:{len(self.instructions)}>"
+        discard_name = f"__pyinbin_internal_discard_{len(self.instructions)}"
         discard_index = self.name_index(discard_name)
         self.emit(Op.STORE_NAME, discard_index)
         self.emit(Op.DELETE_NAME, discard_index)
@@ -59,7 +59,7 @@ def main() -> int:
         raise RuntimeError("native discard calls were not installed everywhere")
     required = (
         "def discard_top(self) -> None:",
-        'discard_name = f"<discard:{len(self.instructions)}>"',
+        'discard_name = f"__pyinbin_internal_discard_{len(self.instructions)}"',
         "self.emit(Op.STORE_NAME, discard_index)",
         "self.emit(Op.DELETE_NAME, discard_index)",
     )

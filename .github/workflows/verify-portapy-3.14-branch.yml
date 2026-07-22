@@ -14,7 +14,43 @@ permissions:
   pull-requests: write
 
 jobs:
+  announce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish verification start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_SHA: be5417cce8509adc3ba9d2fd9444fc716a591785
+          VERIFY_RUN_ID: ${{ github.run_id }}
+        run: |
+          gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/body.md
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('/tmp/body.md')
+          body = path.read_text(encoding='utf-8')
+          start = '<!-- portapy-main-verification -->'
+          end = '<!-- /portapy-main-verification -->'
+          block = f'''{start}
+          ### Main-hosted exact branch verification
+
+          - Tested commit: `{os.environ["VERIFY_SHA"]}`
+          - Run: `{os.environ["VERIFY_RUN_ID"]}`
+          - Status: **in progress**
+          {end}'''
+          if start in body and end in body:
+              before, rest = body.split(start, 1)
+              _, after = rest.split(end, 1)
+              body = before.rstrip() + '\n\n' + block + after
+          else:
+              body = body.rstrip() + '\n\n' + block + '\n'
+          path.write_text(body, encoding='utf-8')
+          PY
+          gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/body.md
+
   hosted:
+    needs: announce
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +64,7 @@ jobs:
         run: python -m pytest
 
   native:
+    needs: announce
     strategy:
       fail-fast: false
       matrix:
@@ -124,19 +161,34 @@ jobs:
       - name: Publish results
         env:
           GH_TOKEN: ${{ github.token }}
+          VERIFY_SHA: be5417cce8509adc3ba9d2fd9444fc716a591785
+          VERIFY_RUN_ID: ${{ github.run_id }}
           HOSTED_RESULT: ${{ needs.hosted.result }}
           NATIVE_RESULT: ${{ needs.native.result }}
         run: |
           gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/body.md
-          cat >> /tmp/body.md <<EOF
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          <!-- portapy-main-verification -->
+          path = Path('/tmp/body.md')
+          body = path.read_text(encoding='utf-8')
+          start = '<!-- portapy-main-verification -->'
+          end = '<!-- /portapy-main-verification -->'
+          block = f'''{start}
           ### Main-hosted exact branch verification
 
-          - Tested commit: \`be5417cce8509adc3ba9d2fd9444fc716a591785\`
-          - Run: \`${{ github.run_id }}\`
-          - Hosted suite: **${HOSTED_RESULT}**
-          - Linux/Windows native matrix: **${NATIVE_RESULT}**
-          <!-- /portapy-main-verification -->
-          EOF
+          - Tested commit: `{os.environ["VERIFY_SHA"]}`
+          - Run: `{os.environ["VERIFY_RUN_ID"]}`
+          - Hosted suite: **{os.environ["HOSTED_RESULT"]}**
+          - Linux/Windows native matrix: **{os.environ["NATIVE_RESULT"]}**
+          {end}'''
+          if start in body and end in body:
+              before, rest = body.split(start, 1)
+              _, after = rest.split(end, 1)
+              body = before.rstrip() + '\n\n' + block + after
+          else:
+              body = body.rstrip() + '\n\n' + block + '\n'
+          path.write_text(body, encoding='utf-8')
+          PY
           gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/body.md

@@ -40,6 +40,7 @@ from tools.normalize_full_core_native_semantics import main as normalize_native_
 from tools.normalize_full_core_native_statement_bodies import main as normalize_native_statement_bodies
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
+from tools.normalize_full_core_pattern_constructor_collisions import main as normalize_pattern_constructor_collisions
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
@@ -180,6 +181,7 @@ def main() -> int:
         # Extended semantics installs MatchAs defaults using the original
         # constructor signature. Rename colliding parameters only afterwards.
         ("expr_stmt_initializer", normalize_expr_stmt_initializer),
+        ("pattern_constructor_collisions", normalize_pattern_constructor_collisions),
         ("native_statement_bodies", normalize_native_statement_bodies),
         ("native_node_fields", normalize_native_node_fields),
         ("pop_top", normalize_pop_top),

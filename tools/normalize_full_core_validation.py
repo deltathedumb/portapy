@@ -19,6 +19,7 @@ from tools.normalize_full_core_keyword_calls import (
     main as normalize_keyword_calls,
 )
 from tools.normalize_full_core_lambdas import main as normalize_lambdas
+from tools.normalize_full_core_make_function import main as normalize_make_function
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
@@ -128,6 +129,7 @@ def main() -> int:
     normalize_pattern_slices()
     normalize_extended_semantics()
     normalize_pop_top()
+    normalize_make_function()
     normalize_collections()
     normalize_builtins()
     normalize_tracebacks()

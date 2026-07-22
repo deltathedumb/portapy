@@ -5,6 +5,24 @@ import ast
 from tools import normalize_full_reference_safe_host_ids as normalizer
 
 
+def test_legacy_value_lookup_uses_native_slot_accessor() -> None:
+    module = ast.parse(
+        '''
+def replace_value(instance, handle, value):
+    slot = instance._values.get(handle)
+    slot.value = value
+'''
+    )
+    rewrite = normalizer._LegacyValueLookupRewriter()
+    module = rewrite.visit(module)
+    ast.fix_missing_locations(module)
+    source = ast.unparse(module)
+
+    assert rewrite.replaced == 1
+    assert "slot = instance._value_slot(handle)" in source
+    assert "instance._values.get(handle)" not in source
+
+
 def test_nested_slot_value_calls_are_hoisted_before_container_writes() -> None:
     module = ast.parse(
         '''

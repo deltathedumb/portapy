@@ -22,8 +22,8 @@ class _npr_parser_Parser:
             return expr
         if isinstance(expr, Subscript):
             return Assign(expr, expr)
-        if isinstance(expr, Attr):
-            return AugAssign(expr)
+        if isinstance(expr, _npr_ast_nodes_Attr):
+            return AttrAssign(obj=expr.obj, name=expr.name)
         return ExprStmt(expr)
 ''',
         encoding="utf-8",
@@ -37,3 +37,15 @@ class _npr_parser_Parser:
     assert "isinstance(expr" not in source
     assert "return expr" not in source
     assert source.count("__pyinbin_native_expr_values[0]") >= 8
+    assert (
+        "_native_attr_obj_values_0: list[dict] = "
+        "[getattr(__pyinbin_native_expr_values[0], 'obj')]"
+    ) in source
+    assert (
+        "_native_attr_name_values_0: list[str] = "
+        "[getattr(__pyinbin_native_expr_values[0], 'name')]"
+    ) in source
+    assert "__pyinbin_native_expr_values[0].obj" not in source
+    assert "__pyinbin_native_expr_values[0].name" not in source
+    assert "obj=_native_attr_obj_values_0[0]" in source
+    assert "name=_native_attr_name_values_0[0]" in source

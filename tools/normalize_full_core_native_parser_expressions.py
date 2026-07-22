@@ -1,10 +1,10 @@
-"""Preserve opaque AST expression objects in the embedded native parser.
+"""Preserve dict-backed AST expressions in the embedded native parser.
 
 The pinned compiler defaults an unannotated result of ``self._parse_expr()`` to
-an integer inside ``Parser._parse_stmt``. Subsequent ``isinstance`` checks then
-try to treat that integer as an object pointer. Annotate every simple local
-assignment from ``_parse_expr`` in that method as ``object`` before compiling the
-combined parser/runtime module.
+an integer inside ``Parser._parse_stmt``. ``object`` annotations also fall back
+to integer storage. Native class instances are dict-backed, and the following
+``isinstance`` checks already dispatch through dict lookups, so annotate every
+simple local assignment from ``_parse_expr`` in that method as ``dict``.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class _AnnotateExpressionResults(ast.NodeTransformer):
         return ast.copy_location(
             ast.AnnAssign(
                 target=node.targets[0],
-                annotation=ast.Name(id="object", ctx=ast.Load()),
+                annotation=ast.Name(id="dict", ctx=ast.Load()),
                 value=node.value,
                 simple=1,
             ),
@@ -104,14 +104,14 @@ def main() -> int:
         for node in ast.walk(verified_method)
         if isinstance(node, ast.AnnAssign)
         and isinstance(node.annotation, ast.Name)
-        and node.annotation.id == "object"
+        and node.annotation.id == "dict"
         and node.value is not None
         and _is_parse_expr_call(node.value)
     ]
     if len(typed) != annotator.count:
         raise RuntimeError("native parser expression annotations were not preserved")
 
-    print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
+    print("TYPED DICT-BACKED NATIVE PARSER EXPRESSIONS", annotator.count)
     return 0
 
 

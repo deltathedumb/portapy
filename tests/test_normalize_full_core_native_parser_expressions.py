@@ -27,7 +27,7 @@ class _npr_parser_Parser:
 '''
 
 
-def test_types_results_field_and_fast_paths_expression_statements(
+def test_boxes_results_field_and_fast_paths_expression_statements(
     tmp_path: Path, monkeypatch
 ) -> None:
     path = tmp_path / "native_ast.py"
@@ -39,14 +39,17 @@ def test_types_results_field_and_fast_paths_expression_statements(
     source = path.read_text(encoding="utf-8")
     assert "class _npr_ast_nodes_ExprStmt:" in source
     assert "expr: dict" in source
-    assert "expr: dict = self._parse_expr()" in source
+    assert (
+        "__pyinbin_native_expr_values: list[dict] = [self._parse_expr()]"
+        in source
+    )
+    assert "return _npr_ast_nodes_ExprStmt(__pyinbin_native_expr_values[0], pos)" in source
+    assert "expr: dict = __pyinbin_native_expr_values[0]" in source
     assert "value: dict = self._parse_expr()" in source
     assert "untouched = self._parse_expr()" in source
     assert "other = self._peek()" in source
     assert "if self._check('NEWLINE'):" in source
     assert "self._eat()" in source
-    assert "return _npr_ast_nodes_ExprStmt(expr, pos)" in source
-    assert "return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)" not in source
     assert source.index("if self._check('NEWLINE'):") < source.index(
         "if isinstance(expr, Name):"
     )

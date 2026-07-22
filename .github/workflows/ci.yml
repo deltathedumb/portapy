@@ -1,78 +1,15 @@
 name: CI
 
 on:
-  push:
   pull_request:
-  issue_comment:
-    types: [created]
-  schedule:
-    - cron: '*/5 * * * *'
+    types: [ready_for_review]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  bootstrap:
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install -e '.[test]'
-      - name: Run hosted tests
-        shell: bash
-        run: |
-          mkdir -p dist
-          set -o pipefail
-          PYTHONPATH="$PWD" python -m pytest -q 2>&1 | tee dist/pytest.log
-      - run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: hosted-ci
-          path: dist
-
-  verify-announce:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 46 && contains(github.event.comment.body, '/verify-portapy-3.14'))
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Publish verification start
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERIFY_SHA: c4444ae53c1c9b07a0d58d53dad8270af8a049df
-          VERIFY_RUN_ID: ${{ github.run_id }}
-        run: |
-          gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/body.md
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          path = Path('/tmp/body.md')
-          body = path.read_text(encoding='utf-8')
-          start = '<!-- portapy-main-verification -->'
-          end = '<!-- /portapy-main-verification -->'
-          block = f'''{start}
-          ### Exact PortaPy 3.14 verification
-
-          - Tested commit: `{os.environ["VERIFY_SHA"]}`
-          - Run: `{os.environ["VERIFY_RUN_ID"]}`
-          - Status: **in progress**
-          {end}'''
-          if start in body and end in body:
-              before, rest = body.split(start, 1)
-              _, after = rest.split(end, 1)
-              body = before.rstrip() + '\n\n' + block + after
-          else:
-              body = body.rstrip() + '\n\n' + block + '\n'
-          path.write_text(body, encoding='utf-8')
-          PY
-          gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/body.md
-
-  verify-hosted:
-    needs: verify-announce
+  hosted:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -84,10 +21,10 @@ jobs:
       - run: python -m pip install -e '.[test]'
       - name: Run complete hosted suite
         run: python -m pytest
-      - run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+      - name: Check public C example
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
 
-  verify-native:
-    needs: verify-announce
+  native:
     strategy:
       fail-fast: false
       matrix:
@@ -185,42 +122,3 @@ jobs:
         with:
           name: portapy-3.14-${{ matrix.target }}
           path: dist
-
-  verify-report:
-    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 46 && contains(github.event.comment.body, '/verify-portapy-3.14')))
-    needs: [verify-hosted, verify-native]
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Publish verification result
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERIFY_SHA: c4444ae53c1c9b07a0d58d53dad8270af8a049df
-          VERIFY_RUN_ID: ${{ github.run_id }}
-          HOSTED_RESULT: ${{ needs.verify-hosted.result }}
-          NATIVE_RESULT: ${{ needs.verify-native.result }}
-        run: |
-          gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/body.md
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          path = Path('/tmp/body.md')
-          body = path.read_text(encoding='utf-8')
-          start = '<!-- portapy-main-verification -->'
-          end = '<!-- /portapy-main-verification -->'
-          block = f'''{start}
-          ### Exact PortaPy 3.14 verification
-
-          - Tested commit: `{os.environ["VERIFY_SHA"]}`
-          - Run: `{os.environ["VERIFY_RUN_ID"]}`
-          - Hosted suite: **{os.environ["HOSTED_RESULT"]}**
-          - Linux/Windows native matrix: **{os.environ["NATIVE_RESULT"]}**
-          {end}'''
-          if start in body and end in body:
-              before, rest = body.split(start, 1)
-              _, after = rest.split(end, 1)
-              body = before.rstrip() + '\n\n' + block + after
-          else:
-              body = body.rstrip() + '\n\n' + block + '\n'
-          path.write_text(body, encoding='utf-8')
-          PY
-          gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/body.md

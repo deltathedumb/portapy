@@ -23,6 +23,7 @@ from .native_full_reference_entry import (
     _portapy_value_get_kind_impl,
     _runtime,
 )
+from .reference_api import Status
 
 
 class _ProbeModule:
@@ -53,7 +54,7 @@ def portapy_full_core_probe() -> int:
     instance = _runtime(runtime)
     if instance is None:
         return -6
-    if instance.set_global("__pyinbin_import__", _probe_import) != PORTAPY_OK:
+    if instance.set_global("__pyinbin_import__", _probe_import) is not Status.OK:
         return -7
     forty = _portapy_value_from_i64_impl(runtime, 40)
     two = _portapy_value_from_i64_impl(runtime, 2)

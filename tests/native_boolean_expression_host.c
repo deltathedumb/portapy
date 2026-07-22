@@ -52,6 +52,21 @@ typedef portapy_status (ABI_CALL *error_get_info_fn)(portapy_runtime, portapy_er
         return 10; \
     }
 
+static portapy_status execute(
+    exec_utf8_fn function,
+    portapy_runtime runtime,
+    const char *source,
+    const char *filename
+) {
+    return function(
+        runtime,
+        (const uint8_t *)source,
+        strlen(source),
+        (const uint8_t *)filename,
+        strlen(filename)
+    );
+}
+
 static portapy_status evaluate(
     eval_utf8_fn function,
     portapy_runtime runtime,
@@ -126,6 +141,42 @@ int main(int argc, char **argv) {
     portapy_config config = {0};
     config.struct_size = sizeof(config);
     config.abi_version = PORTAPY_ABI_VERSION;
+
+    portapy_runtime preflight = PORTAPY_NULL_RUNTIME;
+    TRACE_STEP("preflight-runtime-create");
+    if (runtime_create(&config, &preflight) != PORTAPY_OK || preflight == 0) return 38;
+    const char *preflight_sources[] = {
+        "empty = \"\"\n",
+        "name = \"Somnia\"\n",
+        "alias = name\n",
+        "other = \"PortaPy\"\n",
+        "zero = 0\n",
+        "answer = 42\n",
+        "correct = name == \"Somnia\"\n",
+        "selected = empty or name\n",
+        "guarded = name and answer\n"
+    };
+    const char *preflight_steps[] = {
+        "preflight-empty",
+        "preflight-name",
+        "preflight-alias",
+        "preflight-other",
+        "preflight-zero",
+        "preflight-answer",
+        "preflight-correct",
+        "preflight-selected",
+        "preflight-guarded"
+    };
+    const size_t preflight_count = sizeof(preflight_sources) / sizeof(preflight_sources[0]);
+    for (size_t index = 0; index < preflight_count; ++index) {
+        TRACE_STEP(preflight_steps[index]);
+        if (execute(exec_utf8, preflight, preflight_sources[index], "boolean_preflight.py") != PORTAPY_OK) {
+            return (int)(39 + index);
+        }
+    }
+    TRACE_STEP("preflight-runtime-destroy");
+    if (runtime_destroy(preflight) != PORTAPY_OK) return 48;
+
     portapy_runtime runtime = PORTAPY_NULL_RUNTIME;
     TRACE_STEP("runtime-create");
     if (runtime_create(&config, &runtime) != PORTAPY_OK || runtime == 0) return 12;
@@ -141,13 +192,7 @@ int main(int argc, char **argv) {
         "selected = empty or name\n"
         "guarded = name and answer\n";
     TRACE_STEP("exec-boolean-block");
-    if (exec_utf8(
-            runtime,
-            (const uint8_t *)source,
-            sizeof(source) - 1,
-            (const uint8_t *)"boolean_block.py",
-            strlen("boolean_block.py")
-        ) != PORTAPY_OK) return 13;
+    if (execute(exec_utf8, runtime, source, "boolean_block.py") != PORTAPY_OK) return 13;
 
     TRACE_STEP("eval-arithmetic-equality");
     if (!expect_bool(eval_utf8, value_as_bool, value_release, runtime, "40 + 2 == 42", 1)) return 14;
@@ -185,12 +230,7 @@ int main(int argc, char **argv) {
 
     const char *global_name = "correct";
     TRACE_STEP("get-correct-global");
-    if (get_global(
-            runtime,
-            (const uint8_t *)global_name,
-            strlen(global_name),
-            &value
-        ) != PORTAPY_OK) return 28;
+    if (get_global(runtime, (const uint8_t *)global_name, strlen(global_name), &value) != PORTAPY_OK) return 28;
     int boolean = 0;
     TRACE_STEP("read-correct-global");
     if (value_as_bool(runtime, value, &boolean) != PORTAPY_OK || boolean != 1) return 29;
@@ -199,12 +239,7 @@ int main(int argc, char **argv) {
 
     global_name = "selected";
     TRACE_STEP("get-selected-global");
-    if (get_global(
-            runtime,
-            (const uint8_t *)global_name,
-            strlen(global_name),
-            &value
-        ) != PORTAPY_OK) return 31;
+    if (get_global(runtime, (const uint8_t *)global_name, strlen(global_name), &value) != PORTAPY_OK) return 31;
     TRACE_STEP("read-selected-global");
     if (!expect_data(value_get_size, value_copy_data, runtime, value, somnia, sizeof(somnia))) return 32;
     TRACE_STEP("release-selected-global");

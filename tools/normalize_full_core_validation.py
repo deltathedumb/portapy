@@ -12,6 +12,9 @@ from tools.normalize_full_core_calls_closures import (
 )
 from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_collections import main as normalize_collections
+from tools.normalize_full_core_expr_stmt_initializer import (
+    main as normalize_expr_stmt_initializer,
+)
 from tools.normalize_full_core_extended_semantics_compat import (
     main as normalize_extended_semantics,
 )
@@ -137,6 +140,7 @@ def main() -> int:
     normalize_keyword_calls()
     combine_native_parser()
     normalize_native_parser_expressions()
+    normalize_expr_stmt_initializer()
     normalize_boolops()
     normalize_closures()
     normalize_pattern_slices()

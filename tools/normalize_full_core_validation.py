@@ -1,6 +1,8 @@
 """Apply the complete native full-core normalization pipeline."""
 from __future__ import annotations
 
+import contextlib
+import io
 from pathlib import Path
 import traceback
 from typing import Callable
@@ -53,6 +55,7 @@ from tools.normalize_full_reference_value_kinds import main as normalize_referen
 
 BYTECODE_PATH = Path("src/portapy/core/bytecode.py")
 DIAGNOSTIC_PATH = Path("dist/full-core-normalization-error.txt")
+NORMALIZATION_LOG_PATH = Path("dist/full-core-normalization.log")
 
 
 def _normalize_nested_code_introspection() -> None:
@@ -87,18 +90,38 @@ def _normalize_opcode_validation() -> None:
     print("REMOVED HOST OPCODE TYPE IDENTITY", count, flush=True)
 
 
+def _append_step_log(name: str, output: str) -> None:
+    NORMALIZATION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with NORMALIZATION_LOG_PATH.open("a", encoding="utf-8") as stream:
+        stream.write(f"=== {name} ===\n")
+        if output:
+            stream.write(output)
+            if not output.endswith("\n"):
+                stream.write("\n")
+        stream.write("\n")
+
+
 def _run_step(name: str, callback: Callable[[], object]) -> None:
     print(f"FULL-CORE NORMALIZE START: {name}", flush=True)
+    captured = io.StringIO()
     try:
-        result = callback()
+        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+            result = callback()
         if result not in (None, 0):
             raise RuntimeError(f"normalizer returned non-zero result {result!r}")
     except BaseException:
-        diagnostic = f"failed step: {name}\n\n{traceback.format_exc()}"
+        output = captured.getvalue()
+        _append_step_log(name, output)
+        diagnostic = f"failed step: {name}\n"
+        if output:
+            diagnostic += f"\nstep output:\n{output.rstrip()}\n"
+        diagnostic += f"\n{traceback.format_exc()}"
         DIAGNOSTIC_PATH.parent.mkdir(parents=True, exist_ok=True)
         DIAGNOSTIC_PATH.write_text(diagnostic, encoding="utf-8")
         print(diagnostic, flush=True)
         raise
+    output = captured.getvalue()
+    _append_step_log(name, output)
     print(f"FULL-CORE NORMALIZE OK: {name}", flush=True)
 
 
@@ -152,6 +175,7 @@ def main() -> int:
         ("reference_type_errors", normalize_reference_type_errors),
     )
     DIAGNOSTIC_PATH.unlink(missing_ok=True)
+    NORMALIZATION_LOG_PATH.unlink(missing_ok=True)
     for name, callback in steps:
         _run_step(name, callback)
     return 0

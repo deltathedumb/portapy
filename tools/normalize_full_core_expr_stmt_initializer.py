@@ -1,9 +1,9 @@
 """Install a compiler-safe initializer for the embedded native ExprStmt node.
 
-The pinned compiler's synthesized dataclass initializer stores the static ``dict``
-type token (0x7e) into ``ExprStmt.expr`` instead of the constructor argument. An
-explicit initializer keeps ordinary parameter slots and copies their runtime values
-directly into the instance fields, bypassing dataclass synthesis entirely.
+The pinned compiler resolves a parameter named ``expr`` as the global ``expr``
+class token instead of the constructor argument. Dataclass synthesis has the
+same failure mode. Use a non-colliding parameter name, rewrite keyword call
+sites, and copy the runtime value into the public ``expr`` field explicitly.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 
 PATH = Path("src/portapy/core/native_ast.py")
 _CLASS_NAME = "_npr_ast_nodes_ExprStmt"
+_PARAMETER_NAME = "expr_value"
 
 
 def _expr_stmt_class(module: ast.Module) -> ast.ClassDef:
@@ -40,12 +41,30 @@ def _install_initializer(class_node: ast.ClassDef) -> int:
         )
 
     initializer = ast.parse(
-        "def __init__(self, expr: dict, pos: dict) -> None:\n"
-        "    self.expr = expr\n"
+        f"def __init__(self, {_PARAMETER_NAME}: dict, pos: dict) -> None:\n"
+        f"    self.expr = {_PARAMETER_NAME}\n"
         "    self.pos = pos\n"
     ).body[0]
     class_node.body.append(initializer)
     return 1
+
+
+class _KeywordCallRenamer(ast.NodeTransformer):
+    def __init__(self) -> None:
+        self.rewritten = 0
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == _CLASS_NAME
+        ):
+            return node
+        for keyword in node.keywords:
+            if keyword.arg == "expr":
+                keyword.arg = _PARAMETER_NAME
+                self.rewritten += 1
+        return node
 
 
 def _is_self_field_assignment(
@@ -69,6 +88,8 @@ def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     class_node = _expr_stmt_class(module)
     installed = _install_initializer(class_node)
+    renamer = _KeywordCallRenamer()
+    module = renamer.visit(module)
 
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
@@ -86,7 +107,7 @@ def main() -> int:
 
     initializer = initializers[0]
     parameter_names = [argument.arg for argument in initializer.args.args]
-    if parameter_names != ["self", "expr", "pos"]:
+    if parameter_names != ["self", _PARAMETER_NAME, "pos"]:
         raise RuntimeError(
             f"native ExprStmt initializer parameters changed: {parameter_names}"
         )
@@ -101,17 +122,21 @@ def main() -> int:
         raise RuntimeError("native ExprStmt initializer lost dict parameter types")
 
     if not any(
-        _is_self_field_assignment(node, "expr", "expr")
+        _is_self_field_assignment(node, "expr", _PARAMETER_NAME)
         for node in initializer.body
     ):
-        raise RuntimeError("native ExprStmt initializer does not copy expr")
+        raise RuntimeError("native ExprStmt initializer does not copy expr value")
     if not any(
         _is_self_field_assignment(node, "pos", "pos")
         for node in initializer.body
     ):
         raise RuntimeError("native ExprStmt initializer does not copy pos")
 
-    print("INSTALLED NATIVE EXPRSTMT INITIALIZER", installed)
+    print(
+        "INSTALLED NATIVE EXPRSTMT INITIALIZER",
+        installed,
+        renamer.rewritten,
+    )
     return 0
 
 

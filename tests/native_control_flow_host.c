@@ -16,6 +16,11 @@
 #define ABI_CALL
 #endif
 
+#define TRACE_STEP(message) do { \
+    fprintf(stderr, "control-step: %s\n", (message)); \
+    fflush(stderr); \
+} while (0)
+
 typedef portapy_status (ABI_CALL *initialize_fn)(void);
 typedef portapy_status (ABI_CALL *runtime_create_fn)(const portapy_config *, portapy_runtime *);
 typedef portapy_status (ABI_CALL *runtime_destroy_fn)(portapy_runtime);
@@ -68,9 +73,11 @@ static int expect_text(
 
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    TRACE_STEP("load-library");
     void *library = LOAD_LIBRARY(argv[1]);
     if (library == NULL) return 3;
 
+    TRACE_STEP("resolve-symbols");
     RESOLVE(initialize_fn, initialize, "portapy_library_initialize");
     RESOLVE(runtime_create_fn, runtime_create, "portapy_runtime_create");
     RESOLVE(runtime_destroy_fn, runtime_destroy, "portapy_runtime_destroy");
@@ -83,11 +90,13 @@ int main(int argc, char **argv) {
     RESOLVE(value_release_fn, value_release, "portapy_value_release");
     RESOLVE(error_get_info_fn, error_get_info, "portapy_error_get_info");
 
+    TRACE_STEP("initialize");
     if (initialize() != PORTAPY_OK) return 11;
     portapy_config config = {0};
     config.struct_size = sizeof(config);
     config.abi_version = PORTAPY_ABI_VERSION;
     portapy_runtime runtime = PORTAPY_NULL_RUNTIME;
+    TRACE_STEP("runtime-create");
     if (runtime_create(&config, &runtime) != PORTAPY_OK || runtime == 0) return 12;
 
     const char source[] =
@@ -111,6 +120,7 @@ int main(int argc, char **argv) {
         "finished = count == 5 and total == 8\n"
         "42 == 42\n"
         "pass\n";
+    TRACE_STEP("exec-control-block");
     if (exec_utf8(
             runtime,
             (const uint8_t *)source,
@@ -120,29 +130,45 @@ int main(int argc, char **argv) {
         ) != PORTAPY_OK) return 13;
 
     portapy_value value = PORTAPY_NULL_VALUE;
+    TRACE_STEP("get-choice");
     if (!global_value(get_global, runtime, "choice", &value)) return 14;
+    TRACE_STEP("read-choice");
     if (!expect_text(value_get_size, value_copy_data, runtime, value, "matched")) return 15;
+    TRACE_STEP("release-choice");
     if (value_release(runtime, value) != PORTAPY_OK) return 16;
 
+    TRACE_STEP("get-nested");
     if (!global_value(get_global, runtime, "nested", &value)) return 17;
     int boolean = 0;
+    TRACE_STEP("read-nested");
     if (value_as_bool(runtime, value, &boolean) != PORTAPY_OK || boolean != 1) return 18;
+    TRACE_STEP("release-nested");
     if (value_release(runtime, value) != PORTAPY_OK) return 19;
 
+    TRACE_STEP("get-count");
     if (!global_value(get_global, runtime, "count", &value)) return 20;
     int64_t integer = 0;
+    TRACE_STEP("read-count");
     if (value_as_i64(runtime, value, &integer) != PORTAPY_OK || integer != 5) return 21;
+    TRACE_STEP("release-count");
     if (value_release(runtime, value) != PORTAPY_OK) return 22;
 
+    TRACE_STEP("get-total");
     if (!global_value(get_global, runtime, "total", &value)) return 23;
+    TRACE_STEP("read-total");
     if (value_as_i64(runtime, value, &integer) != PORTAPY_OK || integer != 8) return 24;
+    TRACE_STEP("release-total");
     if (value_release(runtime, value) != PORTAPY_OK) return 25;
 
+    TRACE_STEP("get-finished");
     if (!global_value(get_global, runtime, "finished", &value)) return 26;
+    TRACE_STEP("read-finished");
     if (value_as_bool(runtime, value, &boolean) != PORTAPY_OK || boolean != 1) return 27;
+    TRACE_STEP("release-finished");
     if (value_release(runtime, value) != PORTAPY_OK) return 28;
 
     const char invalid[] = "value = 1\n  unexpected = 2\n";
+    TRACE_STEP("exec-invalid-source");
     if (exec_utf8(
             runtime,
             (const uint8_t *)invalid,
@@ -152,10 +178,14 @@ int main(int argc, char **argv) {
         ) != PORTAPY_COMPILE_ERROR) return 29;
     portapy_error_info info = {0};
     info.struct_size = sizeof(info);
+    TRACE_STEP("read-invalid-error");
     if (error_get_info(runtime, &info) != PORTAPY_OK) return 30;
+    TRACE_STEP("validate-invalid-error");
     if (info.status != PORTAPY_COMPILE_ERROR || info.line != 2) return 31;
 
+    TRACE_STEP("runtime-destroy");
     if (runtime_destroy(runtime) != PORTAPY_OK) return 32;
+    TRACE_STEP("complete");
     puts("control-flow: ok");
     return 0;
 }

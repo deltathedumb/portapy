@@ -1,14 +1,13 @@
 """Normalize MAKE_FUNCTION for the native compiler.
 
-The compiled VM represents user-class values as compact native class values.
-A runtime ``isinstance(nested, CodeObject)`` therefore dereferences that value
-as an object dictionary and crashes.  Give ``nested`` an explicit static
-CodeObject type instead and trust the frontend-produced constant.
+The compiled VM materializes frontend tuple constants as native list values.  The
+old handler guarded unpacking with ``isinstance(spec, tuple)``, so native function
+specifications were left packed and then mistaken for a CodeObject.  Unpack the
+known 2/3/4-item specification by length and index instead.  The frontend is the
+only producer of MAKE_FUNCTION constants, so any other shape is rejected.
 
-The original block also uses list slices and comprehensions while native slice
-objects are intentionally disabled during bootstrap.  Replace those operations
-with index-based loops so defaults, keyword defaults, and closure cells retain
-full semantics without unsupported runtime shapes.
+The block also avoids slices and comprehensions because native slice objects are
+intentionally disabled during bootstrap.
 """
 from __future__ import annotations
 
@@ -22,20 +21,25 @@ _END = "                elif op is Op.MAKE_CLASS:\n"
 
 _REPLACEMENT = '''                elif op is Op.MAKE_FUNCTION:
                      spec = frame.code.constants[instr.arg]
-                     nested: CodeObject = spec
+                     spec_size = len(spec)
                      default_count = 0
                      kw_default_count = 0
                      annotations: dict[str, object] = {}
-                     if isinstance(spec, tuple) and len(spec) == 4:
-                         nested, default_count, kw_default_count, annotations = spec
-                     elif isinstance(spec, tuple) and len(spec) == 2:
-                         nested, default_count = spec
-                     elif isinstance(spec, tuple) and len(spec) == 3:
-                         nested, default_count, kw_default_count = spec
+                     if spec_size == 4:
+                         nested: CodeObject = spec[0]
+                         default_count = spec[1]
+                         kw_default_count = spec[2]
+                         annotations = spec[3]
+                     elif spec_size == 3:
+                         nested: CodeObject = spec[0]
+                         default_count = spec[1]
+                         kw_default_count = spec[2]
+                     elif spec_size == 2:
+                         nested: CodeObject = spec[0]
+                         default_count = spec[1]
                      else:
-                         nested = spec
-                     if nested is None:
                          _raise_typed("TypeError: invalid function constant")
+                         nested: CodeObject = spec[0]
                      count = default_count + kw_default_count
                      if len(frame.stack) < count:
                          _raise_typed("RuntimeError: default stack underflow")
@@ -74,7 +78,6 @@ _REPLACEMENT = '''                elif op is Op.MAKE_FUNCTION:
                      frame.stack.append(function)
 '''
 
-
 _LEGACY_DEFAULTS_SHAPE = (
     "values = frame.stack[-count:] if count else []",
     "defaults = values[:default_count]",
@@ -103,7 +106,6 @@ def main() -> int:
     block = source[start:end]
     required = (
         "spec = frame.code.constants[instr.arg]",
-        "if not isinstance(nested, CodeObject)",
         "count = default_count + kw_default_count",
         "closure = {",
         "function = Function(nested, frame.globals, defaults, kw_defaults, closure, self)",
@@ -122,8 +124,9 @@ def main() -> int:
 
     installed = source[start:start + len(_REPLACEMENT)]
     validation = (
-        "nested: CodeObject = spec",
-        "if nested is None:",
+        "spec_size = len(spec)",
+        "if spec_size == 4:",
+        "nested: CodeObject = spec[0]",
         "while default_index < default_count:",
         "while kw_index < kw_default_count:",
         "for name in nested.free_names:",
@@ -133,7 +136,9 @@ def main() -> int:
     if absent:
         raise RuntimeError(f"native MAKE_FUNCTION validation failed: {absent}")
     forbidden = (
+        "isinstance(spec, tuple)",
         "isinstance(nested, CodeObject)",
+        "nested: CodeObject = spec\n",
         "frame.stack[-count:]",
         "values[:default_count]",
     )

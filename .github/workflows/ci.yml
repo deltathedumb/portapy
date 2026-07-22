@@ -24,9 +24,17 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e '.[test]'
       - name: Run complete hosted suite
-        run: python -m pytest
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -x -vv 2>&1 | tee hosted-pytest.log
       - name: Check public C example
         run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portapy-hosted-pytest
+          path: hosted-pytest.log
 
   native:
     strategy:

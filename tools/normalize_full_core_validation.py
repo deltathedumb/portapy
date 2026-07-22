@@ -32,6 +32,7 @@ from tools.normalize_full_core_make_function import main as normalize_make_funct
 from tools.normalize_full_core_name_index import main as normalize_name_index
 from tools.normalize_full_core_native_argument_defaults import main as normalize_native_argument_defaults
 from tools.normalize_full_core_native_keyword_transport import main as normalize_native_keyword_transport
+from tools.normalize_full_core_native_node_fields import main as normalize_native_node_fields
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_native_parser_expressions import main as normalize_native_parser_expressions
 from tools.normalize_full_core_native_parser_target_dispatch import main as normalize_native_parser_target_dispatch
@@ -178,6 +179,7 @@ def main() -> int:
         ("pattern_slices", normalize_pattern_slices),
         ("extended_semantics", normalize_extended_semantics),
         ("native_statement_bodies", normalize_native_statement_bodies),
+        ("native_node_fields", normalize_native_node_fields),
         ("pop_top", normalize_pop_top),
         ("make_function", normalize_make_function),
         ("collections", normalize_collections),

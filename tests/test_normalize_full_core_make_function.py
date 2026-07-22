@@ -71,7 +71,7 @@ _NATIVE_SEMANTICS_INPUT = '''                elif op is Op.MAKE_FUNCTION:
 '''
 
 
-def test_unpacks_native_list_spec_and_removes_slices(
+def test_unpacks_canonical_four_field_spec_without_introspection(
     tmp_path: Path, monkeypatch,
 ) -> None:
     path = tmp_path / "vm.py"
@@ -81,15 +81,15 @@ def test_unpacks_native_list_spec_and_removes_slices(
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
-    assert "spec_size = len(spec)" in source
-    assert "if spec_size == 4:" in source
     assert "nested: CodeObject = spec[0]" in source
     assert "default_count = spec[1]" in source
     assert "kw_default_count = spec[2]" in source
-    assert "annotations = spec[3]" in source
+    assert "annotations: dict[str, object] = spec[3]" in source
     assert "while default_index < default_count:" in source
     assert "while kw_index < kw_default_count:" in source
     assert "for name in nested.free_names:" in source
+    assert "len(spec)" not in source
+    assert "spec_size" not in source
     assert "isinstance(spec, tuple)" not in source
     assert "isinstance(nested, CodeObject)" not in source
     assert "frame.stack[-count:]" not in source
@@ -107,6 +107,7 @@ def test_accepts_native_semantics_intermediate_shape(
 
     source = path.read_text(encoding="utf-8")
     assert "nested: CodeObject = spec[0]" in source
+    assert "annotations: dict[str, object] = spec[3]" in source
     assert "discarded_default = frame.stack.pop()" in source
     assert "_full_core_probe_pop_tail(frame.stack, count)" not in source
     assert "_full_core_probe_copy_range(values, 0, default_count)" not in source

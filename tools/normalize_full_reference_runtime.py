@@ -64,8 +64,13 @@ _NATIVE_STORE = '''    def _store(
     ) -> int:
         handle = self._next
         self._next += 1
-        self._values[handle] = _Slot(value, kind)
+        self._values.append(_Slot(value, kind))
         return handle
+
+    def _value_slot(self, handle: int) -> _Slot | None:
+        if handle <= 0 or handle >= len(self._values):
+            return None
+        return self._values[handle]
 '''
 _BOX_METHODS = '''    def box_none(self) -> tuple[Status, int]:
         return Status.OK, self._store(None)
@@ -133,7 +138,7 @@ _VALUE_KIND_METHOD = '''    def value_kind(self, handle: int) -> tuple[Status, V
         return Status.OK, kind
 '''
 _NATIVE_VALUE_KIND_METHOD = '''    def value_kind(self, handle: int) -> tuple[Status, ValueKind]:
-        slot = self._values.get(handle)
+        slot = self._value_slot(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), ValueKind.OBJECT
         return Status.OK, slot.kind
@@ -147,7 +152,7 @@ _AS_INT_METHOD = '''    def as_int(self, handle: int) -> tuple[Status, int]:
         return Status.OK, slot.value
 '''
 _NATIVE_AS_INT_METHOD = '''    def as_int(self, handle: int) -> tuple[Status, int]:
-        slot = self._values.get(handle)
+        slot = self._value_slot(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0
         if slot.kind is not ValueKind.INT:
@@ -163,7 +168,7 @@ _AS_FLOAT_METHOD = '''    def as_float(self, handle: int) -> tuple[Status, float
         return Status.OK, slot.value
 '''
 _NATIVE_AS_FLOAT_METHOD = '''    def as_float(self, handle: int) -> tuple[Status, float]:
-        slot = self._values.get(handle)
+        slot = self._value_slot(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0.0
         if slot.kind is not ValueKind.FLOAT:
@@ -179,7 +184,7 @@ _AS_UTF8_METHOD = '''    def as_utf8(self, handle: int) -> tuple[Status, bytes]:
         return Status.OK, slot.value.encode("utf-8")
 '''
 _NATIVE_AS_UTF8_METHOD = '''    def as_utf8(self, handle: int) -> tuple[Status, bytes]:
-        slot = self._values.get(handle)
+        slot = self._value_slot(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), b""
         if slot.kind is not ValueKind.STRING:
@@ -200,13 +205,13 @@ _NATIVE_CLEAR_ERROR = '''        self._last_error = None
         self._error_column = 0
 '''
 _VALUES_ANNOTATION = "self._values: dict[int, _Slot] = {}"
-_NATIVE_VALUES_ANNOTATION = "self._values: dict[str, _Slot] = {}"
-_HANDLE_SUBSCRIPT = "self._values[handle]"
-_NATIVE_HANDLE_SUBSCRIPT = "self._values[str(handle)]"
+_NATIVE_VALUES_ANNOTATION = "self._values: list[_Slot | None] = [None]"
 _HANDLE_GET = "self._values.get(handle)"
-_NATIVE_HANDLE_GET = "self._values.get(str(handle))"
+_NATIVE_HANDLE_GET = "self._value_slot(handle)"
 _CALLABLE_HANDLE_GET = "self._values.get(callable_handle)"
-_NATIVE_CALLABLE_HANDLE_GET = "self._values.get(str(callable_handle))"
+_NATIVE_CALLABLE_HANDLE_GET = "self._value_slot(callable_handle)"
+_HANDLE_DELETE = "del self._values[handle]"
+_NATIVE_HANDLE_DELETE = "self._values[handle] = None"
 
 
 def _replace_exact(
@@ -252,13 +257,6 @@ def main() -> int:
     )
     source = _replace_exact(
         source,
-        _HANDLE_SUBSCRIPT,
-        _NATIVE_HANDLE_SUBSCRIPT,
-        label="value-table subscript",
-        expected=2,
-    )
-    source = _replace_exact(
-        source,
         _HANDLE_GET,
         _NATIVE_HANDLE_GET,
         label="value-table lookup",
@@ -271,10 +269,17 @@ def main() -> int:
         label="callable value-table lookup",
         expected=1,
     )
+    source = _replace_exact(
+        source,
+        _HANDLE_DELETE,
+        _NATIVE_HANDLE_DELETE,
+        label="value-table release",
+        expected=1,
+    )
     PATH.write_text(source, encoding="utf-8")
     print("NORMALIZED NATIVE REFERENCE ERROR CAPTURE", 2)
     print("NORMALIZED NATIVE ERROR COORDINATES", 4)
-    print("NORMALIZED NATIVE VALUE HANDLE KEYS", 11)
+    print("NORMALIZED NATIVE VALUE HANDLE LIST", 11)
     print("NORMALIZED NATIVE VALUE KIND SLOTS", 9)
     return 0
 

@@ -46,9 +46,19 @@ def main() -> int:
                     if not isinstance(keyword_value, dict):
                         _raise_typed("TypeError: ** argument must be a mapping")
                     for raw_mapping_name, mapping_value in keyword_value.items():
+                        if not isinstance(raw_mapping_name, str):
+                            _raise_typed("TypeError: keywords must be strings")
                         mapping_name: str = raw_mapping_name
+                        if mapping_name in transported_kwargs:
+                            _raise_typed(
+                                f"TypeError: got multiple values for keyword argument {mapping_name!r}"
+                            )
                         transported_kwargs[mapping_name] = mapping_value
                 else:
+                    if keyword_name in transported_kwargs:
+                        _raise_typed(
+                            f"TypeError: got multiple values for keyword argument {keyword_name!r}"
+                        )
                     transported_kwargs[keyword_name] = keyword_value
                 keyword_index += 1
             kwargs = transported_kwargs
@@ -111,7 +121,11 @@ def main() -> int:
         "keyword_names: list[str] | None = None",
         "transported_kwargs: dict[str, object] = {}",
         "keyword_name: str = keyword_names[keyword_index]",
+        "if not isinstance(raw_mapping_name, str):",
+        'TypeError: keywords must be strings',
         "mapping_name: str = raw_mapping_name",
+        "if mapping_name in transported_kwargs:",
+        "if keyword_name in transported_kwargs:",
         "kwargs = transported_kwargs",
         "keyword_names: list[str] = []",
         "has_effective_keywords = False",

@@ -51,6 +51,23 @@ def test_transports_keyword_names_and_values_as_lists(
     assert "for name, value in zip(names, values):" not in source
 
 
+def test_empty_keyword_unpack_preserves_lexical_super(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "vm.py"
+    path.write_text(_SOURCE, encoding="utf-8")
+    monkeypatch.setattr(normalizer, "VM_PATH", path)
+
+    assert normalizer.main() == 0
+
+    source = path.read_text(encoding="utf-8")
+    assert "has_effective_keywords = False" in source
+    assert "if len(value) > 0:" in source
+    assert "and not has_effective_keywords" in source
+    assert "and not keyword_names" not in source
+
+
 def test_fails_closed_when_call_shape_changes(
     tmp_path: Path,
     monkeypatch,

@@ -1,9 +1,8 @@
 """Repair the pinned compiler's ExprStmt initializer parameter load.
 
-The source-level explicit initializer is compiled consistently on Linux and Windows,
-but asmpython replaces the dict-typed ``expr`` parameter with its static type token
-(126 / 0x7e). The real parameter is already spilled at ``[rbp-16]`` on both ABIs,
-so replace only the one bad load inside the uniquely named initializer block.
+Older generated assembly replaces the dict-typed expression parameter with its
+static type token (126 / 0x7e). Newer source normalization avoids the bad load
+entirely, so this fallback accepts an already-correct runtime parameter load.
 """
 from __future__ import annotations
 
@@ -42,11 +41,19 @@ def fix_expr_stmt_initializer_assembly(
         )
 
     count = block.count(_BAD_LOAD)
+    if count == 0:
+        if block.count(_GOOD_LOAD) < 1:
+            raise RuntimeError(
+                "native ExprStmt initializer has neither the static dict-token "
+                "load nor the correct parameter load"
+            )
+        return source, 0
     if count != 1:
         raise RuntimeError(
-            "native ExprStmt initializer expected one static dict-token load, "
+            "native ExprStmt initializer expected at most one static dict-token load, "
             f"found {count}"
         )
+
     fixed_block = block.replace(_BAD_LOAD, _GOOD_LOAD, 1)
     if _BAD_LOAD in fixed_block or fixed_block.count(_GOOD_LOAD) < 1:
         raise RuntimeError("native ExprStmt initializer assembly repair failed")

@@ -36,6 +36,7 @@ from tools.normalize_full_core_native_parser import main as normalize_native_par
 from tools.normalize_full_core_native_parser_expressions import main as normalize_native_parser_expressions
 from tools.normalize_full_core_native_parser_target_dispatch import main as normalize_native_parser_target_dispatch
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
+from tools.normalize_full_core_native_statement_bodies import main as normalize_native_statement_bodies
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
@@ -176,6 +177,7 @@ def main() -> int:
         ("closures", normalize_closures),
         ("pattern_slices", normalize_pattern_slices),
         ("extended_semantics", normalize_extended_semantics),
+        ("native_statement_bodies", normalize_native_statement_bodies),
         ("pop_top", normalize_pop_top),
         ("make_function", normalize_make_function),
         ("collections", normalize_collections),

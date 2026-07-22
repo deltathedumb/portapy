@@ -5,8 +5,8 @@ that follows ``expr = self._parse_expr()`` in the embedded parser: it substitute
 a static type token for the returned AST object. A newline means the statement is
 unambiguously an expression statement, so return it immediately before reaching
 those assignment-target checks. The embedded ``ExprStmt.expr`` dataclass field is
-also typed as ``dict`` so the compiler stores the real dict-backed AST node rather
-than the abstract expression type token.
+also typed as ``dict`` and constructed positionally so the compiler forwards the
+real dict-backed AST node rather than a keyword argument's static type token.
 """
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def _install_expression_statement_fast_path(method: ast.FunctionDef) -> int:
         fast_path = ast.parse(
             "if self._check('NEWLINE'):\n"
             "    self._eat()\n"
-            "    return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)\n"
+            "    return _npr_ast_nodes_ExprStmt(expr, pos)\n"
         ).body[0]
         replacement.append(ast.copy_location(fast_path, statement))
         inserted += 1
@@ -229,6 +229,14 @@ def main() -> int:
         raise RuntimeError(
             "native parser expression fast path was not preserved uniquely"
         )
+    fast_return = next(
+        statement
+        for statement in fast_paths[0].body
+        if isinstance(statement, ast.Return) and _is_expr_stmt_call(statement.value)
+    )
+    assert isinstance(fast_return.value, ast.Call)
+    if fast_return.value.keywords or len(fast_return.value.args) != 2:
+        raise RuntimeError("native expression fast path is not positional")
     main_expr_assignments = [
         node
         for node in verified_method.body

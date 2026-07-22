@@ -16,7 +16,7 @@ class Other:
 '''
 
 
-def test_installs_boxed_explicit_initializer(tmp_path: Path, monkeypatch) -> None:
+def test_installs_direct_explicit_initializer(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(SOURCE, encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
@@ -25,9 +25,9 @@ def test_installs_boxed_explicit_initializer(tmp_path: Path, monkeypatch) -> Non
 
     source = path.read_text(encoding="utf-8")
     assert "def __init__(self, expr: dict, pos: dict) -> None:" in source
-    assert "values: list[dict] = [expr, pos]" in source
-    assert "self.expr = values[0]" in source
-    assert "self.pos = values[1]" in source
+    assert "self.expr = expr" in source
+    assert "self.pos = pos" in source
+    assert "values: list[dict]" not in source
     ast.parse(source)
 
 

@@ -11,6 +11,8 @@ FRONTEND_PATH = Path("src/portapy/core/frontend.py")
 NATIVE_AST_PATH = Path("src/portapy/core/native_ast.py")
 VM_PATH = Path("src/portapy/core/vm.py")
 
+_MIXED_STRING_KIND = 8
+
 _HELPER = '''def _full_core_probe_compare_strings(left: str, right: str, operation: int) -> bool:
     if operation == 20:
         return left == right
@@ -70,6 +72,8 @@ def _normalize_native_ast_metadata() -> int:
         raise RuntimeError("native AST expression converter is missing")
 
     name_count = 0
+    integer_count = 0
+    float_count = 0
     string_count = 0
     fstring_count = 0
     for node in ast.walk(converter):
@@ -82,6 +86,28 @@ def _normalize_native_ast_metadata() -> int:
                 "return converted\n"
             ).body
             name_count += 1
+        elif _is_source_node_test(node, "IntLit"):
+            node.body = ast.parse(
+                "if node.is_none:\n"
+                "    converted = Constant(None)\n"
+                "    converted._native_kind = 7\n"
+                "    return converted\n"
+                "if node.is_bool:\n"
+                "    converted = Constant(bool(node.value))\n"
+                "    converted._native_kind = 1\n"
+                "    return converted\n"
+                "converted = Constant(node.value)\n"
+                "converted._native_kind = 2\n"
+                "return converted\n"
+            ).body
+            integer_count += 1
+        elif _is_source_node_test(node, "FloatLit"):
+            node.body = ast.parse(
+                "converted = Constant(node.value)\n"
+                "converted._native_kind = 3\n"
+                "return converted\n"
+            ).body
+            float_count += 1
         elif _is_source_node_test(node, "StrLit"):
             node.body = ast.parse(
                 "converted = Constant(node.value)\n"
@@ -93,8 +119,6 @@ def _normalize_native_ast_metadata() -> int:
             original = list(node.body)
             if not original:
                 raise RuntimeError("native FString conversion body is empty")
-            # Preserve the existing segment conversion, then stamp its result
-            # immediately before the final return.
             final_return = original[-1]
             if not isinstance(final_return, ast.Return):
                 raise RuntimeError("native FString conversion has no final return")
@@ -121,19 +145,34 @@ def _normalize_native_ast_metadata() -> int:
             )
             fstring_count += 1
 
-    if name_count != 1 or string_count != 1 or fstring_count != 1:
+    actual = (
+        name_count,
+        integer_count,
+        float_count,
+        string_count,
+        fstring_count,
+    )
+    if actual != (1, 1, 1, 1, 1):
         raise RuntimeError(
-            "native AST comparison metadata expected one Name, StrLit, and FString "
-            f"conversion; found {(name_count, string_count, fstring_count)}"
+            "native AST comparison metadata expected one Name, IntLit, FloatLit, "
+            f"StrLit, and FString conversion; found {actual}"
         )
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     NATIVE_AST_PATH.write_text(source, encoding="utf-8")
-    if source.count("._native_kind = 4") != 2:
-        raise RuntimeError("native string metadata stamping validation failed")
-    if source.count("._native_name =") != 1:
-        raise RuntimeError("native name metadata stamping validation failed")
-    return 3
+    for marker in (
+        "._native_kind = 1",
+        "._native_kind = 2",
+        "._native_kind = 3",
+        "._native_kind = 4",
+        "._native_kind = 7",
+        "._native_name =",
+    ):
+        if marker not in source:
+            raise RuntimeError(
+                f"native comparison metadata stamping lost {marker!r}"
+            )
+    return 5
 
 
 def _normalize_frontend() -> int:
@@ -148,7 +187,7 @@ def _normalize_frontend() -> int:
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
 '''
-    new = '''            left_operand: ast.expr = getattr(node, "left")
+    new = f'''            left_operand: ast.expr = getattr(node, "left")
             index = 0
             while index < len(node.ops):
                 op = node.ops[index]
@@ -157,15 +196,21 @@ def _normalize_frontend() -> int:
                 self.expr(right_operand)
                 left_kind: int = getattr(left_operand, "_native_kind", _TRUTH_UNKNOWN)
                 left_name: str = getattr(left_operand, "_native_name", "")
-                left_is_string = left_kind == _TRUTH_STRING
-                if not left_is_string and left_name != "":
-                    left_is_string = self.kind_hint(left_name) == _TRUTH_STRING
+                if left_kind == _TRUTH_UNKNOWN and left_name != "":
+                    left_kind = self.kind_hint(left_name)
                 right_kind: int = getattr(right_operand, "_native_kind", _TRUTH_UNKNOWN)
                 right_name: str = getattr(right_operand, "_native_name", "")
-                right_is_string = right_kind == _TRUTH_STRING
-                if not right_is_string and right_name != "":
-                    right_is_string = self.kind_hint(right_name) == _TRUTH_STRING
-                comparison_kind = _TRUTH_STRING if left_is_string and right_is_string else _TRUTH_UNKNOWN
+                if right_kind == _TRUTH_UNKNOWN and right_name != "":
+                    right_kind = self.kind_hint(right_name)
+                comparison_kind = _TRUTH_UNKNOWN
+                if left_kind == _TRUTH_STRING and right_kind == _TRUTH_STRING:
+                    comparison_kind = _TRUTH_STRING
+                elif (
+                    left_kind == _TRUTH_STRING and right_kind != _TRUTH_UNKNOWN
+                ) or (
+                    right_kind == _TRUTH_STRING and left_kind != _TRUTH_UNKNOWN
+                ):
+                    comparison_kind = {_MIXED_STRING_KIND}
                 self.emit(_compare_opcode(op), comparison_kind)
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
@@ -176,6 +221,8 @@ def _normalize_frontend() -> int:
     FRONTEND_PATH.write_text(source, encoding="utf-8")
     if "self.emit(_compare_opcode(op), comparison_kind)" not in source:
         raise RuntimeError("native string comparison kind was not emitted")
+    if f"comparison_kind = {_MIXED_STRING_KIND}" not in source:
+        raise RuntimeError("native mixed string comparison tag was not emitted")
     if "operands = [node.left]" in source:
         raise RuntimeError("native comparison still erases AST operand types in a list")
     if "isinstance(left_operand" in source or "isinstance(right_operand" in source:
@@ -200,7 +247,20 @@ def _normalize_vm() -> int:
                     elif op is Op.COMPARE_NE:
                         frame.stack.append(left != right)
 '''
-    new = '''                    if instr.arg == 4 and op in (
+    new = f'''                    if instr.arg == {_MIXED_STRING_KIND} and op is Op.COMPARE_EQ:
+                        frame.stack.append(False)
+                    elif instr.arg == {_MIXED_STRING_KIND} and op is Op.COMPARE_NE:
+                        frame.stack.append(True)
+                    elif instr.arg == {_MIXED_STRING_KIND} and op in (
+                        Op.COMPARE_LT,
+                        Op.COMPARE_LE,
+                        Op.COMPARE_GT,
+                        Op.COMPARE_GE,
+                    ):
+                        _raise_typed(
+                            "TypeError: ordering comparison between string and non-string"
+                        )
+                    elif instr.arg == 4 and op in (
                         Op.COMPARE_EQ,
                         Op.COMPARE_LT,
                         Op.COMPARE_LE,
@@ -228,6 +288,10 @@ def _normalize_vm() -> int:
     VM_PATH.write_text(source, encoding="utf-8")
     if source.count("_full_core_probe_compare_strings") != 2:
         raise RuntimeError("native string comparison helper validation failed")
+    if f"instr.arg == {_MIXED_STRING_KIND}" not in source:
+        raise RuntimeError("native mixed string comparison VM dispatch is missing")
+    if "ordering comparison between string and non-string" not in source:
+        raise RuntimeError("native mixed string ordering error is missing")
     return 1
 
 

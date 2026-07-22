@@ -14,11 +14,11 @@ from pathlib import Path
 PATH = Path("src/portapy/core/frontend.py")
 
 _OLD_LAMBDA = (
-    "            self.emit(Op.MAKE_FUNCTION, "
+    "self.emit(Op.MAKE_FUNCTION, "
     "self.constant((nested.finish(), len(node.args.defaults), 0)))"
 )
 _NEW_LAMBDA = (
-    "            self.emit(Op.MAKE_FUNCTION, "
+    "self.emit(Op.MAKE_FUNCTION, "
     "self.constant((nested.finish(), len(node.args.defaults), 0, {})))"
 )
 _NORMAL_FUNCTION_MARKER = (

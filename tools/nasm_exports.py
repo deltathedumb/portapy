@@ -7,8 +7,14 @@ targets must exist or the pass fails closed.
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
+import re
+import sys
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from tools.nasm_exception_handlers import restore_exception_handler_epilogues
 

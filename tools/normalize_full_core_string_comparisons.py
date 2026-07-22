@@ -1,12 +1,14 @@
 """Give native VM string comparisons Python value semantics."""
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from tools.normalize_full_core_truthiness_safe_ast import main as normalize_truthiness
 
 
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
+NATIVE_AST_PATH = Path("src/portapy/core/native_ast.py")
 VM_PATH = Path("src/portapy/core/vm.py")
 
 _HELPER = '''def _full_core_probe_compare_strings(left: str, right: str, operation: int) -> bool:
@@ -35,6 +37,105 @@ def _replace(source: str, old: str, new: str, label: str) -> str:
     return source.replace(old, new, 1)
 
 
+def _is_source_node_test(node: ast.If, suffix: str) -> bool:
+    test = node.test
+    if not (
+        isinstance(test, ast.Call)
+        and isinstance(test.func, ast.Name)
+        and test.func.id == "isinstance"
+        and len(test.args) == 2
+        and isinstance(test.args[0], ast.Name)
+        and test.args[0].id == "node"
+    ):
+        return False
+    expected = test.args[1]
+    if isinstance(expected, ast.Name):
+        return expected.id.endswith(suffix)
+    if isinstance(expected, ast.Attribute):
+        return expected.attr == suffix
+    return False
+
+
+def _normalize_native_ast_metadata() -> int:
+    module = ast.parse(NATIVE_AST_PATH.read_text(encoding="utf-8"))
+    converter = next(
+        (
+            node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_convert_expr"
+        ),
+        None,
+    )
+    if converter is None:
+        raise RuntimeError("native AST expression converter is missing")
+
+    name_count = 0
+    string_count = 0
+    fstring_count = 0
+    for node in ast.walk(converter):
+        if not isinstance(node, ast.If):
+            continue
+        if _is_source_node_test(node, "Name"):
+            node.body = ast.parse(
+                "converted = Name(node.name)\n"
+                "converted._native_name = node.name\n"
+                "return converted\n"
+            ).body
+            name_count += 1
+        elif _is_source_node_test(node, "StrLit"):
+            node.body = ast.parse(
+                "converted = Constant(node.value)\n"
+                "converted._native_kind = 4\n"
+                "return converted\n"
+            ).body
+            string_count += 1
+        elif _is_source_node_test(node, "FString"):
+            original = list(node.body)
+            if not original:
+                raise RuntimeError("native FString conversion body is empty")
+            # Preserve the existing segment conversion, then stamp its result
+            # immediately before the final return.
+            final_return = original[-1]
+            if not isinstance(final_return, ast.Return):
+                raise RuntimeError("native FString conversion has no final return")
+            result_name = "converted_fstring"
+            node.body = original[:-1]
+            node.body.extend(
+                [
+                    ast.Assign(
+                        targets=[ast.Name(id=result_name, ctx=ast.Store())],
+                        value=final_return.value,
+                    ),
+                    ast.Assign(
+                        targets=[
+                            ast.Attribute(
+                                value=ast.Name(id=result_name, ctx=ast.Load()),
+                                attr="_native_kind",
+                                ctx=ast.Store(),
+                            )
+                        ],
+                        value=ast.Constant(4),
+                    ),
+                    ast.Return(value=ast.Name(id=result_name, ctx=ast.Load())),
+                ]
+            )
+            fstring_count += 1
+
+    if name_count != 1 or string_count != 1 or fstring_count != 1:
+        raise RuntimeError(
+            "native AST comparison metadata expected one Name, StrLit, and FString "
+            f"conversion; found {(name_count, string_count, fstring_count)}"
+        )
+    ast.fix_missing_locations(module)
+    source = ast.unparse(module) + "\n"
+    NATIVE_AST_PATH.write_text(source, encoding="utf-8")
+    if source.count("._native_kind = 4") != 2:
+        raise RuntimeError("native string metadata stamping validation failed")
+    if source.count("._native_name =") != 1:
+        raise RuntimeError("native name metadata stamping validation failed")
+    return 3
+
+
 def _normalize_frontend() -> int:
     source = FRONTEND_PATH.read_text(encoding="utf-8")
     old = '''            operands = [node.left]
@@ -54,24 +155,16 @@ def _normalize_frontend() -> int:
                 right_operand: ast.expr = node.comparators[index]
                 self.expr(left_operand)
                 self.expr(right_operand)
-                left_is_string = False
-                if isinstance(left_operand, ast.Name):
-                    left_name: str = getattr(left_operand, "id")
+                left_kind: int = getattr(left_operand, "_native_kind", _TRUTH_UNKNOWN)
+                left_name: str = getattr(left_operand, "_native_name", "")
+                left_is_string = left_kind == _TRUTH_STRING
+                if not left_is_string and left_name != "":
                     left_is_string = self.kind_hint(left_name) == _TRUTH_STRING
-                elif isinstance(left_operand, ast.Constant):
-                    left_value: object = getattr(left_operand, "value")
-                    left_is_string = isinstance(left_value, str)
-                elif isinstance(left_operand, ast.JoinedStr):
-                    left_is_string = True
-                right_is_string = False
-                if isinstance(right_operand, ast.Name):
-                    right_name: str = getattr(right_operand, "id")
+                right_kind: int = getattr(right_operand, "_native_kind", _TRUTH_UNKNOWN)
+                right_name: str = getattr(right_operand, "_native_name", "")
+                right_is_string = right_kind == _TRUTH_STRING
+                if not right_is_string and right_name != "":
                     right_is_string = self.kind_hint(right_name) == _TRUTH_STRING
-                elif isinstance(right_operand, ast.Constant):
-                    right_value: object = getattr(right_operand, "value")
-                    right_is_string = isinstance(right_value, str)
-                elif isinstance(right_operand, ast.JoinedStr):
-                    right_is_string = True
                 comparison_kind = _TRUTH_STRING if left_is_string and right_is_string else _TRUTH_UNKNOWN
                 self.emit(_compare_opcode(op), comparison_kind)
                 if index:
@@ -85,8 +178,8 @@ def _normalize_frontend() -> int:
         raise RuntimeError("native string comparison kind was not emitted")
     if "operands = [node.left]" in source:
         raise RuntimeError("native comparison still erases AST operand types in a list")
-    if "self.expression_kind(left_operand)" in source or "self.expression_kind(right_operand)" in source:
-        raise RuntimeError("native comparison still crosses the opaque AST classifier boundary")
+    if "isinstance(left_operand" in source or "isinstance(right_operand" in source:
+        raise RuntimeError("native comparison still rediscovers erased AST classes")
     return 1
 
 
@@ -140,9 +233,15 @@ def _normalize_vm() -> int:
 
 def main() -> int:
     normalize_truthiness()
+    metadata_count = _normalize_native_ast_metadata()
     frontend_count = _normalize_frontend()
     vm_count = _normalize_vm()
-    print("NORMALIZED NATIVE STRING COMPARISONS", frontend_count, vm_count)
+    print(
+        "NORMALIZED NATIVE STRING COMPARISONS",
+        metadata_count,
+        frontend_count,
+        vm_count,
+    )
     return 0
 
 

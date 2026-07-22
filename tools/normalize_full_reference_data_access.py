@@ -173,26 +173,50 @@ _REPLACEMENTS = {
 }
 
 
+def _is_store_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_store"
+    )
+
+
+def _builder_marker() -> ast.stmt:
+    return ast.parse(
+        "_native_builder_handles[_native_builder_key(runtime, result)] = True"
+    ).body[0]
+
+
 def _mark_builder_result(node: ast.FunctionDef) -> int:
     count = 0
     body: list[ast.stmt] = []
     for statement in node.body:
-        body.append(statement)
         if (
             isinstance(statement, ast.Assign)
             and len(statement.targets) == 1
             and isinstance(statement.targets[0], ast.Name)
             and statement.targets[0].id == "result"
-            and isinstance(statement.value, ast.Call)
-            and isinstance(statement.value.func, ast.Attribute)
-            and statement.value.func.attr == "_store"
+            and _is_store_call(statement.value)
         ):
-            body.extend(
-                ast.parse(
-                    "_native_builder_handles[_native_builder_key(runtime, result)] = True"
-                ).body
+            body.append(statement)
+            body.append(_builder_marker())
+            count += 1
+            continue
+        if isinstance(statement, ast.Return) and _is_store_call(statement.value):
+            body.extend(ast.parse("result = None").body)
+            assignment = body[-1]
+            assert isinstance(assignment, ast.Assign)
+            assignment.value = statement.value
+            body.append(_builder_marker())
+            body.append(
+                ast.copy_location(
+                    ast.Return(value=ast.Name(id="result", ctx=ast.Load())),
+                    statement,
+                )
             )
             count += 1
+            continue
+        body.append(statement)
     node.body = body
     return count
 

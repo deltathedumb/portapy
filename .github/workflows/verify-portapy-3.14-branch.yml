@@ -1,6 +1,8 @@
 name: Verify PortaPy 3.14 branch
 
 on:
+  pull_request:
+    branches: [main]
   workflow_run:
     workflows: [Native shared-library probe]
     types: [completed]

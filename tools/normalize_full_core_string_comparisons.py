@@ -47,12 +47,11 @@ def _normalize_frontend() -> int:
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
 '''
-    new = '''            operands = [node.left]
-            for comparator in node.comparators:
-                operands.append(comparator)
-            for index, op in enumerate(node.ops):
-                left_operand = operands[index]
-                right_operand = operands[index + 1]
+    new = '''            left_operand: ast.expr = getattr(node, "left")
+            index = 0
+            while index < len(node.ops):
+                op = node.ops[index]
+                right_operand: ast.expr = node.comparators[index]
                 self.expr(left_operand)
                 self.expr(right_operand)
                 left_is_string = False
@@ -77,11 +76,15 @@ def _normalize_frontend() -> int:
                 self.emit(_compare_opcode(op), comparison_kind)
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
+                left_operand = right_operand
+                index += 1
 '''
     source = _replace(source, old, new, "frontend lowering")
     FRONTEND_PATH.write_text(source, encoding="utf-8")
     if "self.emit(_compare_opcode(op), comparison_kind)" not in source:
         raise RuntimeError("native string comparison kind was not emitted")
+    if "operands = [node.left]" in source:
+        raise RuntimeError("native comparison still erases AST operand types in a list")
     if "self.expression_kind(left_operand)" in source or "self.expression_kind(right_operand)" in source:
         raise RuntimeError("native comparison still crosses the opaque AST classifier boundary")
     return 1

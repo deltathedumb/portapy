@@ -1,4 +1,4 @@
-"""Make host ID getters return status errors without unsafe value dereferences."""
+"""Make native host ID getters and nested container writes compiler-safe."""
 from __future__ import annotations
 
 import ast
@@ -51,6 +51,72 @@ _REPLACEMENTS = {
 }
 
 
+def _is_slot_value_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_slot_value"
+        and len(node.args) == 2
+        and not node.keywords
+    )
+
+
+class _NestedSlotValueHoister(ast.NodeTransformer):
+    """Keep asmpython from emitting an odd push across a nested native call."""
+
+    def __init__(self) -> None:
+        self.hoisted = 0
+
+    def _name(self) -> str:
+        name = f"_native_slot_value_{self.hoisted}"
+        self.hoisted += 1
+        return name
+
+    def visit_Assign(self, node: ast.Assign) -> ast.AST | list[ast.stmt]:
+        self.generic_visit(node)
+        if (
+            len(node.targets) != 1
+            or not isinstance(node.targets[0], ast.Subscript)
+            or not _is_slot_value_call(node.value)
+        ):
+            return node
+        name = self._name()
+        value = node.value
+        node.value = ast.copy_location(ast.Name(id=name, ctx=ast.Load()), value)
+        temporary = ast.copy_location(
+            ast.Assign(
+                targets=[ast.Name(id=name, ctx=ast.Store())],
+                value=value,
+            ),
+            node,
+        )
+        return [temporary, node]
+
+    def visit_Expr(self, node: ast.Expr) -> ast.AST | list[ast.stmt]:
+        self.generic_visit(node)
+        call = node.value
+        if (
+            not isinstance(call, ast.Call)
+            or not isinstance(call.func, ast.Attribute)
+            or call.func.attr != "append"
+            or len(call.args) != 1
+            or call.keywords
+            or not _is_slot_value_call(call.args[0])
+        ):
+            return node
+        name = self._name()
+        value = call.args[0]
+        call.args[0] = ast.copy_location(ast.Name(id=name, ctx=ast.Load()), value)
+        temporary = ast.copy_location(
+            ast.Assign(
+                targets=[ast.Name(id=name, ctx=ast.Store())],
+                value=value,
+            ),
+            node,
+        )
+        return [temporary, node]
+
+
 class _Rewrite(ast.NodeTransformer):
     def __init__(self) -> None:
         self.replaced: set[str] = set()
@@ -68,9 +134,14 @@ def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     rewrite = _Rewrite()
     module = rewrite.visit(module)
+    hoister = _NestedSlotValueHoister()
+    module = hoister.visit(module)
     missing = sorted(set(_REPLACEMENTS) - rewrite.replaced)
-    if missing:
-        raise RuntimeError(f"native host ID getters missing: {missing}")
+    if missing or hoister.hoisted != 4:
+        raise RuntimeError(
+            "native host ABI normalization missed shapes; "
+            f"missing={missing}, nested_slot_calls={hoister.hoisted}"
+        )
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
@@ -79,11 +150,18 @@ def main() -> int:
         "_native_value_kind_code(kind) != PORTAPY_VALUE_OBJECT",
         "_native_value_kind_code(kind) != PORTAPY_VALUE_CALLABLE",
         "status, result = instance.unbox(value)",
+        "_native_slot_value_0 = _slot_value(instance, item)",
+        "_native_slot_value_3 = _slot_value(instance, item)",
     )
     absent = [marker for marker in required if marker not in verified]
     if absent:
-        raise RuntimeError(f"native host ID getter validation failed: {absent}")
-    print("NORMALIZED SAFE NATIVE HOST ID GETTERS", len(_REPLACEMENTS))
+        raise RuntimeError(f"native host ABI validation failed: {absent}")
+    print(
+        "NORMALIZED SAFE NATIVE HOST ABI",
+        len(_REPLACEMENTS),
+        "HOISTED SLOT CALLS",
+        hoister.hoisted,
+    )
     return 0
 
 

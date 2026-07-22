@@ -23,6 +23,7 @@ from tools.normalize_full_core_keyword_calls import (
 )
 from tools.normalize_full_core_lambdas import main as normalize_lambdas
 from tools.normalize_full_core_make_function import main as normalize_make_function
+from tools.normalize_full_core_name_index import main as normalize_name_index
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_native_parser_expressions import (
     main as normalize_native_parser_expressions,
@@ -121,6 +122,7 @@ def main() -> int:
     normalize_lambdas()
     normalize_native_semantics()
     normalize_opcode_maps()
+    normalize_name_index()
     normalize_reference_runtime()
 
     materialize_reference_entry()

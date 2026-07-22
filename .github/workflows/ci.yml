@@ -1,28 +1,124 @@
 name: CI
+
 on:
-  push:
   pull_request:
+    types: [ready_for_review]
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  bootstrap:
-    runs-on: ubuntu-22.04
+  hosted:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: c4444ae53c1c9b07a0d58d53dad8270af8a049df
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - run: python -m pip install -e '.[test]'
-      - name: Run hosted tests
+      - name: Run complete hosted suite
+        run: python -m pytest
+      - name: Check public C example
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux
+            library: dist/libportapy.so
+          - os: windows-2025
+            target: windows
+            library: dist/portapy.dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c4444ae53c1c9b07a0d58d53dad8270af8a049df
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux dependencies
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Install Windows dependencies
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build Linux standalone library
+        if: matrix.target == 'linux'
         shell: bash
         run: |
           mkdir -p dist
-          set -o pipefail
-          PYTHONPATH="$PWD" python -m pytest -q 2>&1 | tee dist/pytest.log
-      - run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+          python tools/build_native_typed.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-verify-linux
+      - name: Build Windows standalone library
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/build_native_typed.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-verify-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Linux standalone library
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          if readelf -dW dist/libportapy.so | grep -Ei 'libpython|python3'; then
+            echo 'CPython linkage is forbidden'
+            exit 1
+          fi
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then
+            echo 'text relocations are forbidden'
+            exit 1
+          fi
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_full_runtime_host.c -ldl \
+            -o dist/native_full_runtime_host
+          env -i PATH="$PATH" HOME="$HOME" \
+            ./dist/native_full_runtime_host ./dist/libportapy.so \
+            | tee dist/native-output.txt
+          grep -qx 'native-full-runtime: ok' dist/native-output.txt
+          python tests/native_traceback_adapter_probe.py dist/libportapy.so
+      - name: Verify Windows standalone library
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          $imports = (& objdump -p dist/portapy.dll | Out-String)
+          if ($imports -match '(?i)python3|python\.dll') {
+            throw 'CPython linkage is forbidden'
+          }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_full_runtime_host.c `
+            -o dist/native_full_runtime_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_full_runtime_host.exe dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-full-runtime: ok') {
+            throw "unexpected output: $output"
+          }
+          python tests/native_traceback_adapter_probe.py dist/portapy.dll
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: hosted-ci
+          name: portapy-3.14-${{ matrix.target }}
           path: dist

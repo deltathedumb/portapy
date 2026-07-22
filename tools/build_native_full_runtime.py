@@ -19,6 +19,9 @@ from tools.build_native_host_calls import _upgrade_linked_artifact
 from tools.elf_runtime_abi import fix_linux_runtime_abi
 from tools.nasm_direct_float_abi import append_direct_float_abi
 from tools.native_surface import public_exports
+from tools.normalize_full_core_expr_stmt_assembly import (
+    fix_expr_stmt_initializer_assembly,
+)
 from tools.normalize_full_core_validation import main as normalize_full_runtime
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
@@ -101,8 +104,15 @@ def _install_full_runtime_transforms() -> None:
         finally:
             base_build.append_float_abi = original_float
 
+        source = assembly.read_text(encoding="utf-8")
+        source, expr_stmt_count = fix_expr_stmt_initializer_assembly(
+            source,
+            target=target,
+        )
+        assembly.write_text(source, encoding="utf-8")
+        print("FIXED NATIVE EXPRSTMT PARAMETER LOAD", expr_stmt_count)
+
         if target == "linux":
-            source = assembly.read_text(encoding="utf-8")
             marker = "section .rodata"
             count = source.count(marker)
             if count < 1:

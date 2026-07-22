@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tools.combine_full_core_native_parser import main as combine_native_parser
 from tools.materialize_full_reference_entry import main as materialize_reference_entry
+from tools.normalize_full_core_boolops import main as normalize_boolops
 from tools.normalize_full_core_builtins import main as normalize_builtins
 from tools.normalize_full_core_calls_closures import (
     main as normalize_calls_closures,
@@ -121,6 +122,7 @@ def main() -> int:
     normalize_calls_closures()
     normalize_keyword_calls()
     combine_native_parser()
+    normalize_boolops()
     normalize_closures()
     normalize_pattern_slices()
     normalize_extended_semantics()

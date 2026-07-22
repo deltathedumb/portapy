@@ -1,10 +1,10 @@
 """Replace host-style function argument binding with compiler-safe loops.
 
 The pinned native compiler lowers ``dict(zip(names, positional))`` by replacing
-``zip(...)`` with a null value and then dereferencing it as a list.  This
-crashes as soon as an interpreted function is called.  Dict comprehensions
-used for ``**kwargs`` have the same unsafe lowering shape, so normalize both
-operations into explicit loops before native semantic rewriting.
+``zip(...)`` with a null value and then dereferencing it as a list. This crashes
+as soon as an interpreted function is called. Dict comprehensions used for
+``**kwargs`` have the same unsafe lowering shape, so normalize both operations
+into explicit loops before native semantic rewriting.
 """
 from __future__ import annotations
 
@@ -45,23 +45,32 @@ _KWARGS_NEW = '''            if target.code.kwarg_name:
 '''
 
 
+def _state(source: str, old: str, new: str, label: str) -> str:
+    old_count = source.count(old)
+    new_count = source.count(new)
+    if old_count == 1 and new_count == 0:
+        return "original"
+    if old_count == 0 and new_count == 1:
+        return "normalized"
+    raise RuntimeError(
+        f"native function {label} binding source shape changed: "
+        f"old={old_count}, normalized={new_count}"
+    )
+
+
 def main() -> int:
     source = PATH.read_text(encoding="utf-8")
-    positional_count = source.count(_POSITIONAL_OLD)
-    kwargs_count = source.count(_KWARGS_OLD)
-    if positional_count != 1:
-        raise RuntimeError(
-            "native function positional binding source shape changed: "
-            f"expected 1, found {positional_count}"
-        )
-    if kwargs_count != 1:
-        raise RuntimeError(
-            "native function kwargs binding source shape changed: "
-            f"expected 1, found {kwargs_count}"
-        )
+    positional_state = _state(source, _POSITIONAL_OLD, _POSITIONAL_NEW, "positional")
+    kwargs_state = _state(source, _KWARGS_OLD, _KWARGS_NEW, "kwargs")
 
-    source = source.replace(_POSITIONAL_OLD, _POSITIONAL_NEW, 1)
-    source = source.replace(_KWARGS_OLD, _KWARGS_NEW, 1)
+    positional_count = 0
+    kwargs_count = 0
+    if positional_state == "original":
+        source = source.replace(_POSITIONAL_OLD, _POSITIONAL_NEW, 1)
+        positional_count = 1
+    if kwargs_state == "original":
+        source = source.replace(_KWARGS_OLD, _KWARGS_NEW, 1)
+        kwargs_count = 1
     PATH.write_text(source, encoding="utf-8")
 
     required = (

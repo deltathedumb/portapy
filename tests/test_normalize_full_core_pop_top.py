@@ -1,26 +1,23 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from tools import normalize_full_core_pop_top as normalizer
 
 
 FRONTEND_SOURCE = '''class _Lowerer:
-    def emit(self, op, arg=0):
-        self.instructions.append(Instruction(op, arg))
-        return len(self.instructions) - 1
-
-    def patch(self, offset: int, target: int) -> None:
-        return
-
     def first(self):
         self.emit(Op.POP_TOP)
 
-    def second(self):
-        self.emit(Op.POP_TOP)
+    def second(self, condition):
+        if condition:
+            self.emit(Op.POP_TOP)
 
-    def third(self):
-        self.emit(Op.POP_TOP)
+    def third(self, condition):
+        if condition:
+            if condition:
+                self.emit(Op.POP_TOP)
 
     def fourth(self):
         self.emit(Op.POP_TOP)
@@ -30,7 +27,7 @@ FRONTEND_SOURCE = '''class _Lowerer:
 '''
 
 
-def test_lowers_all_pop_top_emissions_to_internal_bindings(
+def test_inlines_all_discard_emissions_with_original_indentation(
     tmp_path: Path, monkeypatch
 ) -> None:
     path = tmp_path / "frontend.py"
@@ -41,14 +38,11 @@ def test_lowers_all_pop_top_emissions_to_internal_bindings(
 
     source = path.read_text(encoding="utf-8")
     assert "self.emit(Op.POP_TOP)" not in source
-    assert source.count("self.discard_top()") == 5
-    assert "def discard_top(self) -> None:" in source
-    assert (
-        'discard_name = f"__pyinbin_internal_discard_{len(self.instructions)}"'
-        in source
-    )
-    assert "self.emit(Op.STORE_NAME, discard_index)" in source
-    assert "self.emit(Op.DELETE_NAME, discard_index)" in source
+    assert "def discard_top" not in source
+    assert source.count('self.name_index("__pyinbin_internal_discard")') == 10
+    assert source.count("Op.STORE_NAME,") == 5
+    assert source.count("Op.DELETE_NAME,") == 5
+    ast.parse(source)
 
 
 def test_fails_closed_when_emission_count_changes(

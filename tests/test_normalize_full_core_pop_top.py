@@ -43,7 +43,10 @@ def test_lowers_all_pop_top_emissions_to_internal_bindings(
     assert "self.emit(Op.POP_TOP)" not in source
     assert source.count("self.discard_top()") == 5
     assert "def discard_top(self) -> None:" in source
-    assert 'discard_name = f"<discard:{len(self.instructions)}>"' in source
+    assert (
+        'discard_name = f"__pyinbin_internal_discard_{len(self.instructions)}"'
+        in source
+    )
     assert "self.emit(Op.STORE_NAME, discard_index)" in source
     assert "self.emit(Op.DELETE_NAME, discard_index)" in source
 

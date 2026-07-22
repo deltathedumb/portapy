@@ -138,7 +138,7 @@ _VALUE_KIND_METHOD = '''    def value_kind(self, handle: int) -> tuple[Status, V
         return Status.OK, kind
 '''
 _NATIVE_VALUE_KIND_METHOD = '''    def value_kind(self, handle: int) -> tuple[Status, ValueKind]:
-        slot = self._value_slot(handle)
+        slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), ValueKind.OBJECT
         return Status.OK, slot.kind
@@ -152,7 +152,7 @@ _AS_INT_METHOD = '''    def as_int(self, handle: int) -> tuple[Status, int]:
         return Status.OK, slot.value
 '''
 _NATIVE_AS_INT_METHOD = '''    def as_int(self, handle: int) -> tuple[Status, int]:
-        slot = self._value_slot(handle)
+        slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0
         if slot.kind is not ValueKind.INT:
@@ -168,7 +168,7 @@ _AS_FLOAT_METHOD = '''    def as_float(self, handle: int) -> tuple[Status, float
         return Status.OK, slot.value
 '''
 _NATIVE_AS_FLOAT_METHOD = '''    def as_float(self, handle: int) -> tuple[Status, float]:
-        slot = self._value_slot(handle)
+        slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), 0.0
         if slot.kind is not ValueKind.FLOAT:
@@ -184,7 +184,7 @@ _AS_UTF8_METHOD = '''    def as_utf8(self, handle: int) -> tuple[Status, bytes]:
         return Status.OK, slot.value.encode("utf-8")
 '''
 _NATIVE_AS_UTF8_METHOD = '''    def as_utf8(self, handle: int) -> tuple[Status, bytes]:
-        slot = self._value_slot(handle)
+        slot = self._values.get(handle)
         if slot is None:
             return self._capture(Status.INVALID_HANDLE, KeyError(handle)), b""
         if slot.kind is not ValueKind.STRING:
@@ -255,6 +255,8 @@ def main() -> int:
         label="error coordinate reset",
         expected=3,
     )
+    # Keep all handle accesses in one final pass. The four replaced conversion
+    # methods deliberately retain the dictionary lookup until this point.
     source = _replace_exact(
         source,
         _HANDLE_GET,

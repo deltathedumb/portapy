@@ -1,4 +1,4 @@
-"""Make native host ID getters and nested container writes compiler-safe."""
+"""Make native value access and nested container writes compiler-safe."""
 from __future__ import annotations
 
 import ast
@@ -59,6 +59,40 @@ def _is_slot_value_call(node: ast.AST) -> bool:
         and len(node.args) == 2
         and not node.keywords
     )
+
+
+class _LegacyValueLookupRewriter(ast.NodeTransformer):
+    """Use Runtime._value_slot after the native runtime switches to a list."""
+
+    def __init__(self) -> None:
+        self.replaced = 0
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "_values"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id == "instance"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            self.replaced += 1
+            return ast.copy_location(
+                ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Name(id="instance", ctx=ast.Load()),
+                        attr="_value_slot",
+                        ctx=ast.Load(),
+                    ),
+                    args=node.args,
+                    keywords=[],
+                ),
+                node,
+            )
+        return node
 
 
 class _NestedSlotValueHoister(ast.NodeTransformer):
@@ -134,19 +168,23 @@ def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     rewrite = _Rewrite()
     module = rewrite.visit(module)
+    value_lookup = _LegacyValueLookupRewriter()
+    module = value_lookup.visit(module)
     hoister = _NestedSlotValueHoister()
     module = hoister.visit(module)
     missing = sorted(set(_REPLACEMENTS) - rewrite.replaced)
-    if missing or hoister.hoisted != 4:
+    if missing or value_lookup.replaced != 1 or hoister.hoisted != 4:
         raise RuntimeError(
             "native host ABI normalization missed shapes; "
-            f"missing={missing}, nested_slot_calls={hoister.hoisted}"
+            f"missing={missing}, value_lookups={value_lookup.replaced}, "
+            f"nested_slot_calls={hoister.hoisted}"
         )
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
     verified = ast.unparse(ast.parse(source))
     required = (
+        "slot = instance._value_slot(handle)",
         "_native_value_kind_code(kind) != PORTAPY_VALUE_OBJECT",
         "_native_value_kind_code(kind) != PORTAPY_VALUE_CALLABLE",
         "status, result = instance.unbox(value)",
@@ -159,6 +197,8 @@ def main() -> int:
     print(
         "NORMALIZED SAFE NATIVE HOST ABI",
         len(_REPLACEMENTS),
+        "VALUE LOOKUPS",
+        value_lookup.replaced,
         "HOISTED SLOT CALLS",
         hoister.hoisted,
     )

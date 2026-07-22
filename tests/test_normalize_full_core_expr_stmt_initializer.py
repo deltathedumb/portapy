@@ -13,10 +13,16 @@ class _npr_ast_nodes_ExprStmt:
 
 class Other:
     pass
+
+def build(value, pos):
+    return _npr_ast_nodes_ExprStmt(expr=value, pos=pos)
 '''
 
 
-def test_installs_direct_explicit_initializer(tmp_path: Path, monkeypatch) -> None:
+def test_installs_noncolliding_explicit_initializer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(SOURCE, encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
@@ -24,10 +30,31 @@ def test_installs_direct_explicit_initializer(tmp_path: Path, monkeypatch) -> No
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
-    assert "def __init__(self, expr: dict, pos: dict) -> None:" in source
-    assert "self.expr = expr" in source
+    assert "def __init__(self, expr_value: dict, pos: dict) -> None:" in source
+    assert "self.expr = expr_value" in source
     assert "self.pos = pos" in source
+    assert "_npr_ast_nodes_ExprStmt(expr_value=value, pos=pos)" in source
     assert "values: list[dict]" not in source
+    ast.parse(source)
+
+
+def test_positional_constructor_calls_remain_valid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "native_ast.py"
+    path.write_text(
+        SOURCE.replace(
+            "_npr_ast_nodes_ExprStmt(expr=value, pos=pos)",
+            "_npr_ast_nodes_ExprStmt(value, pos)",
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "PATH", path)
+
+    assert normalizer.main() == 0
+    source = path.read_text(encoding="utf-8")
+    assert "_npr_ast_nodes_ExprStmt(value, pos)" in source
     ast.parse(source)
 
 
@@ -44,7 +71,10 @@ def test_fails_closed_without_expr_stmt_class(tmp_path: Path, monkeypatch) -> No
         raise AssertionError("normalizer accepted a missing ExprStmt class")
 
 
-def test_fails_closed_with_existing_initializer(tmp_path: Path, monkeypatch) -> None:
+def test_fails_closed_with_existing_initializer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(
         SOURCE.replace(

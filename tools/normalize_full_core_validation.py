@@ -64,6 +64,9 @@ from tools.normalize_full_reference_runtime import (
 from tools.normalize_full_reference_source_preprocess import (
     main as normalize_reference_source_preprocess,
 )
+from tools.normalize_full_reference_type_errors import (
+    main as normalize_reference_type_errors,
+)
 from tools.normalize_full_reference_value_kinds import (
     main as normalize_reference_value_kinds,
 )
@@ -141,6 +144,7 @@ def main() -> int:
     _normalize_nested_code_introspection()
     _normalize_opcode_validation()
     normalize_truthiness()
+    normalize_reference_type_errors()
     return 0
 
 

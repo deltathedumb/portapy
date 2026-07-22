@@ -128,6 +128,9 @@ def _run_step(name: str, callback: Callable[[], object]) -> None:
 
 def main() -> int:
     steps: tuple[tuple[str, Callable[[], object]], ...] = (
+        # This pass relies on pristine VM source anchors. Keep it before every
+        # normalizer that rewrites or unparses src/portapy/core/vm.py.
+        ("native_keyword_transport", normalize_native_keyword_transport),
         ("probe", normalize_probe),
         ("lambdas", normalize_lambdas),
         ("function_specs", normalize_function_specs),
@@ -156,7 +159,6 @@ def main() -> int:
         ("native_argument_defaults", normalize_native_argument_defaults),
         ("calls_closures", normalize_calls_closures),
         ("keyword_calls", normalize_keyword_calls),
-        ("native_keyword_transport", normalize_native_keyword_transport),
         ("combine_native_parser", combine_native_parser),
         ("native_parser_expressions", normalize_native_parser_expressions),
         ("expr_stmt_initializer", normalize_expr_stmt_initializer),

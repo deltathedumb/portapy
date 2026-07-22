@@ -1,7 +1,9 @@
+#define _GNU_SOURCE
 #include "portapy.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(_WIN32)
@@ -9,11 +11,112 @@
 #define LOAD_LIBRARY(path) ((void *)LoadLibraryA(path))
 #define LOAD_SYMBOL(lib, name) ((void *)(uintptr_t)GetProcAddress((HMODULE)(lib), (name)))
 #define ABI_CALL __cdecl
+
+static LONG WINAPI portapy_control_crash_filter(EXCEPTION_POINTERS *exception) {
+    DWORD code = 0;
+    void *address = NULL;
+    CONTEXT *context = NULL;
+    if (exception != NULL) {
+        context = exception->ContextRecord;
+        if (exception->ExceptionRecord != NULL) {
+            code = exception->ExceptionRecord->ExceptionCode;
+            address = exception->ExceptionRecord->ExceptionAddress;
+        }
+    }
+    HMODULE module = NULL;
+    char module_name[MAX_PATH] = {0};
+    unsigned long long offset = 0;
+    if (address != NULL && GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)address,
+            &module
+        )) {
+        GetModuleFileNameA(module, module_name, (DWORD)sizeof(module_name));
+        offset = (unsigned long long)((uintptr_t)address - (uintptr_t)module);
+    }
+    fprintf(
+        stderr,
+        "control-crash: code=0x%08lx address=%p module=%s offset=0x%llx\n",
+        (unsigned long)code,
+        address,
+        module_name[0] == '\0' ? "<unknown>" : module_name,
+        offset
+    );
+#if defined(_M_X64) || defined(__x86_64__)
+    if (context != NULL) {
+        fprintf(
+            stderr,
+            "control-crash-context: rip=0x%llx rsp=0x%llx rbp=0x%llx\n",
+            (unsigned long long)context->Rip,
+            (unsigned long long)context->Rsp,
+            (unsigned long long)context->Rbp
+        );
+    }
+#endif
+    fflush(stderr);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+#define INSTALL_CRASH_HANDLER() SetUnhandledExceptionFilter(portapy_control_crash_filter)
 #else
 #include <dlfcn.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <ucontext.h>
 #define LOAD_LIBRARY(path) dlopen((path), RTLD_NOW | RTLD_LOCAL)
 #define LOAD_SYMBOL(lib, name) dlsym((lib), (name))
 #define ABI_CALL
+
+static void portapy_control_signal_handler(
+    int signal_number,
+    siginfo_t *signal_info,
+    void *context_pointer
+) {
+    uintptr_t instruction = 0;
+#if defined(__x86_64__) && defined(REG_RIP)
+    ucontext_t *context = (ucontext_t *)context_pointer;
+    instruction = (uintptr_t)context->uc_mcontext.gregs[REG_RIP];
+#else
+    (void)context_pointer;
+#endif
+    Dl_info module_info = {0};
+    const char *module_name = "<unknown>";
+    uintptr_t offset = 0;
+    if (instruction != 0 && dladdr((void *)instruction, &module_info) != 0) {
+        if (module_info.dli_fname != NULL) module_name = module_info.dli_fname;
+        if (module_info.dli_fbase != NULL) {
+            offset = instruction - (uintptr_t)module_info.dli_fbase;
+        }
+    }
+    fprintf(
+        stderr,
+        "control-crash: signal=%d fault=%p instruction=%p module=%s offset=0x%llx\n",
+        signal_number,
+        signal_info == NULL ? NULL : signal_info->si_addr,
+        (void *)instruction,
+        module_name,
+        (unsigned long long)offset
+    );
+    void *frames[32];
+    int frame_count = backtrace(frames, (int)(sizeof(frames) / sizeof(frames[0])));
+    backtrace_symbols_fd(frames, frame_count, 2);
+    fflush(stderr);
+    _Exit(128 + signal_number);
+}
+
+static void install_control_crash_handler(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_sigaction = portapy_control_signal_handler;
+    action.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGSEGV, &action, NULL);
+    sigaction(SIGBUS, &action, NULL);
+    sigaction(SIGABRT, &action, NULL);
+}
+
+#define INSTALL_CRASH_HANDLER() install_control_crash_handler()
 #endif
 
 #define TRACE_STEP(message) do { \
@@ -71,8 +174,24 @@ static int expect_text(
     return copied == expected_size && memcmp(buffer, expected, expected_size) == 0;
 }
 
+static portapy_status execute_text(
+    exec_utf8_fn execute,
+    portapy_runtime runtime,
+    const char *source,
+    const char *filename
+) {
+    return execute(
+        runtime,
+        (const uint8_t *)source,
+        strlen(source),
+        (const uint8_t *)filename,
+        strlen(filename)
+    );
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    INSTALL_CRASH_HANDLER();
     TRACE_STEP("load-library");
     void *library = LOAD_LIBRARY(argv[1]);
     if (library == NULL) return 3;
@@ -95,6 +214,75 @@ int main(int argc, char **argv) {
     portapy_config config = {0};
     config.struct_size = sizeof(config);
     config.abi_version = PORTAPY_ABI_VERSION;
+
+    const char *preflight_sources[] = {
+        "name = \"Somnia\"\n"
+        "choice = \"unset\"\n",
+        "name = \"Somnia\"\n"
+        "choice = \"unset\"\n"
+        "if name == \"Somnia\":\n"
+        "    choice = \"matched\"\n"
+        "    if 2 < 3:\n"
+        "        nested = True\n"
+        "else:\n"
+        "    choice = \"wrong\"\n",
+        "name = \"Somnia\"\n"
+        "choice = \"unset\"\n"
+        "if name == \"Somnia\":\n"
+        "    choice = \"matched\"\n"
+        "    if 2 < 3:\n"
+        "        nested = True\n"
+        "else:\n"
+        "    choice = \"wrong\"\n"
+        "count = 0\n"
+        "total = 0\n"
+        "while count < 6:\n"
+        "    count = count + 1\n"
+        "    if count == 2:\n"
+        "        continue\n"
+        "    if count == 5:\n"
+        "        break\n"
+        "    total = total + count\n",
+        "name = \"Somnia\"\n"
+        "choice = \"unset\"\n"
+        "if name == \"Somnia\":\n"
+        "    choice = \"matched\"\n"
+        "    if 2 < 3:\n"
+        "        nested = True\n"
+        "else:\n"
+        "    choice = \"wrong\"\n"
+        "count = 0\n"
+        "total = 0\n"
+        "while count < 6:\n"
+        "    count = count + 1\n"
+        "    if count == 2:\n"
+        "        continue\n"
+        "    if count == 5:\n"
+        "        break\n"
+        "    total = total + count\n"
+        "finished = count == 5 and total == 8\n"
+        "42 == 42\n"
+        "pass\n"
+    };
+    const char *preflight_steps[] = {
+        "preflight-assignments",
+        "preflight-if",
+        "preflight-while",
+        "preflight-complete"
+    };
+    const size_t preflight_count = sizeof(preflight_sources) / sizeof(preflight_sources[0]);
+    for (size_t index = 0; index < preflight_count; ++index) {
+        portapy_runtime probe = PORTAPY_NULL_RUNTIME;
+        TRACE_STEP(preflight_steps[index]);
+        if (runtime_create(&config, &probe) != PORTAPY_OK || probe == 0) {
+            return (int)(40 + index * 2);
+        }
+        if (execute_text(exec_utf8, probe, preflight_sources[index], "control_preflight.py") != PORTAPY_OK) {
+            return (int)(41 + index * 2);
+        }
+        if (runtime_destroy(probe) != PORTAPY_OK) return (int)(48 + index);
+    }
+
     portapy_runtime runtime = PORTAPY_NULL_RUNTIME;
     TRACE_STEP("runtime-create");
     if (runtime_create(&config, &runtime) != PORTAPY_OK || runtime == 0) return 12;
@@ -121,13 +309,7 @@ int main(int argc, char **argv) {
         "42 == 42\n"
         "pass\n";
     TRACE_STEP("exec-control-block");
-    if (exec_utf8(
-            runtime,
-            (const uint8_t *)source,
-            sizeof(source) - 1,
-            (const uint8_t *)"control_flow.py",
-            strlen("control_flow.py")
-        ) != PORTAPY_OK) return 13;
+    if (execute_text(exec_utf8, runtime, source, "control_flow.py") != PORTAPY_OK) return 13;
 
     portapy_value value = PORTAPY_NULL_VALUE;
     TRACE_STEP("get-choice");

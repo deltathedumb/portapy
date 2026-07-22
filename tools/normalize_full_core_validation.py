@@ -34,6 +34,7 @@ from tools.normalize_full_core_native_argument_defaults import main as normalize
 from tools.normalize_full_core_native_keyword_transport import main as normalize_native_keyword_transport
 from tools.normalize_full_core_native_parser import main as normalize_native_parser
 from tools.normalize_full_core_native_parser_expressions import main as normalize_native_parser_expressions
+from tools.normalize_full_core_native_parser_target_dispatch import main as normalize_native_parser_target_dispatch
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
 from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
@@ -168,6 +169,7 @@ def main() -> int:
         ("keyword_calls", normalize_keyword_calls),
         ("combine_native_parser", combine_native_parser),
         ("native_parser_expressions", normalize_native_parser_expressions),
+        ("native_parser_target_dispatch", normalize_native_parser_target_dispatch),
         ("expr_stmt_initializer", normalize_expr_stmt_initializer),
         ("parser_errors", normalize_parser_errors),
         ("boolops", normalize_boolops),

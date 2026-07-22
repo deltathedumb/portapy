@@ -8,7 +8,10 @@ from tools import normalize_full_core_native_parser_expressions as normalizer
 
 SOURCE = '''class _npr_parser_Parser:
     def _parse_stmt(self):
+        pos = self._peek().pos
         expr = self._parse_expr()
+        if isinstance(expr, Name):
+            return expr
         if condition:
             value = self._parse_expr()
         other = self._peek()
@@ -20,7 +23,9 @@ SOURCE = '''class _npr_parser_Parser:
 '''
 
 
-def test_types_parse_stmt_expression_results_only(tmp_path: Path, monkeypatch) -> None:
+def test_types_results_and_fast_paths_expression_statements(
+    tmp_path: Path, monkeypatch
+) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(SOURCE, encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
@@ -32,7 +37,12 @@ def test_types_parse_stmt_expression_results_only(tmp_path: Path, monkeypatch) -
     assert "value: dict = self._parse_expr()" in source
     assert "untouched = self._parse_expr()" in source
     assert "other = self._peek()" in source
-    assert ": object = self._parse_expr()" not in source
+    assert "if self._check('NEWLINE'):" in source
+    assert "self._eat()" in source
+    assert "return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)" in source
+    assert source.index("if self._check('NEWLINE'):") < source.index(
+        "if isinstance(expr, Name):"
+    )
     ast.parse(source)
 
 
@@ -47,3 +57,21 @@ def test_fails_closed_without_parser_method(tmp_path: Path, monkeypatch) -> None
         assert "Parser class is missing" in str(error)
     else:
         raise AssertionError("normalizer accepted a missing embedded parser")
+
+
+def test_fails_closed_without_main_expr_assignment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / "native_ast.py"
+    path.write_text(
+        SOURCE.replace("        expr = self._parse_expr()\n", "        expr = 1\n"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "PATH", path)
+
+    try:
+        normalizer.main()
+    except RuntimeError as error:
+        assert "fast path expected one insertion" in str(error)
+    else:
+        raise AssertionError("normalizer accepted a missing expression fast path")

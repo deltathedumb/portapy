@@ -175,11 +175,23 @@ def main() -> int:
         raise RuntimeError(
             "native parser expression fast path was not preserved uniquely"
         )
-    method_source = ast.unparse(verified_method)
-    fast_path_source = ast.unparse(fast_paths[0])
-    assignment_check = "isinstance(expr, _npr_ast_nodes_Name)"
-    if assignment_check in method_source and method_source.index(fast_path_source) > method_source.index(assignment_check):
-        raise RuntimeError("native expression fast path follows assignment checks")
+    main_expr_assignments = [
+        node
+        for node in verified_method.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "expr"
+        and node.value is not None
+        and _is_parse_expr_call(node.value)
+    ]
+    if len(main_expr_assignments) != 1:
+        raise RuntimeError("native parser main expression assignment is not unique")
+    expression_index = verified_method.body.index(main_expr_assignments[0])
+    fast_path_index = verified_method.body.index(fast_paths[0])
+    if fast_path_index != expression_index + 1:
+        raise RuntimeError(
+            "native expression fast path does not immediately follow parsing"
+        )
 
     print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
     print("FAST-PATHED NATIVE EXPRESSION STATEMENTS", fast_path_count)

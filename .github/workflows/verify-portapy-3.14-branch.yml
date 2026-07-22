@@ -1,0 +1,142 @@
+name: Verify PortaPy 3.14 branch
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: verify-portapy-3.14-branch
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  hosted:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: be5417cce8509adc3ba9d2fd9444fc716a591785
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[test]'
+      - name: Run hosted suite
+        run: python -m pytest
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux
+            library: dist/libportapy.so
+          - os: windows-2025
+            target: windows
+            library: dist/portapy.dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: be5417cce8509adc3ba9d2fd9444fc716a591785
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux dependencies
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm gcc binutils
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall \
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Install Windows dependencies
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          choco install nasm mingw -y --no-progress
+          python -m pip install -e '.[test]'
+          python -m pip install --no-cache-dir --force-reinstall `
+            'git+https://github.com/deltathedumb/asmpython.git@376cf9422c28123673a1dedd7dd66b845f3c5ed1'
+      - name: Build Linux library
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          mkdir -p dist
+          python tools/build_native_typed.py \
+            --target linux \
+            --output dist/libportapy.so \
+            --work-dir dist/build-verify-linux
+      - name: Build Windows library
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/build_native_typed.py `
+            --target windows `
+            --output dist/portapy.dll `
+            --work-dir dist/build-verify-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Linux standalone library
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          if readelf -dW dist/libportapy.so | grep -Ei 'libpython|python3'; then exit 1; fi
+          if readelf -dW dist/libportapy.so | grep -q TEXTREL; then exit 1; fi
+          cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+            tests/native_full_runtime_host.c -ldl \
+            -o dist/native_full_runtime_host
+          env -i PATH="$PATH" HOME="$HOME" \
+            ./dist/native_full_runtime_host ./dist/libportapy.so \
+            | tee dist/native-output.txt
+          grep -qx 'native-full-runtime: ok' dist/native-output.txt
+          python tests/native_traceback_adapter_probe.py dist/libportapy.so
+      - name: Verify Windows standalone library
+        if: matrix.target == 'windows'
+        shell: powershell
+        run: |
+          $imports = (& objdump -p dist/portapy.dll | Out-String)
+          if ($imports -match '(?i)python3|python\.dll') { throw 'CPython linkage is forbidden' }
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude `
+            tests/native_full_runtime_host.c `
+            -o dist/native_full_runtime_host.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = & dist/native_full_runtime_host.exe dist/portapy.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne 'native-full-runtime: ok') { throw "unexpected output: $output" }
+          python tests/native_traceback_adapter_probe.py dist/portapy.dll
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portapy-3.14-${{ matrix.target }}
+          path: dist
+
+  report:
+    if: always()
+    needs: [hosted, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOSTED_RESULT: ${{ needs.hosted.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+        run: |
+          gh pr view 46 --repo "${{ github.repository }}" --json body --jq .body > /tmp/body.md
+          cat >> /tmp/body.md <<EOF
+
+          <!-- portapy-main-verification -->
+          ### Main-hosted exact branch verification
+
+          - Tested commit: \`be5417cce8509adc3ba9d2fd9444fc716a591785\`
+          - Run: \`${{ github.run_id }}\`
+          - Hosted suite: **${HOSTED_RESULT}**
+          - Linux/Windows native matrix: **${NATIVE_RESULT}**
+          <!-- /portapy-main-verification -->
+          EOF
+          gh pr edit 46 --repo "${{ github.repository }}" --body-file /tmp/body.md

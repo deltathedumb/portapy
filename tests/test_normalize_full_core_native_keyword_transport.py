@@ -7,10 +7,18 @@ from tools import normalize_full_core_native_keyword_transport as normalizer
 from tools import normalize_full_core_validation as validation
 
 
-_SOURCE = '''class VirtualMachine:
+_SOURCE = '''def _raise_typed(message: str) -> None:
+    raise TypeError(message)
+
+
+class SuperProxy:
+    pass
+
+
+class VirtualMachine:
     def _call(self, target: object, args: list[object], kwargs: dict[str, object] | None = None) -> object:
         kwargs = kwargs or {}
-        return target
+        return kwargs
 
     def _run_frame(self, frame: object) -> object:
         target = object()
@@ -45,6 +53,21 @@ def _normalize(tmp_path: Path, monkeypatch) -> str:
     return source
 
 
+def _vm(source: str) -> object:
+    namespace: dict[str, object] = {}
+    exec(source, namespace)
+    return namespace["VirtualMachine"]()
+
+
+def _expect_type_error(callback, message: str) -> None:
+    try:
+        callback()
+    except TypeError as error:
+        assert message in str(error)
+    else:
+        raise AssertionError("expected TypeError")
+
+
 def test_transports_typed_keyword_names_and_values(
     tmp_path: Path,
     monkeypatch,
@@ -63,6 +86,38 @@ def test_transports_typed_keyword_names_and_values(
     assert "self._call(target, positional, None, keyword_names, values)" in source
     assert "keyword_names: list[object]" not in source
     assert "for name, value in zip(names, values):" not in source
+
+    vm = _vm(source)
+    result = vm._call(
+        object(),
+        [],
+        None,
+        ["direct", ""],
+        [1, {"mapped": 2, "": 3}],
+    )
+    assert result == {"direct": 1, "mapped": 2, "": 3}
+
+
+def test_rejects_invalid_or_duplicate_mapping_keywords(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vm = _vm(_normalize(tmp_path, monkeypatch))
+
+    _expect_type_error(
+        lambda: vm._call(object(), [], None, [""], [{1: "bad"}]),
+        "keywords must be strings",
+    )
+    _expect_type_error(
+        lambda: vm._call(
+            object(),
+            [],
+            None,
+            ["direct", ""],
+            [1, {"direct": 2}],
+        ),
+        "multiple values for keyword argument",
+    )
 
 
 def test_empty_keyword_unpack_preserves_lexical_super(

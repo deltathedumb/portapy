@@ -1,12 +1,12 @@
 """Preserve parsed AST values and fast-path native expression statements.
 
 The pinned compiler cannot safely compile the heterogeneous ``isinstance`` chain
-that follows ``expr = self._parse_expr()`` in the embedded parser: it substitutes
-a static type token for the returned AST object. A newline means the statement is
-unambiguously an expression statement, so return it immediately before reaching
-those assignment-target checks. The embedded ``ExprStmt.expr`` dataclass field is
-also typed as ``dict`` and constructed positionally so the compiler forwards the
-real dict-backed AST node rather than a keyword argument's static type token.
+that follows ``expr = self._parse_expr()`` in the embedded parser. It also lowers
+a direct reference to that opaque local into the static dict type token ``0x7e``.
+Box the returned node directly in a typed one-item list, fast-path newline-terminated
+expression statements with a runtime ``box[0]`` load, then restore ``expr`` only
+for the remaining assignment-target parsing. ``ExprStmt.expr`` is typed as ``dict``
+to match the parser nodes' native dict-backed representation.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 PATH = Path("src/portapy/core/native_ast.py")
+_EXPR_BOX_NAME = "__pyinbin_native_expr_values"
 
 
 def _is_parse_expr_call(node: ast.expr) -> bool:
@@ -32,6 +33,16 @@ def _is_expr_stmt_call(node: ast.expr | None) -> bool:
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "_npr_ast_nodes_ExprStmt"
+    )
+
+
+def _is_box_subscript(node: ast.expr | None) -> bool:
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == _EXPR_BOX_NAME
+        and isinstance(node.slice, ast.Constant)
+        and node.slice.value == 0
     )
 
 
@@ -55,7 +66,7 @@ def _is_newline_fast_path(node: ast.AST) -> bool:
     )
 
 
-class _AnnotateExpressionResults(ast.NodeTransformer):
+class _AnnotateRemainingExpressionResults(ast.NodeTransformer):
     def __init__(self) -> None:
         self.count = 0
 
@@ -142,21 +153,23 @@ def _install_expression_statement_fast_path(method: ast.FunctionDef) -> int:
     replacement: list[ast.stmt] = []
     inserted = 0
     for statement in method.body:
-        replacement.append(statement)
         if not (
-            isinstance(statement, ast.AnnAssign)
-            and isinstance(statement.target, ast.Name)
-            and statement.target.id == "expr"
-            and statement.value is not None
+            isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Name)
+            and statement.targets[0].id == "expr"
             and _is_parse_expr_call(statement.value)
         ):
+            replacement.append(statement)
             continue
-        fast_path = ast.parse(
+        block = ast.parse(
+            f"{_EXPR_BOX_NAME}: list[dict] = [self._parse_expr()]\n"
             "if self._check('NEWLINE'):\n"
             "    self._eat()\n"
-            "    return _npr_ast_nodes_ExprStmt(expr, pos)\n"
-        ).body[0]
-        replacement.append(ast.copy_location(fast_path, statement))
+            f"    return _npr_ast_nodes_ExprStmt({_EXPR_BOX_NAME}[0], pos)\n"
+            f"expr: dict = {_EXPR_BOX_NAME}[0]\n"
+        ).body
+        replacement.extend(ast.copy_location(item, statement) for item in block)
         inserted += 1
     method.body = replacement
     return inserted
@@ -166,16 +179,14 @@ def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     expr_stmt_field_count = _normalize_expr_stmt_field(module)
     method = _parse_stmt_method(module)
-    annotator = _AnnotateExpressionResults()
-    annotator.visit(method)
-    if annotator.count < 1:
-        raise RuntimeError("native Parser._parse_stmt had no expression results to type")
     fast_path_count = _install_expression_statement_fast_path(method)
     if fast_path_count != 1:
         raise RuntimeError(
             "native Parser._parse_stmt expression fast path expected one insertion, "
             f"found {fast_path_count}"
         )
+    annotator = _AnnotateRemainingExpressionResults()
+    annotator.visit(method)
 
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
@@ -224,40 +235,49 @@ def main() -> int:
     if len(expr_fields) != expr_stmt_field_count:
         raise RuntimeError("native ExprStmt.expr dict annotation was not preserved")
 
+    boxes = [
+        node
+        for node in verified_method.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == _EXPR_BOX_NAME
+        and isinstance(node.value, ast.List)
+        and len(node.value.elts) == 1
+        and _is_parse_expr_call(node.value.elts[0])
+    ]
     fast_paths = [node for node in verified_method.body if _is_newline_fast_path(node)]
-    if len(fast_paths) != 1:
-        raise RuntimeError(
-            "native parser expression fast path was not preserved uniquely"
-        )
+    restored = [
+        node
+        for node in verified_method.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "expr"
+        and _is_box_subscript(node.value)
+    ]
+    if len(boxes) != 1 or len(fast_paths) != 1 or len(restored) != 1:
+        raise RuntimeError("native expression box sequence was not preserved uniquely")
+    box_index = verified_method.body.index(boxes[0])
+    fast_path_index = verified_method.body.index(fast_paths[0])
+    restored_index = verified_method.body.index(restored[0])
+    if (fast_path_index, restored_index) != (box_index + 1, box_index + 2):
+        raise RuntimeError("native expression box sequence is not contiguous")
+
     fast_return = next(
         statement
         for statement in fast_paths[0].body
         if isinstance(statement, ast.Return) and _is_expr_stmt_call(statement.value)
     )
     assert isinstance(fast_return.value, ast.Call)
-    if fast_return.value.keywords or len(fast_return.value.args) != 2:
-        raise RuntimeError("native expression fast path is not positional")
-    main_expr_assignments = [
-        node
-        for node in verified_method.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "expr"
-        and node.value is not None
-        and _is_parse_expr_call(node.value)
-    ]
-    if len(main_expr_assignments) != 1:
-        raise RuntimeError("native parser main expression assignment is not unique")
-    expression_index = verified_method.body.index(main_expr_assignments[0])
-    fast_path_index = verified_method.body.index(fast_paths[0])
-    if fast_path_index != expression_index + 1:
-        raise RuntimeError(
-            "native expression fast path does not immediately follow parsing"
-        )
+    if (
+        fast_return.value.keywords
+        or len(fast_return.value.args) != 2
+        or not _is_box_subscript(fast_return.value.args[0])
+    ):
+        raise RuntimeError("native expression fast path does not load the boxed node")
 
     print("TYPED NATIVE EXPRSTMT FIELD", expr_stmt_field_count)
-    print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
-    print("FAST-PATHED NATIVE EXPRESSION STATEMENTS", fast_path_count)
+    print("BOXED NATIVE PARSER EXPRESSION RESULT", fast_path_count)
+    print("TYPED REMAINING PARSER EXPRESSION RESULTS", annotator.count)
     return 0
 
 

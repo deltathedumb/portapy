@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import re
 
 
 FRONTEND_PATH = Path("src/portapy/core/frontend.py")
@@ -25,21 +26,6 @@ def _replace(source: str, old: str, new: str, label: str) -> str:
         raise RuntimeError(
             f"native string addition {label}: expected 1 match, found {count}"
         )
-    return source.replace(old, new, 1)
-
-
-def _replace_one_of(
-    source: str,
-    replacements: tuple[tuple[str, str], ...],
-    label: str,
-) -> str:
-    matches = [(old, new) for old, new in replacements if source.count(old) == 1]
-    if len(matches) != 1:
-        counts = [source.count(old) for old, _ in replacements]
-        raise RuntimeError(
-            f"native string addition {label}: expected one source shape, found {counts}"
-        )
-    old, new = matches[0]
     return source.replace(old, new, 1)
 
 
@@ -162,6 +148,52 @@ def _normalize_frontend() -> int:
     return 1
 
 
+def _normalize_vm_dispatch(source: str) -> str:
+    inline = re.compile(
+        r"^(?P<indent>[ \t]+)if op is Op\.BINARY_ADD: "
+        r"frame\.stack\.append\(left \+ right\)\n",
+        re.MULTILINE,
+    )
+    expanded = re.compile(
+        r"^(?P<indent>[ \t]+)if op is Op\.BINARY_ADD:\n"
+        r"(?P<child>[ \t]+)frame\.stack\.append\(left \+ right\)\n",
+        re.MULTILINE,
+    )
+    inline_matches = list(inline.finditer(source))
+    expanded_matches = list(expanded.finditer(source))
+    if len(inline_matches) + len(expanded_matches) != 1:
+        raise RuntimeError(
+            "native string addition VM dispatch: expected one source shape, "
+            f"found [{len(inline_matches)}, {len(expanded_matches)}]"
+        )
+
+    if inline_matches:
+        match = inline_matches[0]
+        indent = match.group("indent")
+        child = indent + "    "
+    else:
+        match = expanded_matches[0]
+        indent = match.group("indent")
+        child = match.group("child")
+        if len(child) <= len(indent):
+            raise RuntimeError("native string addition VM dispatch has invalid indentation")
+
+    replacement = (
+        f"{indent}if op is Op.BINARY_ADD:\n"
+        f"{child}if instr.arg == {_STRING_KIND}:\n"
+        f"{child}    frame.stack.append(\n"
+        f"{child}        _full_core_probe_concat_strings(left, right)\n"
+        f"{child}    )\n"
+        f"{child}elif instr.arg == {_MIXED_STRING_KIND}:\n"
+        f"{child}    _raise_typed(\n"
+        f'{child}        "TypeError: can only concatenate string to string"\n'
+        f"{child}    )\n"
+        f"{child}else:\n"
+        f"{child}    frame.stack.append(left + right)\n"
+    )
+    return source[: match.start()] + replacement + source[match.end() :]
+
+
 def _normalize_vm() -> int:
     source = VM_PATH.read_text(encoding="utf-8")
     class_anchor = "class VirtualMachine:"
@@ -171,27 +203,7 @@ def _normalize_vm() -> int:
         _CONCAT_HELPER + class_anchor,
         "helper insertion",
     )
-    inline_old = "                    if op is Op.BINARY_ADD: frame.stack.append(left + right)\n"
-    expanded_old = '''                    if op is Op.BINARY_ADD:
-                        frame.stack.append(left + right)
-'''
-    replacement = f'''                    if op is Op.BINARY_ADD:
-                        if instr.arg == {_STRING_KIND}:
-                            frame.stack.append(
-                                _full_core_probe_concat_strings(left, right)
-                            )
-                        elif instr.arg == {_MIXED_STRING_KIND}:
-                            _raise_typed(
-                                "TypeError: can only concatenate string to string"
-                            )
-                        else:
-                            frame.stack.append(left + right)
-'''
-    source = _replace_one_of(
-        source,
-        ((inline_old, replacement), (expanded_old, replacement)),
-        "VM dispatch",
-    )
+    source = _normalize_vm_dispatch(source)
     VM_PATH.write_text(source, encoding="utf-8")
     required = (
         "def _full_core_probe_concat_strings",

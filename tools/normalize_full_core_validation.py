@@ -18,6 +18,7 @@ from tools.normalize_full_core_expr_stmt_initializer import (
 from tools.normalize_full_core_extended_semantics_compat import (
     main as normalize_extended_semantics,
 )
+from tools.normalize_full_core_function_specs import main as normalize_function_specs
 from tools.normalize_full_core_keyword_calls import (
     main as normalize_keyword_calls,
 )
@@ -120,6 +121,7 @@ def main() -> int:
     # These passes prepare the source modules imported by the generated entry.
     normalize_probe()
     normalize_lambdas()
+    normalize_function_specs()
     normalize_native_semantics()
     normalize_opcode_maps()
     normalize_name_index()

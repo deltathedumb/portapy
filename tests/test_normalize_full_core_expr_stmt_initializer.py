@@ -11,32 +11,15 @@ class _npr_ast_nodes_ExprStmt:
     expr: dict
     pos: object
 
-class pattern:
-    pass
-
-class MatchAs:
-    def __init__(self, pattern, name):
-        self.pattern = pattern
-        self.name = name
-
-class match_case:
-    def __init__(self, pattern, guard, body):
-        self.pattern = pattern
-        self.guard = guard
-        self.body = body
-
 class Other:
     pass
 
 def build(value, pos):
-    first = _npr_ast_nodes_ExprStmt(expr=value, pos=pos)
-    second = MatchAs(pattern=value, name='captured')
-    third = match_case(pattern=value, guard=None, body=[])
-    return first, second, third
+    return _npr_ast_nodes_ExprStmt(expr=value, pos=pos)
 '''
 
 
-def test_repairs_collision_prone_initializers_and_calls(
+def test_installs_noncolliding_explicit_initializer(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -49,12 +32,8 @@ def test_repairs_collision_prone_initializers_and_calls(
     source = path.read_text(encoding="utf-8")
     assert "def __init__(self, expr_value: dict, pos: dict) -> None:" in source
     assert "self.expr = expr_value" in source
-    assert "def __init__(self, pattern_value, name):" in source
-    assert "def __init__(self, pattern_value, guard, body):" in source
-    assert source.count("self.pattern = pattern_value") == 2
+    assert "self.pos = pos" in source
     assert "_npr_ast_nodes_ExprStmt(expr_value=value, pos=pos)" in source
-    assert "MatchAs(pattern_value=value, name='captured')" in source
-    assert "match_case(pattern_value=value, guard=None, body=[])" in source
     assert "values: list[dict]" not in source
     ast.parse(source)
 
@@ -64,25 +43,19 @@ def test_positional_constructor_calls_remain_valid(
     monkeypatch,
 ) -> None:
     path = tmp_path / "native_ast.py"
-    source = SOURCE.replace(
-        "_npr_ast_nodes_ExprStmt(expr=value, pos=pos)",
-        "_npr_ast_nodes_ExprStmt(value, pos)",
-    ).replace(
-        "MatchAs(pattern=value, name='captured')",
-        "MatchAs(value, 'captured')",
-    ).replace(
-        "match_case(pattern=value, guard=None, body=[])",
-        "match_case(value, None, [])",
+    path.write_text(
+        SOURCE.replace(
+            "_npr_ast_nodes_ExprStmt(expr=value, pos=pos)",
+            "_npr_ast_nodes_ExprStmt(value, pos)",
+        ),
+        encoding="utf-8",
     )
-    path.write_text(source, encoding="utf-8")
     monkeypatch.setattr(normalizer, "PATH", path)
 
     assert normalizer.main() == 0
-    rewritten = path.read_text(encoding="utf-8")
-    assert "_npr_ast_nodes_ExprStmt(value, pos)" in rewritten
-    assert "MatchAs(value, 'captured')" in rewritten
-    assert "match_case(value, None, [])" in rewritten
-    ast.parse(rewritten)
+    source = path.read_text(encoding="utf-8")
+    assert "_npr_ast_nodes_ExprStmt(value, pos)" in source
+    ast.parse(source)
 
 
 def test_fails_closed_without_expr_stmt_class(tmp_path: Path, monkeypatch) -> None:

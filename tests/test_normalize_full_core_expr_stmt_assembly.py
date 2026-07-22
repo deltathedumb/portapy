@@ -46,6 +46,14 @@ def test_repairs_windows_parameter_load() -> None:
     assert "mov rax, [rbp-16]" in source
 
 
+def test_accepts_already_correct_parameter_load() -> None:
+    correct = LINUX.replace("mov rax, 126", "mov rax, [rbp-16]")
+    source, count = fix_expr_stmt_initializer_assembly(correct, target="linux")
+
+    assert count == 0
+    assert source == correct
+
+
 def test_fails_closed_when_bad_load_changes() -> None:
     try:
         fix_expr_stmt_initializer_assembly(
@@ -53,7 +61,7 @@ def test_fails_closed_when_bad_load_changes() -> None:
             target="linux",
         )
     except RuntimeError as error:
-        assert "expected one static dict-token load" in str(error)
+        assert "neither the static dict-token load" in str(error)
     else:
         raise AssertionError("assembly transform accepted a changed bad load")
 

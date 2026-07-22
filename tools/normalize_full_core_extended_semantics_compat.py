@@ -8,9 +8,6 @@ retaining the original fail-closed behavior everywhere else.
 from __future__ import annotations
 
 from tools import normalize_full_core_extended_semantics as _base
-from tools.normalize_full_core_pattern_constructor_collisions import (
-    main as normalize_pattern_constructor_collisions,
-)
 
 
 _CALL_PARSER_MARKERS = {
@@ -105,10 +102,7 @@ def main() -> int:
     previous = _base._replace
     _base._replace = _compatible_replace
     try:
-        result = _base.main()
-        if result not in (None, 0):
-            return int(result)
-        return normalize_pattern_constructor_collisions()
+        return _base.main()
     finally:
         _base._replace = previous
 

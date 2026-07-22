@@ -4,8 +4,9 @@ The pinned compiler cannot safely compile the heterogeneous ``isinstance`` chain
 that follows ``expr = self._parse_expr()`` in the embedded parser: it substitutes
 a static type token for the returned AST object. A newline means the statement is
 unambiguously an expression statement, so return it immediately before reaching
-those assignment-target checks. Remaining expression locals keep an explicit
-``dict`` annotation matching the parser nodes' native dict-backed representation.
+those assignment-target checks. The embedded ``ExprStmt.expr`` dataclass field is
+also typed as ``dict`` so the compiler stores the real dict-backed AST node rather
+than the abstract expression type token.
 """
 from __future__ import annotations
 
@@ -78,7 +79,7 @@ class _AnnotateExpressionResults(ast.NodeTransformer):
         )
 
 
-def _parse_stmt_method(module: ast.Module) -> ast.FunctionDef:
+def _parser_class(module: ast.Module) -> ast.ClassDef:
     parser_class = next(
         (
             node
@@ -89,6 +90,11 @@ def _parse_stmt_method(module: ast.Module) -> ast.FunctionDef:
     )
     if parser_class is None:
         raise RuntimeError("embedded native Parser class is missing")
+    return parser_class
+
+
+def _parse_stmt_method(module: ast.Module) -> ast.FunctionDef:
+    parser_class = _parser_class(module)
     method = next(
         (
             node
@@ -100,6 +106,36 @@ def _parse_stmt_method(module: ast.Module) -> ast.FunctionDef:
     if method is None:
         raise RuntimeError("embedded native Parser._parse_stmt is missing")
     return method
+
+
+def _normalize_expr_stmt_field(module: ast.Module) -> int:
+    classes = [
+        node
+        for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == "_npr_ast_nodes_ExprStmt"
+    ]
+    if len(classes) != 1:
+        raise RuntimeError(
+            "embedded native ExprStmt class expected one definition, "
+            f"found {len(classes)}"
+        )
+    fields = [
+        node
+        for node in classes[0].body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "expr"
+    ]
+    if len(fields) != 1:
+        raise RuntimeError(
+            "embedded native ExprStmt.expr expected one field, "
+            f"found {len(fields)}"
+        )
+    fields[0].annotation = ast.copy_location(
+        ast.Name(id="dict", ctx=ast.Load()),
+        fields[0].annotation,
+    )
+    return 1
 
 
 def _install_expression_statement_fast_path(method: ast.FunctionDef) -> int:
@@ -128,6 +164,7 @@ def _install_expression_statement_fast_path(method: ast.FunctionDef) -> int:
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
+    expr_stmt_field_count = _normalize_expr_stmt_field(module)
     method = _parse_stmt_method(module)
     annotator = _AnnotateExpressionResults()
     annotator.visit(method)
@@ -170,6 +207,23 @@ def main() -> int:
     if len(typed) != annotator.count:
         raise RuntimeError("native parser expression annotations were not preserved")
 
+    expr_stmt_class = next(
+        node
+        for node in verified.body
+        if isinstance(node, ast.ClassDef) and node.name == "_npr_ast_nodes_ExprStmt"
+    )
+    expr_fields = [
+        node
+        for node in expr_stmt_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "expr"
+        and isinstance(node.annotation, ast.Name)
+        and node.annotation.id == "dict"
+    ]
+    if len(expr_fields) != expr_stmt_field_count:
+        raise RuntimeError("native ExprStmt.expr dict annotation was not preserved")
+
     fast_paths = [node for node in verified_method.body if _is_newline_fast_path(node)]
     if len(fast_paths) != 1:
         raise RuntimeError(
@@ -193,6 +247,7 @@ def main() -> int:
             "native expression fast path does not immediately follow parsing"
         )
 
+    print("TYPED NATIVE EXPRSTMT FIELD", expr_stmt_field_count)
     print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
     print("FAST-PATHED NATIVE EXPRESSION STATEMENTS", fast_path_count)
     return 0

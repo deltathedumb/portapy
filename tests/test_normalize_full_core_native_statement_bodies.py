@@ -9,7 +9,7 @@ def test_control_flow_bodies_are_loaded_and_converted_before_construction() -> N
     module = ast.parse(
         '''
 def _convert_stmt(node: object, lifted: dict):
-    if isinstance(node, NativeFor):
+    if isinstance(node, _npr_ast_nodes_For):
         return For(target, iterator, _convert_body(node.body, lifted), _convert_body(node.orelse, lifted))
     return None
 '''

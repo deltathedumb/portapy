@@ -37,12 +37,16 @@ def test_replaces_opaque_parameter_extraction(tmp_path: Path, monkeypatch) -> No
     assert "[arg.arg for arg in lambda_arguments]" not in source
     assert "[arg.arg for arg in node.args.posonlyargs]" not in source
     assert "[arg.arg for arg in node.args.kwonlyargs]" not in source
-    assert "function_argument_name: str = argument.arg" in source
-    assert "lambda_argument_name: str = argument.arg" in source
-    assert source.count("positional_only_name: str = argument.arg") == 2
-    assert source.count("keyword_only_name: str = argument.arg") == 2
-    assert source.count("variadic_positional_name: str = node.args.vararg.arg") == 2
-    assert source.count("variadic_keyword_name: str = node.args.kwarg.arg") == 2
+    assert 'function_argument_name: str = getattr(argument, "arg")' in source
+    assert 'lambda_argument_name: str = getattr(argument, "arg")' in source
+    assert source.count('positional_only_name: str = getattr(argument, "arg")') == 2
+    assert source.count('keyword_only_name: str = getattr(argument, "arg")') == 2
+    assert source.count('variadic_positional = getattr(node.args, "vararg")') == 2
+    assert source.count('variadic_positional_name: str = getattr(variadic_positional, "arg")') == 2
+    assert source.count('variadic_keyword = getattr(node.args, "kwarg")') == 2
+    assert source.count('variadic_keyword_name: str = getattr(variadic_keyword, "arg")') == 2
+    assert "function_argument_name: str = argument.arg" not in source
+    assert "lambda_argument_name: str = argument.arg" not in source
 
 
 def test_is_idempotent(tmp_path: Path, monkeypatch) -> None:

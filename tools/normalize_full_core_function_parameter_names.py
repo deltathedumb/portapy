@@ -1,11 +1,11 @@
 """Preserve function and lambda parameter names through native lowering.
 
-The pinned compiler treats ``arg.arg`` inside comprehensions as an opaque
-attribute and materializes null list elements. Those nulls become
-``CodeObject.arg_names`` entries and later crash dictionary hashing during
-function argument binding. Replace every function/lambda parameter-name
-comprehension and conditional attribute expression with explicitly typed
-string loops.
+The pinned compiler treats ``arg.arg`` on AST nodes as a statically opaque
+attribute and materializes null list elements, even when the read is moved out
+of a comprehension. Those nulls become ``CodeObject.arg_names`` entries and
+later crash dictionary hashing during function argument binding. Read the
+fields through dynamic ``getattr`` so the dict-backed native AST object is
+consulted at runtime and real string pointers are retained.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _FUNCTION_ARGUMENTS_NEW = '''            function_arguments = list(node.args.pos
                 function_arguments.append(argument)
             function_argument_names: list[str] = []
             for argument in function_arguments:
-                function_argument_name: str = argument.arg
+                function_argument_name: str = getattr(argument, "arg")
                 function_argument_names.append(function_argument_name)
             nested = _Lowerer(node.name, function_argument_names)
 '''
@@ -41,7 +41,7 @@ _LAMBDA_ARGUMENTS_NEW = '''            lambda_arguments = list(node.args.posonly
                 lambda_arguments.append(argument)
             lambda_argument_names: list[str] = []
             for argument in lambda_arguments:
-                lambda_argument_name: str = argument.arg
+                lambda_argument_name: str = getattr(argument, "arg")
                 lambda_argument_names.append(lambda_argument_name)
             nested = _Lowerer("<lambda>", lambda_argument_names)
 '''
@@ -54,21 +54,23 @@ _SPECIAL_OLD = '''            nested.posonly_names = [arg.arg for arg in node.ar
 
 _SPECIAL_NEW = '''            positional_only_names: list[str] = []
             for argument in node.args.posonlyargs:
-                positional_only_name: str = argument.arg
+                positional_only_name: str = getattr(argument, "arg")
                 positional_only_names.append(positional_only_name)
             nested.posonly_names = positional_only_names
             keyword_only_names: list[str] = []
             for argument in node.args.kwonlyargs:
-                keyword_only_name: str = argument.arg
+                keyword_only_name: str = getattr(argument, "arg")
                 keyword_only_names.append(keyword_only_name)
             nested.kwonly_names = keyword_only_names
-            if node.args.vararg is not None:
-                variadic_positional_name: str = node.args.vararg.arg
+            variadic_positional = getattr(node.args, "vararg")
+            if variadic_positional is not None:
+                variadic_positional_name: str = getattr(variadic_positional, "arg")
                 nested.vararg_name = variadic_positional_name
             else:
                 nested.vararg_name = None
-            if node.args.kwarg is not None:
-                variadic_keyword_name: str = node.args.kwarg.arg
+            variadic_keyword = getattr(node.args, "kwarg")
+            if variadic_keyword is not None:
+                variadic_keyword_name: str = getattr(variadic_keyword, "arg")
                 nested.kwarg_name = variadic_keyword_name
             else:
                 nested.kwarg_name = None
@@ -133,14 +135,16 @@ def main() -> int:
     PATH.write_text(source, encoding="utf-8")
 
     required = (
-        "function_argument_name: str = argument.arg",
+        'function_argument_name: str = getattr(argument, "arg")',
         "nested = _Lowerer(node.name, function_argument_names)",
-        "lambda_argument_name: str = argument.arg",
+        'lambda_argument_name: str = getattr(argument, "arg")',
         'nested = _Lowerer("<lambda>", lambda_argument_names)',
-        "positional_only_name: str = argument.arg",
-        "keyword_only_name: str = argument.arg",
-        "variadic_positional_name: str = node.args.vararg.arg",
-        "variadic_keyword_name: str = node.args.kwarg.arg",
+        'positional_only_name: str = getattr(argument, "arg")',
+        'keyword_only_name: str = getattr(argument, "arg")',
+        'variadic_positional = getattr(node.args, "vararg")',
+        'variadic_positional_name: str = getattr(variadic_positional, "arg")',
+        'variadic_keyword = getattr(node.args, "kwarg")',
+        'variadic_keyword_name: str = getattr(variadic_keyword, "arg")',
     )
     missing = [marker for marker in required if marker not in source]
     if missing:
@@ -149,6 +153,10 @@ def main() -> int:
         _FUNCTION_ARGUMENTS_OLD,
         _LAMBDA_ARGUMENTS_OLD,
         _SPECIAL_OLD,
+        "function_argument_name: str = argument.arg",
+        "lambda_argument_name: str = argument.arg",
+        "positional_only_name: str = argument.arg",
+        "keyword_only_name: str = argument.arg",
     )
     remaining = [marker for marker in forbidden if marker in source]
     if remaining:

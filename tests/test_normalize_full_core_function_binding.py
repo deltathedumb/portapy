@@ -35,6 +35,17 @@ def test_replaces_zip_and_kwargs_comprehension(tmp_path: Path, monkeypatch) -> N
     assert "extra_kwargs[name] = kwargs[name]" in source
 
 
+def test_is_idempotent(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "vm.py"
+    path.write_text(_SOURCE, encoding="utf-8")
+    monkeypatch.setattr(normalizer, "PATH", path)
+
+    assert normalizer.main() == 0
+    first = path.read_text(encoding="utf-8")
+    assert normalizer.main() == 0
+    assert path.read_text(encoding="utf-8") == first
+
+
 def test_fails_closed_when_binding_shape_changes(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "vm.py"
     path.write_text("class VirtualMachine: pass\n", encoding="utf-8")

@@ -1,10 +1,11 @@
-"""Preserve dict-backed AST expressions in the embedded native parser.
+"""Preserve parsed AST values and fast-path native expression statements.
 
-The pinned compiler defaults an unannotated result of ``self._parse_expr()`` to
-an integer inside ``Parser._parse_stmt``. ``object`` annotations also fall back
-to integer storage. Native class instances are dict-backed, and the following
-``isinstance`` checks already dispatch through dict lookups, so annotate every
-simple local assignment from ``_parse_expr`` in that method as ``dict``.
+The pinned compiler cannot safely compile the heterogeneous ``isinstance`` chain
+that follows ``expr = self._parse_expr()`` in the embedded parser: it substitutes
+a static type token for the returned AST object. A newline means the statement is
+unambiguously an expression statement, so return it immediately before reaching
+those assignment-target checks. Remaining expression locals keep an explicit
+``dict`` annotation matching the parser nodes' native dict-backed representation.
 """
 from __future__ import annotations
 
@@ -73,6 +74,30 @@ def _parse_stmt_method(module: ast.Module) -> ast.FunctionDef:
     return method
 
 
+def _install_expression_statement_fast_path(method: ast.FunctionDef) -> int:
+    replacement: list[ast.stmt] = []
+    inserted = 0
+    for statement in method.body:
+        replacement.append(statement)
+        if not (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == "expr"
+            and statement.value is not None
+            and _is_parse_expr_call(statement.value)
+        ):
+            continue
+        fast_path = ast.parse(
+            "if self._check('NEWLINE'):\n"
+            "    self._eat()\n"
+            "    return _npr_ast_nodes_ExprStmt(expr=expr, pos=pos)\n"
+        ).body[0]
+        replacement.append(ast.copy_location(fast_path, statement))
+        inserted += 1
+    method.body = replacement
+    return inserted
+
+
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     method = _parse_stmt_method(module)
@@ -80,6 +105,12 @@ def main() -> int:
     annotator.visit(method)
     if annotator.count < 1:
         raise RuntimeError("native Parser._parse_stmt had no expression results to type")
+    fast_path_count = _install_expression_statement_fast_path(method)
+    if fast_path_count != 1:
+        raise RuntimeError(
+            "native Parser._parse_stmt expression fast path expected one insertion, "
+            f"found {fast_path_count}"
+        )
 
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
@@ -110,8 +141,18 @@ def main() -> int:
     ]
     if len(typed) != annotator.count:
         raise RuntimeError("native parser expression annotations were not preserved")
+    fast_paths = [
+        node
+        for node in ast.walk(verified_method)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_npr_ast_nodes_ExprStmt"
+    ]
+    if len(fast_paths) != 1:
+        raise RuntimeError("native parser expression fast path was not preserved")
 
-    print("TYPED DICT-BACKED NATIVE PARSER EXPRESSIONS", annotator.count)
+    print("TYPED NATIVE PARSER EXPRESSION RESULTS", annotator.count)
+    print("FAST-PATHED NATIVE EXPRESSION STATEMENTS", fast_path_count)
     return 0
 
 

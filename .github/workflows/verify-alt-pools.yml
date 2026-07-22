@@ -24,6 +24,12 @@ jobs:
           python -m pytest -q 2>&1 | tee dist/pytest.log
       - name: Check public C example
         run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -fsyntax-only examples/embed.c
+      - name: Archive exact verification tree
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar --exclude=.git --exclude=dist -czf dist/source-tree.tgz .
       - uses: actions/upload-artifact@v4
         if: always()
         with:

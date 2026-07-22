@@ -1,9 +1,9 @@
-"""Repair native constructors whose parameter names collide with classes.
+"""Install a compiler-safe initializer for the embedded native ExprStmt node.
 
-The pinned compiler may resolve a constructor parameter such as ``expr`` or
-``pattern`` as the same-named global class token instead of the runtime
-argument. Install an explicit ExprStmt initializer, rename every known
-colliding parameter, and rewrite matching keyword call sites.
+The pinned compiler resolves a parameter named ``expr`` as the global ``expr``
+class token instead of the constructor argument. Dataclass synthesis has the
+same failure mode. Use a non-colliding parameter name, rewrite keyword call
+sites, and copy the runtime value into the public ``expr`` field explicitly.
 """
 from __future__ import annotations
 
@@ -12,33 +12,24 @@ from pathlib import Path
 
 
 PATH = Path("src/portapy/core/native_ast.py")
-_EXPR_STMT = "_npr_ast_nodes_ExprStmt"
-_PARAMETER_RENAMES: dict[str, dict[str, str]] = {
-    _EXPR_STMT: {"expr": "expr_value"},
-    "MatchAs": {"pattern": "pattern_value"},
-    "match_case": {"pattern": "pattern_value"},
-}
-
-
-def _class(module: ast.Module, name: str) -> ast.ClassDef | None:
-    classes = [
-        node
-        for node in module.body
-        if isinstance(node, ast.ClassDef) and node.name == name
-    ]
-    if len(classes) > 1:
-        raise RuntimeError(f"expected at most one class {name!r}, found {len(classes)}")
-    return classes[0] if classes else None
+_CLASS_NAME = "_npr_ast_nodes_ExprStmt"
+_PARAMETER_NAME = "expr_value"
 
 
 def _expr_stmt_class(module: ast.Module) -> ast.ClassDef:
-    class_node = _class(module, _EXPR_STMT)
-    if class_node is None:
-        raise RuntimeError("embedded native ExprStmt expected one class, found 0")
-    return class_node
+    classes = [
+        node
+        for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == _CLASS_NAME
+    ]
+    if len(classes) != 1:
+        raise RuntimeError(
+            f"embedded native ExprStmt expected one class, found {len(classes)}"
+        )
+    return classes[0]
 
 
-def _install_expr_stmt_initializer(class_node: ast.ClassDef) -> int:
+def _install_initializer(class_node: ast.ClassDef) -> int:
     existing = [
         node
         for node in class_node.body
@@ -50,32 +41,12 @@ def _install_expr_stmt_initializer(class_node: ast.ClassDef) -> int:
         )
 
     initializer = ast.parse(
-        "def __init__(self, expr_value: dict, pos: dict) -> None:\n"
-        "    self.expr = expr_value\n"
+        f"def __init__(self, {_PARAMETER_NAME}: dict, pos: dict) -> None:\n"
+        f"    self.expr = {_PARAMETER_NAME}\n"
         "    self.pos = pos\n"
     ).body[0]
     class_node.body.append(initializer)
     return 1
-
-
-class _BoundNameRenamer(ast.NodeTransformer):
-    def __init__(self, renames: dict[str, str]) -> None:
-        self.renames = renames
-
-    def visit_Name(self, node: ast.Name) -> ast.AST:
-        replacement = self.renames.get(node.id)
-        if replacement is not None:
-            node.id = replacement
-        return node
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
-        return node
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> ast.AST:
-        return node
-
-    def visit_Lambda(self, node: ast.Lambda) -> ast.AST:
-        return node
 
 
 class _KeywordCallRenamer(ast.NodeTransformer):
@@ -84,48 +55,16 @@ class _KeywordCallRenamer(ast.NodeTransformer):
 
     def visit_Call(self, node: ast.Call) -> ast.AST:
         self.generic_visit(node)
-        if not isinstance(node.func, ast.Name):
-            return node
-        renames = _PARAMETER_RENAMES.get(node.func.id)
-        if not renames:
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == _CLASS_NAME
+        ):
             return node
         for keyword in node.keywords:
-            replacement = renames.get(keyword.arg or "")
-            if replacement is not None:
-                keyword.arg = replacement
+            if keyword.arg == "expr":
+                keyword.arg = _PARAMETER_NAME
                 self.rewritten += 1
         return node
-
-
-def _rename_constructor_parameters(module: ast.Module) -> int:
-    renamed = 0
-    for class_name, requested in _PARAMETER_RENAMES.items():
-        class_node = _class(module, class_name)
-        if class_node is None:
-            continue
-        initializers = [
-            node
-            for node in class_node.body
-            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
-        ]
-        if len(initializers) != 1:
-            raise RuntimeError(
-                f"class {class_name!r} expected one initializer, "
-                f"found {len(initializers)}"
-            )
-        initializer = initializers[0]
-        active: dict[str, str] = {}
-        for argument in initializer.args.args[1:]:
-            replacement = requested.get(argument.arg)
-            if replacement is not None:
-                active[argument.arg] = replacement
-                argument.arg = replacement
-                renamed += 1
-        if not active:
-            continue
-        body_renamer = _BoundNameRenamer(active)
-        initializer.body = [body_renamer.visit(statement) for statement in initializer.body]
-    return renamed
 
 
 def _is_self_field_assignment(
@@ -147,10 +86,10 @@ def _is_self_field_assignment(
 
 def main() -> int:
     module = ast.parse(PATH.read_text(encoding="utf-8"))
-    installed = _install_expr_stmt_initializer(_expr_stmt_class(module))
-    renamed = _rename_constructor_parameters(module)
-    call_renamer = _KeywordCallRenamer()
-    module = call_renamer.visit(module)
+    class_node = _expr_stmt_class(module)
+    installed = _install_initializer(class_node)
+    renamer = _KeywordCallRenamer()
+    module = renamer.visit(module)
 
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
@@ -168,7 +107,7 @@ def main() -> int:
 
     initializer = initializers[0]
     parameter_names = [argument.arg for argument in initializer.args.args]
-    if parameter_names != ["self", "expr_value", "pos"]:
+    if parameter_names != ["self", _PARAMETER_NAME, "pos"]:
         raise RuntimeError(
             f"native ExprStmt initializer parameters changed: {parameter_names}"
         )
@@ -181,8 +120,9 @@ def main() -> int:
         and pos_annotation.id == "dict"
     ):
         raise RuntimeError("native ExprStmt initializer lost dict parameter types")
+
     if not any(
-        _is_self_field_assignment(node, "expr", "expr_value")
+        _is_self_field_assignment(node, "expr", _PARAMETER_NAME)
         for node in initializer.body
     ):
         raise RuntimeError("native ExprStmt initializer does not copy expr value")
@@ -193,10 +133,9 @@ def main() -> int:
         raise RuntimeError("native ExprStmt initializer does not copy pos")
 
     print(
-        "REPAIRED NATIVE CONSTRUCTOR COLLISIONS",
+        "INSTALLED NATIVE EXPRSTMT INITIALIZER",
         installed,
-        renamed,
-        call_renamer.rewritten,
+        renamer.rewritten,
     )
     return 0
 

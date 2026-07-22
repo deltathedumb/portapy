@@ -28,6 +28,7 @@ from tools.normalize_full_core_function_parameter_names import main as normalize
 from tools.normalize_full_core_function_specs import main as normalize_function_specs
 from tools.normalize_full_core_keyword_calls import main as normalize_keyword_calls
 from tools.normalize_full_core_lambdas import main as normalize_lambdas
+from tools.normalize_full_core_local_name_collisions import main as normalize_local_name_collisions
 from tools.normalize_full_core_make_function import main as normalize_make_function
 from tools.normalize_full_core_name_index import main as normalize_name_index
 from tools.normalize_full_core_native_argument_defaults import main as normalize_native_argument_defaults
@@ -194,6 +195,9 @@ def main() -> int:
         ("truthiness", normalize_truthiness),
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
+        # Run last: it unparses all changed modules and must see the complete
+        # flattened class namespace produced by every earlier pass.
+        ("local_name_collisions", normalize_local_name_collisions),
     )
     DIAGNOSTIC_PATH.unlink(missing_ok=True)
     NORMALIZATION_LOG_PATH.unlink(missing_ok=True)

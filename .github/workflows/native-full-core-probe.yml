@@ -32,6 +32,7 @@ jobs:
         run: |
           python tools/normalize_full_core_probe.py
           python tools/normalize_full_core_lambdas.py
+          python tools/normalize_full_core_function_binding.py
           python tools/normalize_full_core_native_semantics.py
           python tools/normalize_full_core_opcode_maps.py
           python tools/normalize_full_core_validation.py
@@ -168,6 +169,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_lambdas.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/normalize_full_core_function_binding.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_native_semantics.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/normalize_full_core_opcode_maps.py
@@ -260,14 +263,14 @@ jobs:
             '```text'
           )
           if (Test-Path dist/windows-full-core-build.log) {
-            $lines += Get-Content dist/windows-full-core-build.log -Tail 180
+            $lines += Get-Content dist/windows-full-core-build.log | Select-Object -Last 180
           } else {
             $lines += 'No compiler log was produced.'
           }
           $lines += '```'
-          $path = "$env:RUNNER_TEMP\portapy-full-core-windows.md"
-          $lines | Set-Content -Encoding utf8 $path
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file $path
+          $lines | Set-Content -Encoding utf8 $env:TEMP/portapy-full-core-windows.md
+          gh pr comment "${{ github.event.pull_request.number }}" `
+            --body-file $env:TEMP/portapy-full-core-windows.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:

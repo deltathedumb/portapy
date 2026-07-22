@@ -7,6 +7,7 @@ from tools.generated_function_control_source import (
     FUNCTION_FLOW_CONSTANTS,
     execute_function_body_source,
 )
+from tools.rewrite_generated_closure_aliases import rewrite_generated_closure_aliases
 from tools.rewrite_generated_closures import rewrite_generated_closures
 from tools.rewrite_generated_function_arguments_safe import rewrite_generated_function_arguments
 from tools.rewrite_generated_function_containers import (
@@ -110,6 +111,7 @@ def rewrite_generated_function(path: Path) -> Path:
     rewrite_generated_function_containers(path)
     rewrite_generated_traceback(path)
     rewrite_generated_closures(path)
+    rewrite_generated_closure_aliases(path)
     return path
 
 

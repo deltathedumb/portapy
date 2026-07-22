@@ -1,11 +1,10 @@
 """Install source-kind inference that respects expression structure.
 
 The native ABI keeps a lightweight source-derived kind ledger because raw native
-values cannot always distinguish ``None``, ``False``, and integer zero.  The
-original classifier checked literal prefixes before comparisons, so
-``\"a\" < \"b\"`` was exposed as a string even though the VM correctly returned a
-boolean.  It also treated every ``and``/``or`` expression as boolean even though
-Python returns one of the operands.
+values cannot always distinguish ``None``, ``False``, and integer zero.  This
+pass fixes comparison and boolean-expression precedence and records return kinds
+for source-defined callables, allowing ``seven()`` and similar function results
+to cross the ABI as integers instead of the previous hardcoded ``OBJECT`` kind.
 """
 from __future__ import annotations
 
@@ -16,6 +15,107 @@ from pathlib import Path
 PATH = Path("src/portapy/native_full_reference_entry.py")
 
 _REPLACEMENT = r'''
+_native_callable_return_kinds: dict[str, int] = {}
+
+
+def _native_callable_key(runtime: int, name: str) -> str:
+    return str(runtime) + ":" + name
+
+
+def _native_set_callable_return_kind(runtime: int, name: str, kind: int) -> None:
+    _native_callable_return_kinds[_native_callable_key(runtime, name)] = kind
+
+
+def _native_callable_return_kind(runtime: int, name: str) -> int:
+    return _native_callable_return_kinds.get(
+        _native_callable_key(runtime, name),
+        PORTAPY_VALUE_OBJECT,
+    )
+
+
+def _native_merge_callable_return_kind(runtime: int, name: str, kind: int) -> None:
+    key = _native_callable_key(runtime, name)
+    existing = _native_callable_return_kinds.get(key, -1)
+    if existing < 0 or existing == PORTAPY_VALUE_NONE:
+        _native_callable_return_kinds[key] = kind
+    elif kind != PORTAPY_VALUE_NONE and existing != kind:
+        _native_callable_return_kinds[key] = PORTAPY_VALUE_OBJECT
+
+
+def _native_definition_name(text: str, prefix: str) -> str:
+    start = len(prefix)
+    end = text.find("(", start)
+    if end < 0:
+        end = text.find(":", start)
+    if end < 0:
+        end = len(text)
+    return text[start:end].strip()
+
+
+def _native_record_callable_return_kinds(runtime: int, source: str) -> None:
+    function_names: list[str] = []
+    function_indents: list[int] = []
+    depth = 0
+    line = ""
+    index = 0
+    while index <= len(source):
+        char = source[index] if index < len(source) else "\n"
+        if char != "\n":
+            line += char
+        else:
+            indentation = 0
+            while indentation < len(line):
+                indent_char = line[indentation]
+                if indent_char != " " and indent_char != "\t":
+                    break
+                indentation += 1
+            text = line.strip()
+            if len(text) > 0:
+                while depth > 0 and indentation <= function_indents[depth - 1]:
+                    depth -= 1
+                function_name = ""
+                if text.startswith("def "):
+                    function_name = _native_definition_name(text, "def ")
+                elif text.startswith("async def "):
+                    function_name = _native_definition_name(text, "async def ")
+                if _native_is_identifier(function_name):
+                    _native_set_global_kind(runtime, function_name, PORTAPY_VALUE_CALLABLE)
+                    _native_set_callable_return_kind(
+                        runtime,
+                        function_name,
+                        PORTAPY_VALUE_NONE,
+                    )
+                    if depth < len(function_names):
+                        function_names[depth] = function_name
+                        function_indents[depth] = indentation
+                    else:
+                        function_names.append(function_name)
+                        function_indents.append(indentation)
+                    depth += 1
+                elif text.startswith("class ") and indentation == 0:
+                    class_name = _native_definition_name(text, "class ")
+                    if _native_is_identifier(class_name):
+                        _native_set_global_kind(runtime, class_name, PORTAPY_VALUE_CALLABLE)
+                        _native_set_callable_return_kind(
+                            runtime,
+                            class_name,
+                            PORTAPY_VALUE_OBJECT,
+                        )
+                elif depth > 0 and (text == "return" or text.startswith("return ")):
+                    expression = text[6:].strip()
+                    if len(expression) == 0:
+                        return_kind = PORTAPY_VALUE_NONE
+                    else:
+                        return_kind = _native_expression_kind(runtime, expression)
+                    _native_merge_callable_return_kind(
+                        runtime,
+                        function_names[depth - 1],
+                        return_kind,
+                    )
+            line = ""
+        index += 1
+
+
 def _native_has_top_level_comparison(text: str) -> bool:
     depth = 0
     quote = ""
@@ -156,7 +256,7 @@ def _native_expression_kind(runtime: int, expression: str) -> int:
         if _native_is_identifier(callee):
             callee_kind = _native_global_kind(runtime, callee)
             if callee_kind == PORTAPY_VALUE_CALLABLE:
-                return PORTAPY_VALUE_OBJECT
+                return _native_callable_return_kind(runtime, callee)
     if _native_expression_has_kind(runtime, text, PORTAPY_VALUE_FLOAT):
         return PORTAPY_VALUE_FLOAT
     if "/" in text and "//" not in text:
@@ -186,6 +286,9 @@ def main() -> int:
         for node in module.body
         if isinstance(node, ast.FunctionDef)
         and node.name in {
+            "_native_callable_key",
+            "_native_callable_return_kind",
+            "_native_record_callable_return_kinds",
             "_native_has_top_level_comparison",
             "_native_top_level_bool_rhs",
         }
@@ -199,6 +302,30 @@ def main() -> int:
     replacement = ast.parse(_REPLACEMENT).body
     index = matches[0]
     module.body[index:index + 1] = replacement
+
+    source_scanner = next(
+        (
+            node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_native_record_source_kinds"
+        ),
+        None,
+    )
+    if source_scanner is None:
+        raise RuntimeError("native source-kind scanner is missing")
+    scanner_call = ast.Expr(
+        value=ast.Call(
+            func=ast.Name(id="_native_record_callable_return_kinds", ctx=ast.Load()),
+            args=[
+                ast.Name(id="runtime", ctx=ast.Load()),
+                ast.Name(id="source", ctx=ast.Load()),
+            ],
+            keywords=[],
+        )
+    )
+    source_scanner.body.insert(0, scanner_call)
+
     ast.fix_missing_locations(module)
     source = ast.unparse(module) + "\n"
     PATH.write_text(source, encoding="utf-8")
@@ -210,9 +337,16 @@ def main() -> int:
         if isinstance(node, ast.FunctionDef)
     }
     required = {
+        "_native_callable_key",
+        "_native_set_callable_return_kind",
+        "_native_callable_return_kind",
+        "_native_merge_callable_return_kind",
+        "_native_definition_name",
+        "_native_record_callable_return_kinds",
         "_native_has_top_level_comparison",
         "_native_top_level_bool_rhs",
         "_native_expression_kind",
+        "_native_record_source_kinds",
     }
     missing = sorted(required - functions.keys())
     if missing:
@@ -221,10 +355,15 @@ def main() -> int:
             + ", ".join(missing)
         )
     expression_text = ast.unparse(functions["_native_expression_kind"])
-    if expression_text.find("_native_has_top_level_comparison(text)") < 0:
+    if "_native_has_top_level_comparison(text)" not in expression_text:
         raise RuntimeError("native comparison kind inference was not installed")
-    if expression_text.find("_native_top_level_bool_rhs(text)") < 0:
+    if "_native_top_level_bool_rhs(text)" not in expression_text:
         raise RuntimeError("native boolean-operand kind inference was not installed")
+    if "_native_callable_return_kind(runtime, callee)" not in expression_text:
+        raise RuntimeError("native callable return-kind inference was not installed")
+    scanner_text = ast.unparse(functions["_native_record_source_kinds"])
+    if scanner_text.count("_native_record_callable_return_kinds(runtime, source)") != 1:
+        raise RuntimeError("native callable return scanner was not installed")
     print("NORMALIZED NATIVE EXPRESSION VALUE KINDS", len(replacement))
     return 0
 

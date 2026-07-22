@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from tools import normalize_full_core_native_argument_defaults as normalizer
@@ -24,6 +25,17 @@ _SOURCE = '''def _convert_arguments(node: A.FuncDef, lifted: dict[str, A.FuncDef
 '''
 
 
+def _function(path: Path) -> ast.FunctionDef:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    functions = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_convert_arguments"
+    ]
+    assert len(functions) == 1
+    return functions[0]
+
+
 def test_pins_default_elements_to_dict_backed_ast(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -33,8 +45,22 @@ def test_pins_default_elements_to_dict_backed_ast(
 
     assert normalizer.main() == 0
 
-    source = path.read_text(encoding="utf-8")
-    assert 'native_defaults: list[dict] = getattr(node, "defaults")' in source
+    function = _function(path)
+    source = ast.unparse(function)
+    annotated_getattrs = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "native_defaults"
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "getattr"
+        and len(node.value.args) == 2
+        and isinstance(node.value.args[1], ast.Constant)
+        and node.value.args[1].value == "defaults"
+    ]
+    assert len(annotated_getattrs) == 1
     assert source.count("default_node: dict = native_defaults[index]") == 2
     assert "defaults.append(_convert_expr(default_node, lifted))" in source
     assert "_convert_expr(node.defaults[index], lifted)" not in source
@@ -59,6 +85,6 @@ def test_fails_closed_for_unknown_shape(tmp_path: Path, monkeypatch) -> None:
     try:
         normalizer.main()
     except RuntimeError as error:
-        assert "source shape changed" in str(error)
+        assert "native default" in str(error)
     else:
         raise AssertionError("normalizer accepted an unknown default bridge")

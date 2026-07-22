@@ -72,3 +72,51 @@ def test_boolops_keep_operand_kinds(tmp_path: Path, monkeypatch) -> None:
     assert infer(7, "name and answer") == 2
     assert infer(7, 'answer > 40 and name == "Somnia"') == 1
     assert infer(7, "not empty") == 1
+
+
+def test_source_functions_propagate_return_kinds(tmp_path: Path, monkeypatch) -> None:
+    namespace = _normalized_helpers(tmp_path, monkeypatch)
+    infer = namespace["_native_expression_kind"]
+    record = namespace["_native_record_source_kinds"]
+    global_kind = namespace["_native_global_kind"]
+
+    source = '''def seven():
+    return 7
+def label():
+    return "ready"
+def make_items():
+    return [1, 2]
+class Box:
+    pass
+answer = seven()
+text = label()
+items = make_items()
+box = Box()
+'''
+    record(9, source)
+
+    assert infer(9, "seven()") == 2
+    assert infer(9, "label()") == 4
+    assert infer(9, "make_items()") == 10
+    assert infer(9, "Box()") == 7
+    assert global_kind(9, "answer") == 2
+    assert global_kind(9, "text") == 4
+    assert global_kind(9, "items") == 10
+    assert global_kind(9, "box") == 7
+
+
+def test_nested_function_return_is_callable(tmp_path: Path, monkeypatch) -> None:
+    namespace = _normalized_helpers(tmp_path, monkeypatch)
+    infer = namespace["_native_expression_kind"]
+    record = namespace["_native_record_source_kinds"]
+
+    source = '''def outer(base):
+    def inner(value):
+        return base + value
+    return inner
+fn = outer(19)
+'''
+    record(11, source)
+
+    assert infer(11, "outer(19)") == 6
+    assert infer(11, "fn") == 6

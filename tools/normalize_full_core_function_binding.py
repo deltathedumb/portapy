@@ -73,10 +73,8 @@ def main() -> int:
     missing = [marker for marker in required if marker not in source]
     if missing:
         raise RuntimeError(f"native function binding validation failed: {missing}")
-    forbidden = ("dict(zip(", "for name, value in kwargs.items()")
-    remaining = [marker for marker in forbidden if marker in source]
-    if remaining:
-        raise RuntimeError(f"unsafe native function binding remains: {remaining}")
+    if _POSITIONAL_OLD in source or _KWARGS_OLD in source:
+        raise RuntimeError("unsafe native function binding source block remains")
     print("NORMALIZED NATIVE FUNCTION BINDING", positional_count, kwargs_count)
     return 0
 

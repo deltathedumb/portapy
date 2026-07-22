@@ -55,12 +55,25 @@ def _normalize_frontend() -> int:
                 right_operand = operands[index + 1]
                 self.expr(left_operand)
                 self.expr(right_operand)
-                comparison_kind = _TRUTH_UNKNOWN
-                if (
-                    self.expression_kind(left_operand) == _TRUTH_STRING
-                    and self.expression_kind(right_operand) == _TRUTH_STRING
-                ):
-                    comparison_kind = _TRUTH_STRING
+                left_is_string = False
+                if isinstance(left_operand, ast.Name):
+                    left_name: str = getattr(left_operand, "id")
+                    left_is_string = self.kind_hint(left_name) == _TRUTH_STRING
+                elif isinstance(left_operand, ast.Constant):
+                    left_value: object = getattr(left_operand, "value")
+                    left_is_string = isinstance(left_value, str)
+                elif isinstance(left_operand, ast.JoinedStr):
+                    left_is_string = True
+                right_is_string = False
+                if isinstance(right_operand, ast.Name):
+                    right_name: str = getattr(right_operand, "id")
+                    right_is_string = self.kind_hint(right_name) == _TRUTH_STRING
+                elif isinstance(right_operand, ast.Constant):
+                    right_value: object = getattr(right_operand, "value")
+                    right_is_string = isinstance(right_value, str)
+                elif isinstance(right_operand, ast.JoinedStr):
+                    right_is_string = True
+                comparison_kind = _TRUTH_STRING if left_is_string and right_is_string else _TRUTH_UNKNOWN
                 self.emit(_compare_opcode(op), comparison_kind)
                 if index:
                     self.emit(Op.BINARY_BOOL_AND)
@@ -69,6 +82,8 @@ def _normalize_frontend() -> int:
     FRONTEND_PATH.write_text(source, encoding="utf-8")
     if "self.emit(_compare_opcode(op), comparison_kind)" not in source:
         raise RuntimeError("native string comparison kind was not emitted")
+    if "self.expression_kind(left_operand)" in source or "self.expression_kind(right_operand)" in source:
+        raise RuntimeError("native comparison still crosses the opaque AST classifier boundary")
     return 1
 
 

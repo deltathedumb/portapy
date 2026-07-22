@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p dist
           set +e
-          python tools/normalize_full_core_validation.py \
+          python -m tools.normalize_full_core_validation \
             > dist/linux-full-core-normalization.txt 2>&1
           status=$?
           set -e
@@ -181,7 +181,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           $normalizationLog = Join-Path $PWD 'dist/windows-full-core-normalization.txt'
-          python tools/normalize_full_core_validation.py *> $normalizationLog
+          python -m tools.normalize_full_core_validation *> $normalizationLog
           $status = $LASTEXITCODE
           if ($status -ne 0) {
             if (Test-Path dist/full-core-normalization-error.txt) {

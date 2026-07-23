@@ -6,7 +6,15 @@ from pathlib import Path
 from tools import normalize_full_core_runtime_specs as normalizer
 
 
-FRONTEND = '''class Lowerer:
+BYTECODE = '''from __future__ import annotations
+
+class CodeObject:
+    pass
+'''
+
+FRONTEND = '''from .bytecode import CodeObject, Instruction, Op
+
+class Lowerer:
     def lower(self, node, body, base_count, has_keywords, arg_specs):
         keyword_names: list[object] = []
         names = tuple(keyword_names)
@@ -15,7 +23,9 @@ FRONTEND = '''class Lowerer:
         self.emit(Op.MAKE_CLASS, self.constant(spec))
 '''
 
-VM = '''class VirtualMachine:
+VM = '''from .bytecode import CodeObject, Op
+
+class VirtualMachine:
     def run(self, op, frame, instr):
         if op is Op.MAKE_CLASS:
             spec = frame.code.constants[instr.arg]
@@ -39,26 +49,43 @@ VM = '''class VirtualMachine:
 '''
 
 
-def test_converts_opcode_specs_to_fixed_lists(tmp_path: Path, monkeypatch) -> None:
+def test_converts_opcode_specs_to_typed_objects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    bytecode = tmp_path / "bytecode.py"
     frontend = tmp_path / "frontend.py"
     vm = tmp_path / "vm.py"
+    bytecode.write_text(BYTECODE, encoding="utf-8")
     frontend.write_text(FRONTEND, encoding="utf-8")
     vm.write_text(VM, encoding="utf-8")
+    monkeypatch.setattr(normalizer, "BYTECODE_PATH", bytecode)
     monkeypatch.setattr(normalizer, "FRONTEND_PATH", frontend)
     monkeypatch.setattr(normalizer, "VM_PATH", vm)
 
     assert normalizer.main() == 0
 
+    bytecode_source = bytecode.read_text(encoding="utf-8")
     frontend_source = frontend.read_text(encoding="utf-8")
     vm_source = vm.read_text(encoding="utf-8")
-    assert "self.constant([arg_specs, names])" in frontend_source
-    assert "[node.name, body.finish(), base_count, has_keywords]" in frontend_source
-    assert "positional_spec: list[bool] = spec[0]" in vm_source
-    assert "names: list[object] = spec[1]" in vm_source
-    assert "class_name: str = spec[0]" in vm_source
-    assert "body: CodeObject = spec[1]" in vm_source
+    assert "class _NativeKeywordCallSpec:" in bytecode_source
+    assert "class _NativeClassSpec:" in bytecode_source
+    assert "self.positional_spec = positional_spec" in bytecode_source
+    assert "self.body = body" in bytecode_source
+    assert "_NativeKeywordCallSpec(arg_specs, names)" in frontend_source
+    assert (
+        "_NativeClassSpec(node.name, body.finish(), base_count, has_keywords)"
+        in frontend_source
+    )
+    assert "spec: _NativeKeywordCallSpec" in vm_source
+    assert "positional_spec = spec.positional_spec" in vm_source
+    assert "names = spec.names" in vm_source
+    assert "spec: _NativeClassSpec" in vm_source
+    assert "class_name = spec.class_name" in vm_source
+    assert "body = spec.body" in vm_source
     assert "len(spec)" not in vm_source
     assert "isinstance(spec, tuple)" not in vm_source
+    ast.parse(bytecode_source)
     ast.parse(frontend_source)
     ast.parse(vm_source)
 
@@ -67,13 +94,16 @@ def test_fails_closed_when_frontend_shape_changes(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    bytecode = tmp_path / "bytecode.py"
     frontend = tmp_path / "frontend.py"
     vm = tmp_path / "vm.py"
+    bytecode.write_text(BYTECODE, encoding="utf-8")
     frontend.write_text(
         FRONTEND.replace("names = tuple(keyword_names)", "names = keyword_names"),
         encoding="utf-8",
     )
     vm.write_text(VM, encoding="utf-8")
+    monkeypatch.setattr(normalizer, "BYTECODE_PATH", bytecode)
     monkeypatch.setattr(normalizer, "FRONTEND_PATH", frontend)
     monkeypatch.setattr(normalizer, "VM_PATH", vm)
 

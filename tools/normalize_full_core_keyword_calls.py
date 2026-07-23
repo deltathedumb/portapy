@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 CORE = Path("src/portapy/core")
+FRONTEND_PATH = CORE / "frontend.py"
 PARSER_RUNTIME_PATH = CORE / "native_parser_runtime.py"
 NATIVE_AST_PATH = CORE / "native_ast.py"
 VM_PATH = CORE / "vm.py"
@@ -26,6 +27,32 @@ def _replace_method(
         raise RuntimeError(f"{label}: next method not found")
     print("REPLACED", label, 1)
     return source[:start] + replacement + source[end:]
+
+
+def _normalize_frontend() -> None:
+    source = FRONTEND_PATH.read_text(encoding="utf-8")
+    old = '''            for keyword in node.keywords:
+                self.expr(keyword.value)
+            names = tuple(keyword.arg for keyword in node.keywords)
+            self.emit(Op.CALL_KW, self.constant((tuple(arg_specs), names)))
+'''
+    new = '''            keyword_names: list[object] = []
+            for keyword in node.keywords:
+                keyword_value: ast.expr = getattr(keyword, "value")
+                self.expr(keyword_value)
+                keyword_name = getattr(keyword, "arg")
+                keyword_names.append(keyword_name)
+            names = tuple(keyword_names)
+            self.emit(Op.CALL_KW, self.constant((tuple(arg_specs), names)))
+'''
+    count = source.count(old)
+    if count != 1:
+        raise RuntimeError(
+            f"native frontend keyword extraction: expected 1 match, found {count}"
+        )
+    source = source.replace(old, new, 1)
+    FRONTEND_PATH.write_text(source, encoding="utf-8")
+    print("NORMALIZED NATIVE FRONTEND KEYWORD EXTRACTION", count)
 
 
 def _normalize_parser_runtime() -> None:
@@ -142,6 +169,7 @@ def _normalize_vm() -> None:
 
 
 def main() -> int:
+    _normalize_frontend()
     _normalize_parser_runtime()
     _normalize_native_ast()
     _normalize_vm()

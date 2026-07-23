@@ -1,8 +1,10 @@
-"""Append C-ABI wrappers for direct native binary64 Runtime functions.
+"""Append C-ABI wrappers for native binary64 Runtime functions.
 
-Unlike the incremental core, the full Runtime's compiled Python entry accepts
-and returns real ``float`` values through XMM registers.  These wrappers preserve
-out-parameters and status handling without converting through integer payloads.
+The public ABI accepts and returns ordinary C ``double`` values. The compiled
+Python Runtime stores their IEEE-754 payloads as integers tagged ``FLOAT`` so the
+generic handle table never mixes XMM-register parameters with object-register
+parameters. These wrappers move the bits between the platform C ABI and the
+integer implementation functions without changing a single bit.
 """
 from __future__ import annotations
 
@@ -14,8 +16,8 @@ from pathlib import Path
 _LABEL_RE = re.compile(r"^(?P<label>[A-Za-z_.$?][\w.$?@]*):\s*(?:;.*)?$")
 _REQUIRED_IMPLS = (
     "_portapy_last_status_impl",
-    "_portapy_value_from_f64_impl",
-    "_portapy_value_as_f64_impl",
+    "_portapy_value_from_f64_bits_impl",
+    "_portapy_value_as_f64_bits_impl",
 )
 
 
@@ -39,7 +41,8 @@ portapy_value_from_f64:
     push rbx
     sub rsp, 32
     mov [rsp], rsi
-    call _portapy_value_from_f64_impl
+    movq rsi, xmm0
+    call _portapy_value_from_f64_bits_impl
     mov [rsp + 8], rax
     call _portapy_last_status_impl
     test eax, eax
@@ -61,14 +64,14 @@ portapy_value_as_f64:
     push rbx
     sub rsp, 32
     mov [rsp], rdx
-    call _portapy_value_as_f64_impl
-    movsd [rsp + 8], xmm0
+    call _portapy_value_as_f64_bits_impl
+    mov [rsp + 8], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_as_f64_done
     mov rdx, [rsp]
-    movsd xmm0, [rsp + 8]
-    movsd [rdx], xmm0
+    mov rcx, [rsp + 8]
+    mov [rdx], rcx
 .value_as_f64_done:
     add rsp, 32
     pop rbx
@@ -90,7 +93,8 @@ portapy_value_from_f64:
     push rbx
     sub rsp, 48
     mov [rsp + 32], r8
-    call _portapy_value_from_f64_impl
+    movq rdx, xmm1
+    call _portapy_value_from_f64_bits_impl
     mov [rsp + 40], rax
     call _portapy_last_status_impl
     test eax, eax
@@ -112,14 +116,14 @@ portapy_value_as_f64:
     push rbx
     sub rsp, 48
     mov [rsp + 32], r8
-    call _portapy_value_as_f64_impl
-    movsd [rsp + 40], xmm0
+    call _portapy_value_as_f64_bits_impl
+    mov [rsp + 40], rax
     call _portapy_last_status_impl
     test eax, eax
     jnz .value_as_f64_done
     mov r8, [rsp + 32]
-    movsd xmm0, [rsp + 40]
-    movsd [r8], xmm0
+    mov r9, [rsp + 40]
+    mov [r8], r9
 .value_as_f64_done:
     add rsp, 48
     pop rbx

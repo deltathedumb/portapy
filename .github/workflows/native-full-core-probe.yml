@@ -98,6 +98,7 @@ jobs:
           MAP
           gcc -shared dist/libportapy_full_core_probe.o \
             -Wl,--version-script=dist/portapy_full_core_probe.map \
+            -lm \
             -o dist/libportapy_full_core_probe.so
       - name: Execute full core from external C host
         run: |
@@ -196,22 +197,33 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          python tools/run_full_core_asmpython.py build src/portapy/native_full_core_probe.py `
-            --target windows --type library --backend legacy `
-            --no-pyinbin-fallback --keep-assembly `
-            -o dist/portapy_full_core_probe.dll `
-            *>&1 | Tee-Object -FilePath dist/windows-full-core-build.log
-          $compilerExit = $LASTEXITCODE
+          $oldErrorPreference = $ErrorActionPreference
+          $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          try {
+            python tools/run_full_core_asmpython.py build src/portapy/native_full_core_probe.py `
+              --target windows --type library --backend legacy `
+              --no-pyinbin-fallback --keep-assembly `
+              -o dist/portapy_full_core_probe.dll `
+              *>&1 | Tee-Object -FilePath dist/windows-full-core-build.log
+            $compilerExit = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $oldErrorPreference
+            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
+          }
           if (-not (Test-Path dist/portapy_full_core_probe.asm)) {
             exit $compilerExit
           }
           python tools/nasm_module_init.py dist/portapy_full_core_probe.asm `
             --target windows --public-symbol portapy_library_initialize
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/nasm_exports.py dist/portapy_full_core_probe.asm `
             --export portapy_library_initialize `
             --export portapy_abi_version `
             --export portapy_full_core_parse_probe `
             --export portapy_full_core_probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           nasm -f win64 -w-label-redef-late `
             dist/portapy_full_core_probe.asm `
             -o dist/portapy_full_core_probe.obj

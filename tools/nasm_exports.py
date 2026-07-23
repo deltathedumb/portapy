@@ -1,13 +1,22 @@
-"""Declare an explicit public-symbol allowlist in generated NASM source.
+"""Finalize generated NASM source and declare its public-symbol allowlist.
 
-This is build/ABI glue. It never changes function bodies or interpreter
-semantics. Requested symbols and alias targets must exist or the pass fails.
+This build/ABI pass validates exports and aliases, then repairs generated
+exception-handler epilogues before assembly. Requested symbols and alias
+targets must exist or the pass fails closed.
 """
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
+import re
+import sys
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from tools.nasm_exception_handlers import restore_exception_handler_epilogues
 
 
 _SYMBOL = r"[A-Za-z_.$?][\w.$?@]*"
@@ -73,7 +82,17 @@ def declare_exports(
     ]
     if declarations:
         lines[declaration_insertion:declaration_insertion] = declarations
-    return "\n".join(lines) + "\n"
+
+    rewritten, function_count, epilogue_count = restore_exception_handler_epilogues(
+        "\n".join(lines) + "\n"
+    )
+    if function_count:
+        print(
+            "RESTORED EXCEPTION HANDLER EPILOGUES",
+            function_count,
+            epilogue_count,
+        )
+    return rewritten
 
 
 def _parse_alias(value: str) -> tuple[str, str]:

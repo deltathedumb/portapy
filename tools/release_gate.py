@@ -10,20 +10,23 @@ from tools.native_surface import public_exports
 from tools.python_surface import PYTHON_MODULE_EXPORTS
 
 
-REQUIRED = {
-    "windows": "portapy.dll",
-    "linux": "libportapy.so",
-}
+REQUIRED = {"windows": "portapy.dll", "linux": "libportapy.so"}
 PYTHON_MODULE_ENTRY = "portapy"
+FULL_RUNTIME_FLAGS = (
+    "full_frontend_vm",
+    "standalone_parser",
+    "reference_runtime_handles",
+    "public_tuple_abi",
+    "public_dict_abi",
+    "public_list_abi",
+    "direct_float_abi",
+)
 
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
-        while True:
-            chunk = stream.read(1024 * 1024)
-            if not chunk:
-                break
+        while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -38,6 +41,75 @@ def _read_json(path: Path) -> dict[str, object]:
     return value
 
 
+def _validate_status(status: dict[str, object], expected_tag: str) -> bool:
+    if status.get("release_tag") != expected_tag:
+        raise SystemExit(
+            f"release tag mismatch: expected {expected_tag!r}, "
+            f"status declares {status.get('release_tag')!r}"
+        )
+    if status.get("python_built_runtime") is not True:
+        raise SystemExit("release status does not assert a Python-built runtime")
+
+    source_ready = status.get("source_execution_ready") is True
+    if source_ready:
+        if status.get("stage") != "stable" or status.get("prerelease") is not False:
+            raise SystemExit("source-ready PortaPy must be marked as a stable release")
+        blockers = status.get("release_blockers")
+        if blockers not in ([], None):
+            raise SystemExit("stable source-ready release still declares blockers")
+    else:
+        if status.get("stage") != "developer-preview" or status.get("prerelease") is not True:
+            raise SystemExit("non-source-ready PortaPy must remain a developer preview")
+    return source_ready
+
+
+def _validate_artifact(
+    path: Path,
+    *,
+    target: str,
+    source_ready: bool,
+    expected_exports: list[str],
+    expected_python_exports: list[str],
+) -> dict[str, object]:
+    metadata_path = path.with_suffix(path.suffix + ".json")
+    if not path.is_file() or path.stat().st_size < 4096:
+        raise SystemExit(f"missing or implausibly small native artifact: {path}")
+    metadata = _read_json(metadata_path)
+    actual_digest = sha256(path)
+
+    expected = {
+        "target": target,
+        "artifact": path.name,
+        "size": path.stat().st_size,
+        "sha256": actual_digest,
+        "python_built_runtime": True,
+        "host_bridge": True,
+        "host_calls": True,
+        "native_environment_adapter": True,
+        "public_environment_api": True,
+        "public_exports": expected_exports,
+        "python_module_exports": expected_python_exports,
+        "python_module_entry": PYTHON_MODULE_ENTRY,
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            raise SystemExit(f"{key} mismatch in {metadata_path}")
+
+    if source_ready:
+        for flag in FULL_RUNTIME_FLAGS:
+            if metadata.get(flag) is not True:
+                raise SystemExit(f"full Runtime flag {flag!r} missing in {metadata_path}")
+    elif metadata.get("generated_host_call_entry") is not True:
+        raise SystemExit(f"preview artifact is not host-call-entry generated: {metadata_path}")
+
+    return {
+        "platform": target,
+        "sha256": actual_digest,
+        "size": path.stat().st_size,
+        "metadata": metadata_path.name,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist", type=Path)
@@ -46,67 +118,24 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     status = _read_json(args.status)
-    if status.get("release_tag") != args.expected_tag:
-        raise SystemExit(
-            f"release tag mismatch: expected {args.expected_tag!r}, "
-            f"status declares {status.get('release_tag')!r}"
-        )
-    if status.get("stage") != "developer-preview" or status.get("prerelease") is not True:
-        raise SystemExit("3.14-dev.1 must remain explicitly marked as a prerelease")
-    if status.get("python_built_runtime") is not True:
-        raise SystemExit("release status does not assert a Python-built runtime")
-    if status.get("source_execution_ready") is not False:
-        raise SystemExit(
-            "developer preview must state that source execution is not ready; "
-            "use a new final-release status when the full PortaPy parser lands"
-        )
-
+    source_ready = _validate_status(status, args.expected_tag)
     args.dist.mkdir(parents=True, exist_ok=True)
-    records: dict[str, dict[str, object]] = {}
+
     expected_exports = list(public_exports(host_bridge=True, host_calls=True))
     expected_python_exports = list(PYTHON_MODULE_EXPORTS)
+    records: dict[str, dict[str, object]] = {}
     for target, name in REQUIRED.items():
-        path = args.dist / name
-        metadata_path = path.with_suffix(path.suffix + ".json")
-        if not path.is_file() or path.stat().st_size < 4096:
-            raise SystemExit(f"missing or implausibly small native artifact: {path}")
-        metadata = _read_json(metadata_path)
-        actual_digest = sha256(path)
-        if metadata.get("target") != target:
-            raise SystemExit(f"target mismatch in {metadata_path}")
-        if metadata.get("artifact") != name:
-            raise SystemExit(f"artifact-name mismatch in {metadata_path}")
-        if metadata.get("size") != path.stat().st_size:
-            raise SystemExit(f"artifact-size mismatch in {metadata_path}")
-        if metadata.get("sha256") != actual_digest:
-            raise SystemExit(f"artifact digest mismatch in {metadata_path}")
-        if metadata.get("python_built_runtime") is not True:
-            raise SystemExit(f"artifact is not marked Python-built: {metadata_path}")
-        if metadata.get("host_bridge") is not True:
-            raise SystemExit(f"artifact does not include the host bridge: {metadata_path}")
-        if metadata.get("host_calls") is not True:
-            raise SystemExit(f"artifact does not include host-call dispatch: {metadata_path}")
-        if metadata.get("native_environment_adapter") is not True:
-            raise SystemExit(f"artifact does not include environment management: {metadata_path}")
-        if metadata.get("public_environment_api") is not True:
-            raise SystemExit(f"artifact does not include the public environment API: {metadata_path}")
-        if metadata.get("generated_host_call_entry") is not True:
-            raise SystemExit(f"artifact is not host-call-entry generated: {metadata_path}")
-        if metadata.get("public_exports") != expected_exports:
-            raise SystemExit(f"public export surface mismatch in {metadata_path}")
-        if metadata.get("python_module_exports") != expected_python_exports:
-            raise SystemExit(f"Python module surface mismatch in {metadata_path}")
-        if metadata.get("python_module_entry") != PYTHON_MODULE_ENTRY:
-            raise SystemExit(f"Python module entry mismatch in {metadata_path}")
-        records[name] = {
-            "platform": target,
-            "sha256": actual_digest,
-            "size": path.stat().st_size,
-            "metadata": metadata_path.name,
-        }
+        records[name] = _validate_artifact(
+            args.dist / name,
+            target=target,
+            source_ready=source_ready,
+            expected_exports=expected_exports,
+            expected_python_exports=expected_python_exports,
+        )
 
-    checksums = args.dist / "checksums.json"
-    checksums.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
+    (args.dist / "checksums.json").write_text(
+        json.dumps(records, indent=2) + "\n", encoding="utf-8"
+    )
     manifest = {
         "schema": 1,
         "release": status,
@@ -116,17 +145,16 @@ def main(argv: list[str] | None = None) -> int:
         "python_module_entry": PYTHON_MODULE_ENTRY,
     }
     (args.dist / "release-manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n",
-        encoding="utf-8",
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
 
     completed = status.get("completed_surface")
     blockers = status.get("release_blockers")
+    title = "# PortaPy 3.14.0" if source_ready else "# PortaPy 3.14 Developer Preview 1"
     notes = [
-        "# PortaPy 3.14 Developer Preview 1",
+        title,
         "",
-        "This prerelease contains genuine native libraries generated from "
-        "PortaPy's Python-authored runtime state by asmpython.",
+        "PortaPy is a Python-built embeddable runtime compiled into native Linux and Windows libraries.",
         "",
         "## Implemented native surface",
         "",
@@ -138,38 +166,31 @@ def main(argv: list[str] | None = None) -> int:
             "",
             "## Universal embedding surface",
             "",
-            "The DLL/SO exports first-class `new`, `add`, `add_all`, `execute`, "
-            "`evaluate`, and `destroy` helpers through a language-neutral C ABI. "
-            "The same environment handle can be used with the lower-level runtime, "
-            "value, global, callback, container, and structured-error functions.",
-            "",
-            "The Python package exposes the same contract through hosted and native "
-            "`Environment.add()` / `Environment.add_all()` methods. Host languages "
-            "load their own modules; PortaPy does not expose `import_module`.",
-            "",
-            "## Not yet included",
-            "",
-            "This is not the final Python 3.14 interpreter release. Remaining "
-            "gates include closures, classes, the complete frontend/bytecode VM "
-            "transition, broader object syntax, native imports inside executed "
-            "PortaPy source, and full traceback-frame retrieval.",
+            "The DLL/SO exports language-neutral `new`, `add`, `add_all`, `execute`, `evaluate`, and `destroy` helpers alongside the complete low-level runtime, value, callback, container, snapshot, and error ABI.",
             "",
         ]
     )
-    if isinstance(blockers, list):
-        notes.extend(f"- {item}" for item in blockers)
+    if source_ready:
+        notes.extend(
+            [
+                "## Standalone source execution",
+                "",
+                "The canonical artifacts include PortaPy's standalone parser, full frontend, bytecode VM, closures, classes, configured imports, and synthetic traceback frames.",
+                "",
+            ]
+        )
+    else:
+        notes.extend(["## Not yet included", ""])
+        if isinstance(blockers, list):
+            notes.extend(f"- {item}" for item in blockers)
+        notes.append("")
     notes.extend(
         [
-            "",
-            "The release includes `portapy.dll`, `libportapy.so`, the public "
-            "header, build metadata, FFI examples, and SHA-256 checksums.",
+            "The release includes `portapy.dll`, `libportapy.so`, the public header, build metadata, FFI examples, and SHA-256 checksums.",
             "",
         ]
     )
-    (args.dist / "RELEASE_NOTES.md").write_text(
-        "\n".join(notes),
-        encoding="utf-8",
-    )
+    (args.dist / "RELEASE_NOTES.md").write_text("\n".join(notes), encoding="utf-8")
     return 0
 
 

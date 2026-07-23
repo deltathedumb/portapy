@@ -52,9 +52,13 @@ def main() -> int:
             "input_mapping",
             {"left": 18, "right": 24, "nested": {"value": 42}},
         )
+        environment.set("values", [40, 2])
         environment.execute(
+            "import math\n"
+            "from math import floor as imported_floor\n"
+            "unicode_text = 'π'\n"
             "http_provider = game.provider.HttpProvider\n"
-            "floor_value = math.floor(input_value)\n"
+            "floor_value = imported_floor(input_value)\n"
             "answer = floor_value + 1\n"
             "nested = add(20, add(1, 21))\n"
             "tuple_first = input_tuple[0]\n"
@@ -63,15 +67,54 @@ def main() -> int:
             "mapping_total = input_mapping[\"left\"] + input_mapping[\"right\"]\n"
             "mapping_size = len(input_mapping)\n"
             "mapping_result = dict_roundtrip(input_mapping)\n"
+            "def total(items):\n"
+            "    result = 0\n"
+            "    for item in items:\n"
+            "        result += item\n"
+            "    return result\n"
+            "def outer(base):\n"
+            "    def inner(value):\n"
+            "        return base + value\n"
+            "    return inner\n"
+            "class Box:\n"
+            "    def __init__(self, value):\n"
+            "        self.value = value\n"
+            "    def get(self):\n"
+            "        return self.value\n"
+            "fn = outer(base=19)\n"
+            "box = Box(value=fn(value=total(items=values) - 19))\n"
+            "def fail():\n"
+            "    return 1 // 0\n"
+            "try:\n"
+            "    fail()\n"
+            "except Exception as exc:\n"
+            "    traced = exc.__traceback__ is not None\n"
+            "full_runtime_answer = box.get() if traced else -1\n"
         )
 
+        assert environment.evaluate("not ''") is True
+        assert environment.evaluate("'alpha' == 'alpha'") is True
+        assert environment.evaluate("'alpha' != 'beta'") is True
+        assert environment.evaluate("'alpha' < 'beta'") is True
+        try:
+            environment.evaluate("'alpha' < 1")
+        except ExecutionError as error:
+            assert error.error is not None
+            assert int(error.error.status) == 4
+            assert error.error.type_name == "TypeError"
+        else:
+            raise AssertionError("mixed string/number ordering did not raise TypeError")
+
         snapshot = environment.snapshot()
+        assert "__pyinbin_import__" not in snapshot.var
         assert snapshot.var["http_provider"] is game.provider.HttpProvider
         assert snapshot.var["input_value"] == 41.9
         assert snapshot.var["floor_value"] == 41
         assert snapshot.var["answer"] == 42
         assert snapshot.var["nested"] == 42
         assert snapshot.var["math"] is math
+        assert snapshot.var["imported_floor"] is math.floor
+        assert snapshot.var["unicode_text"] == "π"
         assert snapshot.var["game"] is game
         assert snapshot.var["add"] is add
         assert snapshot.var["tuple_roundtrip"] is tuple_roundtrip
@@ -91,6 +134,9 @@ def main() -> int:
             "total": 42,
             "nested": {"value": 42},
         }
+        assert snapshot.var["values"] == [40, 2]
+        assert snapshot.var["traced"] is True
+        assert snapshot.var["full_runtime_answer"] == 42
 
         environment.execute(
             "answer = 7\n"
@@ -116,6 +162,12 @@ def main() -> int:
             pass
         else:
             raise AssertionError("snapshot restore did not delete extra global")
+
+        environment.execute(
+            "import math\n"
+            "post_restore_import = math.floor(42.9)\n"
+        )
+        assert environment.get("post_restore_import") == 42
 
         environment.remove("answer")
         environment.remove("answer", missing_ok=True)

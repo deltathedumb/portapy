@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+from tools import materialize_full_reference_entry as materializer
+from tools import normalize_full_reference_abi_helpers as normalizer
+
+
+def _function(module: ast.Module, name: str) -> ast.FunctionDef:
+    return next(
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+
+
+def _source(module: ast.Module, name: str) -> str:
+    return ast.unparse(_function(module, name))
+
+
+def test_full_reference_normalization_installs_runtime_support(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "native_full_reference_entry.py"
+    monkeypatch.setattr(materializer, "OUTPUT", output)
+    monkeypatch.setattr(normalizer, "PATH", output)
+
+    assert materializer.main() == 0
+    assert normalizer.main() == 0
+
+    source = output.read_text(encoding="utf-8")
+    module = ast.parse(source)
+    classes = {
+        node.name
+        for node in module.body
+        if isinstance(node, ast.ClassDef)
+    }
+    assert "_PortaPyImportLoader" in classes
+    assert "source_size > len(source)" not in source
+    assert "_set_status(PORTAPY_" not in source
+    assert "status.value" not in source
+    assert "kind.value" not in source
+
+    runtime_source = _source(module, "_portapy_runtime_create_impl")
+    assert "instance._vm._seed_builtins(instance._globals)" in runtime_source
+    assert "_PortaPyImportLoader(instance)" in runtime_source
+    assert "__pyinbin_import__" in runtime_source
+    assert "_set_status(Status.OK)" in runtime_source
+
+    set_status_source = _source(module, "_set_status")
+    assert "_native_status_code(status)" in set_status_source
+    assert "int(status)" not in set_status_source
+
+    status_code_source = _source(module, "_native_status_code")
+    assert "status is Status.OK" in status_code_source
+    assert "return PORTAPY_OK" in status_code_source
+    assert "status.value" not in status_code_source
+
+    value_kind_code_source = _source(module, "_native_value_kind_code")
+    assert "kind is ValueKind.NONE" in value_kind_code_source
+    assert "return PORTAPY_VALUE_NONE" in value_kind_code_source
+    assert "kind.value" not in value_kind_code_source
+
+    kind_source = _source(module, "_portapy_value_get_kind_impl")
+    assert "instance.value_kind(value)" in kind_source
+    assert "return _native_value_kind_code(kind)" in kind_source
+    assert "int(kind)" not in kind_source
+    assert "instance.unbox(value)" not in kind_source
+    assert "_value_kind(" not in kind_source
+
+    bool_source = _source(module, "_portapy_value_as_bool_impl")
+    assert "instance.value_kind(value)" in bool_source
+    assert "kind is not ValueKind.BOOL" in bool_source
+    assert "instance.unbox(value)" in bool_source
+    assert "type(target)" not in bool_source
+    assert "PORTAPY_" not in bool_source
+
+    list_source = _source(module, "_portapy_list_begin_impl")
+    assert "_set_status_code(PORTAPY_OK)" in list_source
+    assert "_set_status(PORTAPY_OK)" not in list_source
+
+    dispatch_source = _source(module, "_portapy_host_dispatch_complete_impl")
+    assert "_set_status_code(status)" in dispatch_source
+    assert "_set_status(status)" not in dispatch_source
+
+    assert "instance._store(_DataBuilder(kind, size), kind)" in _source(
+        module, "_portapy_value_from_data_begin_impl"
+    )
+    tagged_stores = {
+        "_portapy_value_from_host_object_impl": "ValueKind.OBJECT",
+        "_portapy_value_from_host_callable_impl": "ValueKind.CALLABLE",
+        "_portapy_tuple_begin_impl": "ValueKind.TUPLE",
+        "_portapy_dict_begin_impl": "ValueKind.DICT",
+        "_portapy_list_begin_impl": "ValueKind.LIST",
+    }
+    for function_name, kind in tagged_stores.items():
+        function_source = _source(module, function_name)
+        assert "instance._store(" in function_source
+        assert kind in function_source
+
+    loader = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "_PortaPyImportLoader"
+    )
+    loader_source = ast.unparse(loader)
+    assert "self.instance.read_global(parts[0])" in loader_source
+    assert "getattr(value, parts[index])" in loader_source
+    assert "raise ImportError(name)" in loader_source
+    assert "ModuleNotFoundError" not in loader_source

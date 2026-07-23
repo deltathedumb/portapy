@@ -263,6 +263,7 @@ def build_native(
             "-shared",
             *link_objects,
             f"-Wl,--version-script={version_script}",
+            "-lm",
             "-o",
             str(output),
         ]

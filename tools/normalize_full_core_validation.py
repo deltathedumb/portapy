@@ -30,6 +30,7 @@ from tools.normalize_full_core_function_parameter_names import main as normalize
 from tools.normalize_full_core_function_specs import main as normalize_function_specs
 from tools.normalize_full_core_keyword_calls import main as normalize_keyword_calls
 from tools.normalize_full_core_lambdas import main as normalize_lambdas
+from tools.normalize_full_core_len import main as normalize_len
 from tools.normalize_full_core_local_name_collisions import main as normalize_local_name_collisions
 from tools.normalize_full_core_make_function import main as normalize_make_function
 from tools.normalize_full_core_name_index import main as normalize_name_index
@@ -200,6 +201,7 @@ def main() -> int:
         ("nested_code_introspection", _normalize_nested_code_introspection),
         ("opcode_validation", _normalize_opcode_validation),
         ("truthiness", normalize_truthiness),
+        ("len", normalize_len),
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
         ("runtime_specs", normalize_runtime_specs),

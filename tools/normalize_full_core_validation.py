@@ -62,6 +62,7 @@ from tools.normalize_full_reference_errors import main as normalize_reference_er
 from tools.normalize_full_reference_expression_kinds import main as normalize_reference_expression_kinds
 from tools.normalize_full_reference_float_bits import main as normalize_reference_float_bits
 from tools.normalize_full_reference_function_return_kinds import main as normalize_reference_function_return_kinds
+from tools.normalize_full_reference_handle_kind_access import main as normalize_reference_handle_kind_access
 from tools.normalize_full_reference_nested_kinds import main as normalize_reference_nested_kinds
 from tools.normalize_full_reference_runtime import main as normalize_reference_runtime
 from tools.normalize_full_reference_safe_host_ids import main as normalize_reference_safe_host_ids
@@ -170,6 +171,7 @@ def main() -> int:
         ("reference_source_preprocess", normalize_reference_source_preprocess),
         ("reference_data_builders", normalize_reference_data_builders),
         ("reference_data_access", normalize_reference_data_access),
+        ("reference_handle_kind_access", normalize_reference_handle_kind_access),
         ("reference_bytes_literals", normalize_reference_bytes_literals),
         ("native_parser", normalize_native_parser),
         ("native_argument_defaults", normalize_native_argument_defaults),

@@ -1,9 +1,9 @@
 """Preserve ``/`` and ``*`` function-parameter markers in the native parser.
 
 The pinned parser accepts a bare ``*`` but flattens every named parameter into one
-list, and it rejects the positional-only ``/`` marker entirely.  Carry two private
+list, and it rejects the positional-only ``/`` marker entirely. Carry two private
 sentinel entries through the vendored FuncDef parameter/default arrays, then remove
-them while constructing PortaPy's compatibility ``arguments`` node.  This avoids
+them while constructing PortaPy's compatibility ``arguments`` node. This avoids
 changing the pinned compiler AST schema while retaining Python's positional-only
 and keyword-only partitions and their independent defaults.
 """
@@ -19,6 +19,11 @@ _FUNCDEF_CLASS = "_npr_ast_nodes_FuncDef"
 _ARGUMENT_CLASS = "AstArg"
 _POSONLY_MARKER = "__portapy_posonly_marker__"
 _KWONLY_MARKER = "__portapy_kwonly_marker__"
+_FLAT_BRIDGE_RETURN = (
+    "return arguments([], all_args, None if node.vararg is None else "
+    "AstArg(node.vararg), [], [], None if node.kwarg is None else "
+    "AstArg(node.kwarg), defaults)"
+)
 
 
 _PARSER_BODY = f'''start = self._peek().pos
@@ -238,7 +243,7 @@ def main() -> int:
         raise RuntimeError("native function parser already carries parameter markers")
     if "self._check('OP', '/')" in parser_text:
         raise RuntimeError("native function parser has an unknown slash implementation")
-    if "return arguments([], all_args" not in bridge_text:
+    if _FLAT_BRIDGE_RETURN not in bridge_text:
         raise RuntimeError("native argument bridge no longer has the flattened source shape")
 
     parser.body = ast.parse(_PARSER_BODY).body

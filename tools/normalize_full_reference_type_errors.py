@@ -63,27 +63,20 @@ class _Rewrite(ast.NodeTransformer):
             handler = ast.ExceptHandler(
                 type=ast.Name(id="TypeError", ctx=ast.Load()),
                 name="error",
-                body=[
-                    ast.Return(
-                        value=ast.Call(
-                            func=ast.Attribute(
-                                value=ast.Name(id="self", ctx=ast.Load()),
-                                attr="_capture_native",
-                                ctx=ast.Load(),
-                            ),
-                            args=[
-                                ast.Attribute(
-                                    value=ast.Name(id="Status", ctx=ast.Load()),
-                                    attr="TYPE_ERROR",
-                                    ctx=ast.Load(),
-                                ),
-                                ast.Constant("TypeError"),
-                                ast.Constant("PortaPy type error"),
-                            ],
-                            keywords=[],
-                        )
-                    )
-                ],
+                body=ast.parse(
+                    '''if self._vm._native_error_kind == "NameError":
+    return self._capture_native(
+        Status.NOT_FOUND,
+        "NameError",
+        "PortaPy name not found",
+    )
+return self._capture_native(
+    Status.TYPE_ERROR,
+    "TypeError",
+    "PortaPy type error",
+)
+'''
+                ).body,
             )
             statement.handlers.insert(broad_index, handler)
             self.count += 1
@@ -134,6 +127,8 @@ def main() -> int:
     text = ast.unparse(type_handler)
     required_markers = (
         "except TypeError as error:",
+        "self._vm._native_error_kind == 'NameError'",
+        "Status.NOT_FOUND",
         "Status.TYPE_ERROR",
         "self._capture_native(",
     )

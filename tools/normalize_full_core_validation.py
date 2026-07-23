@@ -167,7 +167,7 @@ def main() -> int:
         ("reference_error_locations", normalize_reference_error_locations),
         ("reference_value_kinds", normalize_reference_value_kinds),
         ("reference_expression_kinds", normalize_reference_expression_kinds),
-        ("reference_function_return_kinds", normalize_function_return_kinds),
+        ("reference_function_return_kinds", normalize_reference_function_return_kinds),
         ("reference_nested_kinds", normalize_reference_nested_kinds),
         ("reference_source_preprocess", normalize_reference_source_preprocess),
         ("reference_data_builders", normalize_reference_data_builders),

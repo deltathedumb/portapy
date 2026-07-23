@@ -7,8 +7,16 @@ from tools import normalize_full_core_runtime_dispatch as normalizer
 
 
 SOURCE = '''class VirtualMachine:
-    def _call(self, target, args):
-        return target(*args)
+    def bind(self, target, name):
+        checks = [
+            name in target.code.posonly_names,
+            name in target.code.arg_names,
+            name in target.code.kwonly_names,
+            name not in target.code.posonly_names,
+            name not in target.code.arg_names,
+            name not in target.code.kwonly_names,
+        ]
+        return checks
 
     def run(self, op, frame, instr):
         if op is Op.GET_ITER:
@@ -16,6 +24,11 @@ SOURCE = '''class VirtualMachine:
             if isinstance(value, dict) or type(value).__name__ in {"dict_keys"}:
                 value = list(value)
             frame.stack.append(iter(value))
+        elif op is Op.MAKE_CLASS:
+            class_keywords = frame.stack.pop() if has_keywords else {}
+            if not isinstance(class_keywords, dict):
+                _raise_typed("TypeError: class keyword arguments must be a dict")
+            frame.stack.append(class_keywords)
         elif op is Op.IMPORT_NAME:
             loader = frame.globals.get("__pyinbin_import__")
             if not callable(loader):
@@ -56,7 +69,7 @@ SOURCE = '''class VirtualMachine:
 '''
 
 
-def test_removes_native_iteration_and_loader_hazards(
+def test_removes_native_runtime_dispatch_hazards(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -67,12 +80,17 @@ def test_removes_native_iteration_and_loader_hazards(
     assert normalizer.main() == 0
 
     source = path.read_text(encoding="utf-8")
+    assert "def _full_core_native_name_in" in source
     assert "frame.stack.append(iter(value))" in source
     assert "type(value).__name__" not in source
     assert "callable(loader)" not in source
     assert "loader is None" in source
-    assert "self._call(loader, [imported])" in source
-    assert "self._call(loader, [top_level])" in source
+    assert "loader(imported)" in source
+    assert "loader(top_level)" in source
+    assert "self._call(loader" not in source
+    assert "class keyword arguments must be a dict" not in source
+    assert "_full_core_native_name_in(target.code.arg_names, name)" in source
+    assert "name in target.code.arg_names" not in source
     ast.parse(source)
 
 
@@ -90,6 +108,6 @@ def test_fails_closed_without_all_import_branches(
     try:
         normalizer.main()
     except RuntimeError as error:
-        assert "four import branches" in str(error)
+        assert "required branches" in str(error)
     else:
         raise AssertionError("normalizer accepted a missing import branch")

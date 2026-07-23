@@ -23,7 +23,6 @@ from tools.normalize_full_core_calls_closures import main as normalize_calls_clo
 from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_collections import main as normalize_collections
 from tools.normalize_full_core_default_expressions import main as normalize_default_expressions
-from tools.normalize_full_core_exception_statuses import main as normalize_exception_statuses
 from tools.normalize_full_core_expr_stmt_initializer import main as normalize_expr_stmt_initializer
 from tools.normalize_full_core_extended_semantics_compat import main as normalize_extended_semantics
 from tools.normalize_full_core_function_binding import main as normalize_function_binding
@@ -204,7 +203,6 @@ def main() -> int:
         ("runtime_specs", normalize_runtime_specs),
         ("runtime_dispatch", normalize_runtime_dispatch),
         ("runtime_execution", normalize_runtime_execution),
-        ("exception_statuses", normalize_exception_statuses),
         ("parameter_name_collisions", normalize_parameter_name_collisions),
         ("builtin_parameter_collisions", normalize_builtin_parameter_collisions),
         ("local_name_collisions", normalize_local_name_collisions),

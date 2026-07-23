@@ -68,12 +68,12 @@ class _Rewrite(ast.NodeTransformer):
     return self._capture_native(
         Status.NOT_FOUND,
         "NameError",
-        "PortaPy name not found",
+        error,
     )
 return self._capture_native(
     Status.TYPE_ERROR,
     "TypeError",
-    "PortaPy type error",
+    error,
 )
 '''
                 ).body,
@@ -131,11 +131,19 @@ def main() -> int:
         "Status.NOT_FOUND",
         "Status.TYPE_ERROR",
         "self._capture_native(",
+        "'NameError', error",
+        "'TypeError', error",
     )
     missing_markers = [marker for marker in required_markers if marker not in text]
     if missing_markers:
         raise RuntimeError(
             f"native reference TypeError validation failed: {missing_markers}"
+        )
+    generic_markers = ("PortaPy name not found", "PortaPy type error")
+    remaining = [marker for marker in generic_markers if marker in text]
+    if remaining:
+        raise RuntimeError(
+            f"native TypeError detail is still replaced: {remaining}"
         )
     print("NORMALIZED NATIVE REFERENCE TYPE ERRORS", rewriter.count)
     return 0

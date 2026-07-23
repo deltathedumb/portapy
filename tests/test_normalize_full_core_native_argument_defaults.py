@@ -77,12 +77,17 @@ def _arguments_initializer(path: Path) -> ast.FunctionDef:
     return initializers[0]
 
 
+def _isolate(path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(normalizer, "PATH", path)
+    monkeypatch.setattr(normalizer, "normalize_default_expressions", lambda: 0)
+
+
 def test_pins_default_elements_and_storage_to_dict_backed_ast(
     tmp_path: Path, monkeypatch,
 ) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(_SOURCE, encoding="utf-8")
-    monkeypatch.setattr(normalizer, "PATH", path)
+    _isolate(path, monkeypatch)
 
     assert normalizer.main() == 0
 
@@ -121,7 +126,7 @@ def test_pins_default_elements_and_storage_to_dict_backed_ast(
 def test_is_idempotent(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text(_SOURCE, encoding="utf-8")
-    monkeypatch.setattr(normalizer, "PATH", path)
+    _isolate(path, monkeypatch)
 
     assert normalizer.main() == 0
     first = path.read_text(encoding="utf-8")
@@ -132,7 +137,7 @@ def test_is_idempotent(tmp_path: Path, monkeypatch) -> None:
 def test_fails_closed_for_unknown_shape(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "native_ast.py"
     path.write_text("def _convert_arguments():\n    pass\n", encoding="utf-8")
-    monkeypatch.setattr(normalizer, "PATH", path)
+    _isolate(path, monkeypatch)
 
     try:
         normalizer.main()

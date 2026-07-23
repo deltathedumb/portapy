@@ -40,6 +40,7 @@ from tools.normalize_full_core_native_parser_target_dispatch import main as norm
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_native_statement_bodies import main as normalize_native_statement_bodies
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
+from tools.normalize_full_core_parameter_name_collisions import main as normalize_parameter_name_collisions
 from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
 from tools.normalize_full_core_pattern_constructor_collisions import main as normalize_pattern_constructor_collisions
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
@@ -195,6 +196,9 @@ def main() -> int:
         ("truthiness", normalize_truthiness),
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
+        # Parameter collisions include explicit functions and dataclass-generated
+        # initializers. Repair them before the final local-variable collision pass.
+        ("parameter_name_collisions", normalize_parameter_name_collisions),
         # Run last: it unparses all changed modules and must see the complete
         # flattened class namespace produced by every earlier pass.
         ("local_name_collisions", normalize_local_name_collisions),

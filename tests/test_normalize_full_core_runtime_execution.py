@@ -7,6 +7,14 @@ from tools import normalize_full_core_runtime_execution as normalizer
 
 
 SOURCE = '''class VirtualMachine:
+    def __init__(self):
+        self.value = 0
+
+    def _lookup(self, frame, name):
+        if name in frame.locals:
+            return frame.locals[name]
+        _raise_typed(f"NameError: name {name!r} is not defined")
+
     def _exception_matches(self, value, expected):
         return False
 
@@ -57,6 +65,8 @@ def test_installs_explicit_native_execution_state(
     assert "while closure_index < len(nested.free_names):" in source
     assert "exc = _NativeCaughtException(exc)" in source
     assert "if isinstance(value, _NativeCaughtException):" in source
+    assert "self._native_error_kind = 'NameError'" in source
+    assert "self._native_error_kind = ''" in source
     assert "frame.stack.append(iter(value))" not in source
     assert "next(frame.stack[-1])" not in source
     assert "for name in nested.free_names" not in source

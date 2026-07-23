@@ -48,6 +48,7 @@ from tools.normalize_full_core_pattern_slices import main as normalize_pattern_s
 from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
 from tools.normalize_full_core_runtime_dispatch import main as normalize_runtime_dispatch
+from tools.normalize_full_core_runtime_execution import main as normalize_runtime_execution
 from tools.normalize_full_core_runtime_specs import main as normalize_runtime_specs
 from tools.normalize_full_core_string_addition import main as normalize_string_addition
 from tools.normalize_full_core_string_comparisons import main as normalize_truthiness
@@ -202,9 +203,11 @@ def main() -> int:
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
         # These AST passes intentionally run only after all text-sensitive VM
-        # passes, replacing unsafe opcode specs and host introspection.
+        # passes, replacing unsafe specs, host introspection, and implicit
+        # iterator/exception state.
         ("runtime_specs", normalize_runtime_specs),
         ("runtime_dispatch", normalize_runtime_dispatch),
+        ("runtime_execution", normalize_runtime_execution),
         # Parameter collisions include explicit functions and dataclass-generated
         # initializers. Repair them before the final local-variable collision pass.
         ("parameter_name_collisions", normalize_parameter_name_collisions),

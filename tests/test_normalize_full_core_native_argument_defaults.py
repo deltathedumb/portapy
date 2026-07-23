@@ -79,7 +79,6 @@ def _arguments_initializer(path: Path) -> ast.FunctionDef:
 
 def _isolate(path: Path, monkeypatch) -> None:
     monkeypatch.setattr(normalizer, "PATH", path)
-    monkeypatch.setattr(normalizer, "normalize_default_expressions", lambda: 0)
 
 
 def test_pins_default_elements_and_storage_to_dict_backed_ast(

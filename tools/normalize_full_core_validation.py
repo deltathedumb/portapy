@@ -17,6 +17,7 @@ if str(_REPOSITORY_ROOT) not in sys.path:
 from tools.combine_full_core_native_parser import main as combine_native_parser
 from tools.materialize_full_reference_entry import main as materialize_reference_entry
 from tools.normalize_full_core_boolops import main as normalize_boolops
+from tools.normalize_full_core_builtin_parameter_collisions import main as normalize_builtin_parameter_collisions
 from tools.normalize_full_core_builtins import main as normalize_builtins
 from tools.normalize_full_core_calls_closures import main as normalize_calls_closures
 from tools.normalize_full_core_closures import main as normalize_closures
@@ -199,6 +200,7 @@ def main() -> int:
         # Parameter collisions include explicit functions and dataclass-generated
         # initializers. Repair them before the final local-variable collision pass.
         ("parameter_name_collisions", normalize_parameter_name_collisions),
+        ("builtin_parameter_collisions", normalize_builtin_parameter_collisions),
         # Run last: it unparses all changed modules and must see the complete
         # flattened class namespace produced by every earlier pass.
         ("local_name_collisions", normalize_local_name_collisions),

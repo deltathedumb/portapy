@@ -5,7 +5,9 @@ state for untagged runtime lists. The same limitation affects Python ``for`` loo
 inside the VM itself, including closure capture. Native low-level exception
 handlers also expose the runtime error message rather than a Python exception
 object. This final AST pass replaces the critical paths with explicit indexed
-state and wraps caught messages in a native object carrying traceback metadata.
+state, wraps caught messages in a native object carrying traceback metadata, and
+transports unresolved-name errors to the public ABI without relying on erased
+native exception classes.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from pathlib import Path
 PATH = Path("src/portapy/core/vm.py")
 _ITERATOR = "_NativeSequenceIterator"
 _EXCEPTION = "_NativeCaughtException"
+_ERROR_KIND = "_native_error_kind"
 
 _HELPERS = '''
 class _NativeSequenceIterator:
@@ -77,6 +80,65 @@ def _install_helpers(tree: ast.Module) -> int:
     helpers = ast.parse(_HELPERS).body
     tree.body.extend(helpers)
     return len(helpers)
+
+
+def _runtime_method(runtime: ast.ClassDef, name: str) -> ast.FunctionDef:
+    matches = [
+        node
+        for node in runtime.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"native execution expected one VirtualMachine.{name}, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def _install_error_kind_transport(tree: ast.Module) -> tuple[int, int, int]:
+    runtimes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "VirtualMachine"
+    ]
+    if len(runtimes) != 1:
+        raise RuntimeError(
+            f"native execution expected one VirtualMachine class, found {len(runtimes)}"
+        )
+    runtime = runtimes[0]
+    initializer = _runtime_method(runtime, "__init__")
+    lookup = _runtime_method(runtime, "_lookup")
+    run_frame = _runtime_method(runtime, "_run_frame")
+
+    if _ERROR_KIND in ast.unparse(runtime):
+        raise RuntimeError("native error-kind transport is already installed")
+
+    initializer.body.append(ast.parse(f'self.{_ERROR_KIND} = ""').body[0])
+
+    raises = [
+        index
+        for index, statement in enumerate(lookup.body)
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Name)
+        and statement.value.func.id == "_raise_typed"
+    ]
+    if len(raises) != 1:
+        raise RuntimeError(
+            f"native lookup expected one terminal typed raise, found {len(raises)}"
+        )
+    lookup.body.insert(
+        raises[0],
+        ast.parse(f'self.{_ERROR_KIND} = "NameError"').body[0],
+    )
+
+    loops = [statement for statement in run_frame.body if isinstance(statement, ast.While)]
+    if len(loops) != 1:
+        raise RuntimeError(
+            f"native frame execution expected one instruction loop, found {len(loops)}"
+        )
+    loops[0].body.insert(0, ast.parse(f'self.{_ERROR_KIND} = ""').body[0])
+    return 1, 1, 1
 
 
 class _OpcodeRewrite(ast.NodeTransformer):
@@ -185,6 +247,7 @@ class _ExceptionRewrite(ast.NodeTransformer):
 def main() -> int:
     tree = ast.parse(PATH.read_text(encoding="utf-8"), filename=str(PATH))
     helper_count = _install_helpers(tree)
+    error_kind = _install_error_kind_transport(tree)
     opcode = _OpcodeRewrite()
     tree = opcode.visit(tree)
     exceptions = _ExceptionRewrite()
@@ -197,11 +260,12 @@ def main() -> int:
         opcode.closure_loops,
         exceptions.catches,
         exceptions.matchers,
+        *error_kind,
     )
-    if counts != (2, 1, 1, 1, 1, 1):
+    if counts != (2, 1, 1, 1, 1, 1, 1, 1, 1):
         raise RuntimeError(
             "native execution normalization expected helpers/get-iter/for-iter/"
-            f"closure/catch/matcher once; found {counts}"
+            f"closure/catch/matcher/error-kind transport once; found {counts}"
         )
 
     ast.fix_missing_locations(tree)
@@ -218,6 +282,8 @@ def main() -> int:
         "exc = _NativeCaughtException(exc)",
         "if isinstance(value, _NativeCaughtException):",
         "self.__traceback__ = True",
+        'self._native_error_kind = "NameError"',
+        'self._native_error_kind = ""',
     )
     missing = [marker for marker in required if marker not in source]
     forbidden = (

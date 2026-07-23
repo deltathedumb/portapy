@@ -8,6 +8,7 @@
 #define ABI_CALL __cdecl
 #else
 #include <dlfcn.h>
+#include <unistd.h>
 #define LOAD_LIBRARY(path) dlopen((path), RTLD_NOW | RTLD_LOCAL)
 #define LOAD_SYMBOL(lib, name) dlsym((lib), (name))
 #define ABI_CALL
@@ -40,7 +41,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "full-core-parse=%lld\n", (long long)parsed_instructions);
     if (parsed_instructions <= 0) return 6;
 
+#if !defined(_WIN32)
+    /* Preserve diagnostics if a native semantic regression loops forever. */
+    alarm(20);
+#endif
     int64_t result = probe();
+#if !defined(_WIN32)
+    alarm(0);
+#endif
     printf("full-core=%lld\n", (long long)result);
     return result == 42 ? 0 : 7;
 }

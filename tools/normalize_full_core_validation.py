@@ -42,6 +42,7 @@ from tools.normalize_full_core_native_parser_target_dispatch import main as norm
 from tools.normalize_full_core_native_semantics import main as normalize_native_semantics
 from tools.normalize_full_core_native_statement_bodies import main as normalize_native_statement_bodies
 from tools.normalize_full_core_opcode_maps import main as normalize_opcode_maps
+from tools.normalize_full_core_parameter_markers import main as normalize_parameter_markers
 from tools.normalize_full_core_parameter_name_collisions import main as normalize_parameter_name_collisions
 from tools.normalize_full_core_parser_errors import main as normalize_parser_errors
 from tools.normalize_full_core_pattern_constructor_collisions import main as normalize_pattern_constructor_collisions
@@ -166,7 +167,7 @@ def main() -> int:
         ("reference_error_locations", normalize_reference_error_locations),
         ("reference_value_kinds", normalize_reference_value_kinds),
         ("reference_expression_kinds", normalize_reference_expression_kinds),
-        ("reference_function_return_kinds", normalize_reference_function_return_kinds),
+        ("reference_function_return_kinds", normalize_function_return_kinds),
         ("reference_nested_kinds", normalize_reference_nested_kinds),
         ("reference_source_preprocess", normalize_reference_source_preprocess),
         ("reference_data_builders", normalize_reference_data_builders),
@@ -179,6 +180,7 @@ def main() -> int:
         ("keyword_calls", normalize_keyword_calls),
         ("combine_native_parser", combine_native_parser),
         ("default_expressions", normalize_default_expressions),
+        ("parameter_markers", normalize_parameter_markers),
         ("native_parser_expressions", normalize_native_parser_expressions),
         ("native_parser_target_dispatch", normalize_native_parser_target_dispatch),
         ("parser_errors", normalize_parser_errors),

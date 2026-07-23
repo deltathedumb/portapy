@@ -47,6 +47,7 @@ from tools.normalize_full_core_pattern_constructor_collisions import main as nor
 from tools.normalize_full_core_pattern_slices import main as normalize_pattern_slices
 from tools.normalize_full_core_pop_top import main as normalize_pop_top
 from tools.normalize_full_core_probe import main as normalize_probe
+from tools.normalize_full_core_runtime_specs import main as normalize_runtime_specs
 from tools.normalize_full_core_string_addition import main as normalize_string_addition
 from tools.normalize_full_core_string_comparisons import main as normalize_truthiness
 from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
@@ -189,6 +190,9 @@ def main() -> int:
         ("native_node_fields", normalize_native_node_fields),
         ("pop_top", normalize_pop_top),
         ("make_function", normalize_make_function),
+        # Heterogeneous opcode tuples otherwise compile as strings. Convert the
+        # remaining keyword-call and class specs before final source unparsing.
+        ("runtime_specs", normalize_runtime_specs),
         ("collections", normalize_collections),
         ("builtins", normalize_builtins),
         ("tracebacks", normalize_tracebacks),

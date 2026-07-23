@@ -14,6 +14,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tools.normalize_full_core_default_expressions import (
+    main as normalize_default_expressions,
+)
+
 
 PATH = Path("src/portapy/core/native_ast.py")
 
@@ -109,6 +113,7 @@ def _is_normalized(function: ast.FunctionDef) -> bool:
 
 
 def main() -> int:
+    normalize_default_expressions()
     module = ast.parse(PATH.read_text(encoding="utf-8"))
     matches = [
         node

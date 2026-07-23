@@ -58,6 +58,7 @@ from tools.normalize_full_core_string_comparisons import main as normalize_truth
 from tools.normalize_full_core_tracebacks import main as normalize_tracebacks
 from tools.normalize_full_reference_abi_helpers import main as normalize_reference_abi_helpers
 from tools.normalize_full_reference_bytes_literals import main as normalize_reference_bytes_literals
+from tools.normalize_full_reference_container_access import main as normalize_reference_container_access
 from tools.normalize_full_reference_data_access import main as normalize_reference_data_access
 from tools.normalize_full_reference_data_builders import main as normalize_reference_data_builders
 from tools.normalize_full_reference_error_locations import main as normalize_reference_error_locations
@@ -173,6 +174,7 @@ def main() -> int:
         ("reference_source_preprocess", normalize_reference_source_preprocess),
         ("reference_data_builders", normalize_reference_data_builders),
         ("reference_data_access", normalize_reference_data_access),
+        ("reference_container_access", normalize_reference_container_access),
         ("reference_handle_kind_access", normalize_reference_handle_kind_access),
         ("reference_bytes_literals", normalize_reference_bytes_literals),
         ("native_parser", normalize_native_parser),

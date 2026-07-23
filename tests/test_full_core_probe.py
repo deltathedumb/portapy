@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 import sys
 
 from tools.materialize_full_reference_entry import main as materialize_reference_entry
@@ -18,6 +19,9 @@ _TEMPORARY_MODULES = (
     "portapy.native_full_reference_entry",
     "portapy.reference_api",
 )
+_NATIVE_ENTRY_PATH = (
+    Path(__file__).parents[1] / "src" / "portapy" / "native_full_reference_entry.py"
+)
 
 
 def _unload_temporary_modules() -> None:
@@ -28,6 +32,7 @@ def _unload_temporary_modules() -> None:
 
 def test_full_core_probe_executes_reference_abi_path() -> None:
     original_reference_runtime = REFERENCE_RUNTIME_PATH.read_text(encoding="utf-8")
+    original_native_entry = _NATIVE_ENTRY_PATH.read_text(encoding="utf-8")
     try:
         _unload_temporary_modules()
         normalize_reference_runtime()
@@ -49,4 +54,5 @@ def test_full_core_probe_executes_reference_abi_path() -> None:
             original_reference_runtime,
             encoding="utf-8",
         )
+        _NATIVE_ENTRY_PATH.write_text(original_native_entry, encoding="utf-8")
         _unload_temporary_modules()

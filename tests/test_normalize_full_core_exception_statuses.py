@@ -71,7 +71,10 @@ def test_fails_closed_without_wrapper_assignment(
     vm_path = tmp_path / "vm.py"
     reference_path = tmp_path / "reference_api.py"
     vm_path.write_text(
-        VM_SOURCE.replace("exc = _NativeCaughtException(exc)\n", ""),
+        VM_SOURCE.replace(
+            "                exc = _NativeCaughtException(exc)\n",
+            "",
+        ),
         encoding="utf-8",
     )
     reference_path.write_text(REFERENCE_SOURCE, encoding="utf-8")

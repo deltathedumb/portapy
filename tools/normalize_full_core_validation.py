@@ -190,9 +190,6 @@ def main() -> int:
         ("native_node_fields", normalize_native_node_fields),
         ("pop_top", normalize_pop_top),
         ("make_function", normalize_make_function),
-        # Heterogeneous opcode tuples otherwise compile as strings. Convert the
-        # remaining keyword-call and class specs before final source unparsing.
-        ("runtime_specs", normalize_runtime_specs),
         ("collections", normalize_collections),
         ("builtins", normalize_builtins),
         ("tracebacks", normalize_tracebacks),
@@ -201,6 +198,9 @@ def main() -> int:
         ("truthiness", normalize_truthiness),
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
+        # This AST pass intentionally runs only after all text-sensitive VM
+        # passes, replacing heterogeneous opcode tuples before final unparsing.
+        ("runtime_specs", normalize_runtime_specs),
         # Parameter collisions include explicit functions and dataclass-generated
         # initializers. Repair them before the final local-variable collision pass.
         ("parameter_name_collisions", normalize_parameter_name_collisions),

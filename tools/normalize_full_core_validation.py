@@ -22,6 +22,7 @@ from tools.normalize_full_core_builtins import main as normalize_builtins
 from tools.normalize_full_core_calls_closures import main as normalize_calls_closures
 from tools.normalize_full_core_closures import main as normalize_closures
 from tools.normalize_full_core_collections import main as normalize_collections
+from tools.normalize_full_core_default_expressions import main as normalize_default_expressions
 from tools.normalize_full_core_expr_stmt_initializer import main as normalize_expr_stmt_initializer
 from tools.normalize_full_core_extended_semantics_compat import main as normalize_extended_semantics
 from tools.normalize_full_core_function_binding import main as normalize_function_binding
@@ -146,8 +147,6 @@ def _run_step(name: str, callback: Callable[[], object]) -> None:
 
 def main() -> int:
     steps: tuple[tuple[str, Callable[[], object]], ...] = (
-        # This pass relies on pristine VM source anchors. Keep it before every
-        # normalizer that rewrites or unparses src/portapy/core/vm.py.
         ("native_keyword_transport", normalize_native_keyword_transport),
         ("probe", normalize_probe),
         ("lambdas", normalize_lambdas),
@@ -179,6 +178,8 @@ def main() -> int:
         ("calls_closures", normalize_calls_closures),
         ("keyword_calls", normalize_keyword_calls),
         ("combine_native_parser", combine_native_parser),
+        # The parser method only exists in native_ast after combination.
+        ("default_expressions", normalize_default_expressions),
         ("native_parser_expressions", normalize_native_parser_expressions),
         ("native_parser_target_dispatch", normalize_native_parser_target_dispatch),
         ("parser_errors", normalize_parser_errors),
@@ -186,8 +187,6 @@ def main() -> int:
         ("closures", normalize_closures),
         ("pattern_slices", normalize_pattern_slices),
         ("extended_semantics", normalize_extended_semantics),
-        # Extended semantics installs MatchAs defaults using the original
-        # constructor signature. Rename colliding parameters only afterwards.
         ("expr_stmt_initializer", normalize_expr_stmt_initializer),
         ("pattern_constructor_collisions", normalize_pattern_constructor_collisions),
         ("native_statement_bodies", normalize_native_statement_bodies),
@@ -202,18 +201,11 @@ def main() -> int:
         ("truthiness", normalize_truthiness),
         ("string_addition", normalize_string_addition),
         ("reference_type_errors", normalize_reference_type_errors),
-        # These AST passes intentionally run only after all text-sensitive VM
-        # passes, replacing unsafe specs, host introspection, and implicit
-        # iterator/exception state.
         ("runtime_specs", normalize_runtime_specs),
         ("runtime_dispatch", normalize_runtime_dispatch),
         ("runtime_execution", normalize_runtime_execution),
-        # Parameter collisions include explicit functions and dataclass-generated
-        # initializers. Repair them before the final local-variable collision pass.
         ("parameter_name_collisions", normalize_parameter_name_collisions),
         ("builtin_parameter_collisions", normalize_builtin_parameter_collisions),
-        # Run last: it unparses all changed modules and must see the complete
-        # flattened class namespace produced by every earlier pass.
         ("local_name_collisions", normalize_local_name_collisions),
     )
     DIAGNOSTIC_PATH.unlink(missing_ok=True)

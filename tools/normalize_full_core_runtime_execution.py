@@ -282,8 +282,8 @@ def main() -> int:
         "exc = _NativeCaughtException(exc)",
         "if isinstance(value, _NativeCaughtException):",
         "self.__traceback__ = True",
-        'self._native_error_kind = "NameError"',
-        'self._native_error_kind = ""',
+        "self._native_error_kind = 'NameError'",
+        "self._native_error_kind = ''",
     )
     missing = [marker for marker in required if marker not in source]
     forbidden = (
